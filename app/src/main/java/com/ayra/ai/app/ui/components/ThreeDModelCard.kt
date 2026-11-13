@@ -24,11 +24,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.annotation.SuppressLint
+import android.webkit.WebView
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RocketLaunch
@@ -39,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -55,12 +60,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import android.annotation.SuppressLint
-import android.webkit.WebView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ayra.ai.app.ai.Model3dMeshCatalog
 import com.ayra.ai.app.ui.theme.GlassSurfaceDark
 import com.ayra.ai.app.ui.theme.NeonCyan
 import com.ayra.ai.app.ui.theme.NeonGreen
@@ -69,6 +75,7 @@ import com.ayra.ai.app.ui.theme.NeonRose
 import com.ayra.ai.app.ui.theme.TextPrimary
 import com.ayra.ai.app.ui.theme.TextSecondary
 import org.json.JSONObject
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -113,11 +120,24 @@ fun ThreeDModelCard(
         mutableStateOf(kind)
     }
 
+    val context = LocalContext.current
+    val customMesh = remember(craftPayload) {
+        runCatching {
+            if (!craftPayload.isNullOrBlank()) {
+                val json = JSONObject(craftPayload)
+                if (json.optString("kind") == "CUSTOM_AI") {
+                    Model3dMeshCatalog.parseWavefrontObj(json.optString("objContent"), "CUSTOM_AI")
+                } else null
+            } else null
+        }.getOrNull()
+    }
+
     var rotX by remember { mutableFloatStateOf(20f) }
     var rotY by remember { mutableFloatStateOf(35f) }
     var userScale by remember { mutableFloatStateOf(1.0f) }
     var isAutoSpin by remember { mutableStateOf(true) }
-    var useWebGlPbr by remember { mutableStateOf(true) }
+    var useWebGlPbr by remember(craftPayload) { mutableStateOf(customMesh == null) }
+    var exportedObjPath by remember { mutableStateOf<String?>(null) }
 
     // Auto-spin transition
     val infiniteTransition = rememberInfiniteTransition(label = "3d_spin")
@@ -133,221 +153,18 @@ fun ThreeDModelCard(
 
     val currentYaw = if (isAutoSpin) rotY + autoSpinAngle else rotY
 
-data class ModelFace(val indices: List<Int>, val tint: Color)
+    data class ModelFace(val indices: List<Int>, val tint: Color)
 
-    // 3D Geometry definitions for each kind
-    val (vertices, edges, faces) = remember(selectedKind) {
-        when (selectedKind) {
-            Model3dKind.CAR -> {
-                // Cyber Sports Car wireframe
-                val v = listOf(
-                    // Base chassis
-                    Triple(-1.4f, 0.4f, -0.7f), Triple(1.4f, 0.4f, -0.7f),
-                    Triple(1.4f, 0.4f, 0.7f), Triple(-1.4f, 0.4f, 0.7f),
-                    // Cabin bottom
-                    Triple(-1.2f, -0.1f, -0.65f), Triple(1.2f, -0.1f, -0.65f),
-                    Triple(1.2f, -0.1f, 0.65f), Triple(-1.2f, -0.1f, 0.65f),
-                    // Roof
-                    Triple(-0.4f, -0.7f, -0.5f), Triple(0.5f, -0.7f, -0.5f),
-                    Triple(0.5f, -0.7f, 0.5f), Triple(-0.4f, -0.7f, 0.5f),
-                    // Rear spoiler
-                    Triple(-1.3f, -0.4f, -0.6f), Triple(-1.3f, -0.4f, 0.6f)
-                )
-                val e = listOf(
-                    Pair(0, 1), Pair(1, 2), Pair(2, 3), Pair(3, 0),
-                    Pair(4, 5), Pair(5, 6), Pair(6, 7), Pair(7, 4),
-                    Pair(0, 4), Pair(1, 5), Pair(2, 6), Pair(3, 7),
-                    Pair(8, 9), Pair(9, 10), Pair(10, 11), Pair(11, 8),
-                    Pair(4, 8), Pair(5, 9), Pair(6, 10), Pair(7, 11),
-                    Pair(12, 13), Pair(4, 12), Pair(7, 13)
-                )
-                val f = listOf(
-                    ModelFace(listOf(8, 9, 10, 11), NeonCyan),
-                    ModelFace(listOf(4, 5, 9, 8), NeonPurple),
-                    ModelFace(listOf(11, 10, 6, 7), NeonCyan),
-                    ModelFace(listOf(0, 1, 5, 4), NeonPurple),
-                    ModelFace(listOf(3, 2, 6, 7), NeonCyan),
-                    ModelFace(listOf(0, 4, 8, 11, 7, 3), NeonRose),
-                    ModelFace(listOf(1, 5, 9, 10, 6, 2), NeonRose)
-                )
-                Triple(v, e, f)
-            }
+    val activeMesh = remember(selectedKind, customMesh) {
+        customMesh ?: Model3dMeshCatalog.getMesh(selectedKind.name)
+    }
 
-            Model3dKind.SPACESHIP -> {
-                // Delta-wing Space Fighter
-                val v = listOf(
-                    Triple(0f, 0f, 1.8f),      // Nose cone tip
-                    Triple(-1.4f, 0.2f, -1.2f), // Left wingtip
-                    Triple(1.4f, 0.2f, -1.2f),  // Right wingtip
-                    Triple(0f, -0.6f, -1.0f),   // Dorsal fin top
-                    Triple(0f, 0.3f, -1.1f),    // Cockpit base
-                    Triple(-0.5f, -0.2f, 0.3f), // Cockpit left
-                    Triple(0.5f, -0.2f, 0.3f),  // Cockpit right
-                    Triple(0f, -0.4f, 0.8f)     // Cockpit canopy peak
-                )
-                val e = listOf(
-                    Pair(0, 1), Pair(0, 2), Pair(1, 2),
-                    Pair(0, 3), Pair(1, 3), Pair(2, 3),
-                    Pair(0, 4), Pair(1, 4), Pair(2, 4), Pair(3, 4),
-                    Pair(5, 6), Pair(6, 7), Pair(7, 5),
-                    Pair(0, 7), Pair(1, 5), Pair(2, 6)
-                )
-                val f = listOf(
-                    ModelFace(listOf(0, 1, 3), NeonPurple),
-                    ModelFace(listOf(0, 2, 3), NeonPurple),
-                    ModelFace(listOf(0, 1, 2), NeonCyan),
-                    ModelFace(listOf(0, 5, 7), NeonCyan),
-                    ModelFace(listOf(0, 6, 7), NeonCyan),
-                    ModelFace(listOf(1, 4, 2), NeonRose)
-                )
-                Triple(v, e, f)
-            }
-
-            Model3dKind.ROBOT -> {
-                // Android Mecha
-                val v = listOf(
-                    // Head
-                    Triple(-0.35f, -1.2f, -0.35f), Triple(0.35f, -1.2f, -0.35f),
-                    Triple(0.35f, -0.7f, -0.35f), Triple(-0.35f, -0.7f, -0.35f),
-                    Triple(-0.35f, -1.2f, 0.35f), Triple(0.35f, -1.2f, 0.35f),
-                    Triple(0.35f, -0.7f, 0.35f), Triple(-0.35f, -0.7f, 0.35f),
-                    // Torso
-                    Triple(-0.7f, -0.6f, -0.4f), Triple(0.7f, -0.6f, -0.4f),
-                    Triple(0.6f, 0.4f, -0.35f), Triple(-0.6f, 0.4f, -0.35f),
-                    Triple(-0.7f, -0.6f, 0.4f), Triple(0.7f, -0.6f, 0.4f),
-                    Triple(0.6f, 0.4f, 0.35f), Triple(-0.6f, 0.4f, 0.35f),
-                    // Arms
-                    Triple(-1.1f, 0.2f, 0f), Triple(1.1f, 0.2f, 0f)
-                )
-                val e = listOf(
-                    Pair(0, 1), Pair(1, 2), Pair(2, 3), Pair(3, 0),
-                    Pair(4, 5), Pair(5, 6), Pair(6, 7), Pair(7, 4),
-                    Pair(0, 4), Pair(1, 5), Pair(2, 6), Pair(3, 7),
-                    Pair(8, 9), Pair(9, 10), Pair(10, 11), Pair(11, 8),
-                    Pair(12, 13), Pair(13, 14), Pair(14, 15), Pair(15, 12),
-                    Pair(8, 12), Pair(9, 13), Pair(10, 14), Pair(11, 15),
-                    Pair(8, 16), Pair(9, 17)
-                )
-                val f = listOf(
-                    ModelFace(listOf(4, 5, 6, 7), NeonCyan),
-                    ModelFace(listOf(0, 1, 2, 3), NeonPurple),
-                    ModelFace(listOf(12, 13, 14, 15), NeonCyan),
-                    ModelFace(listOf(8, 9, 10, 11), NeonPurple),
-                    ModelFace(listOf(8, 9, 13, 12), NeonRose),
-                    ModelFace(listOf(11, 10, 14, 15), NeonRose)
-                )
-                Triple(v, e, f)
-            }
-
-            Model3dKind.DIAMOND -> {
-                // Multifaceted Gemstone
-                val v = listOf(
-                    Triple(0f, -1.3f, 0f),     // Crown peak
-                    Triple(-0.7f, -0.5f, -0.7f), Triple(0.7f, -0.5f, -0.7f),
-                    Triple(0.7f, -0.5f, 0.7f), Triple(-0.7f, -0.5f, 0.7f),
-                    Triple(-1.1f, -0.2f, 0f), Triple(1.1f, -0.2f, 0f),
-                    Triple(0f, -0.2f, -1.1f), Triple(0f, -0.2f, 1.1f),
-                    Triple(0f, 1.4f, 0f)       // Culet bottom
-                )
-                val e = listOf(
-                    Pair(0, 1), Pair(0, 2), Pair(0, 3), Pair(0, 4),
-                    Pair(1, 2), Pair(2, 3), Pair(3, 4), Pair(4, 1),
-                    Pair(1, 5), Pair(1, 7), Pair(2, 6), Pair(2, 7),
-                    Pair(3, 6), Pair(3, 8), Pair(4, 5), Pair(4, 8),
-                    Pair(5, 7), Pair(7, 6), Pair(6, 8), Pair(8, 5),
-                    Pair(9, 5), Pair(9, 6), Pair(9, 7), Pair(9, 8),
-                    Pair(9, 1), Pair(9, 2), Pair(9, 3), Pair(9, 4)
-                )
-                val f = listOf(
-                    ModelFace(listOf(0, 1, 7), NeonCyan),
-                    ModelFace(listOf(0, 7, 2), NeonPurple),
-                    ModelFace(listOf(0, 2, 6), NeonCyan),
-                    ModelFace(listOf(0, 6, 3), NeonPurple),
-                    ModelFace(listOf(0, 3, 8), NeonCyan),
-                    ModelFace(listOf(0, 8, 4), NeonPurple),
-                    ModelFace(listOf(9, 5, 7), NeonCyan),
-                    ModelFace(listOf(9, 7, 6), NeonPurple),
-                    ModelFace(listOf(9, 6, 8), NeonCyan),
-                    ModelFace(listOf(9, 8, 5), NeonPurple)
-                )
-                Triple(v, e, f)
-            }
-
-            Model3dKind.SPHERE -> {
-                // Wireframe Geodesic Sphere
-                val v = mutableListOf<Triple<Float, Float, Float>>()
-                val e = mutableListOf<Pair<Int, Int>>()
-                val f = mutableListOf<ModelFace>()
-                val rings = 6
-                val sectors = 8
-                for (r in 0..rings) {
-                    val phi = Math.PI * r / rings
-                    for (s in 0 until sectors) {
-                        val theta = 2 * Math.PI * s / sectors
-                        val x = (sin(phi) * cos(theta)).toFloat() * 1.15f
-                        val y = (cos(phi)).toFloat() * 1.15f
-                        val z = (sin(phi) * sin(theta)).toFloat() * 1.15f
-                        v.add(Triple(x, y, z))
-                    }
-                }
-                for (r in 0 until rings) {
-                    for (s in 0 until sectors) {
-                        val current = r * sectors + s
-                        val next = r * sectors + ((s + 1) % sectors)
-                        val down = (r + 1) * sectors + s
-                        val downNext = (r + 1) * sectors + ((s + 1) % sectors)
-                        e.add(Pair(current, next))
-                        e.add(Pair(current, down))
-                        if (r % 2 == 0) {
-                            f.add(ModelFace(listOf(current, next, downNext, down), if (s % 2 == 0) NeonCyan else NeonPurple))
-                        }
-                    }
-                }
-                Triple(v, e, f)
-            }
-
-            Model3dKind.CYBER_CORE -> {
-                // Tesseract Hypercube / Cyber Core
-                val v = listOf(
-                    // Outer cube
-                    Triple(-1f, -1f, -1f), Triple(1f, -1f, -1f),
-                    Triple(1f, 1f, -1f), Triple(-1f, 1f, -1f),
-                    Triple(-1f, -1f, 1f), Triple(1f, -1f, 1f),
-                    Triple(1f, 1f, 1f), Triple(-1f, 1f, 1f),
-                    // Inner hypercube
-                    Triple(-0.5f, -0.5f, -0.5f), Triple(0.5f, -0.5f, -0.5f),
-                    Triple(0.5f, 0.5f, -0.5f), Triple(-0.5f, 0.5f, -0.5f),
-                    Triple(-0.5f, -0.5f, 0.5f), Triple(0.5f, -0.5f, 0.5f),
-                    Triple(0.5f, 0.5f, 0.5f), Triple(-0.5f, 0.5f, 0.5f),
-                    // Core nodes
-                    Triple(0f, 0f, 1.4f), Triple(0f, 0f, -1.4f)
-                )
-                val e = listOf(
-                    // Outer edges
-                    Pair(0, 1), Pair(1, 2), Pair(2, 3), Pair(3, 0),
-                    Pair(4, 5), Pair(5, 6), Pair(6, 7), Pair(7, 4),
-                    Pair(0, 4), Pair(1, 5), Pair(2, 6), Pair(3, 7),
-                    // Inner edges
-                    Pair(8, 9), Pair(9, 10), Pair(10, 11), Pair(11, 8),
-                    Pair(12, 13), Pair(13, 14), Pair(14, 15), Pair(15, 12),
-                    Pair(8, 12), Pair(9, 13), Pair(10, 14), Pair(11, 15),
-                    // Connectors
-                    Pair(0, 8), Pair(1, 9), Pair(2, 10), Pair(3, 11),
-                    Pair(4, 12), Pair(5, 13), Pair(6, 14), Pair(7, 15),
-                    Pair(16, 12), Pair(16, 13), Pair(16, 14), Pair(16, 15),
-                    Pair(17, 8), Pair(17, 9), Pair(17, 10), Pair(17, 11)
-                )
-                val f = listOf(
-                    ModelFace(listOf(0, 1, 2, 3), NeonCyan),
-                    ModelFace(listOf(4, 5, 6, 7), NeonPurple),
-                    ModelFace(listOf(0, 1, 5, 4), NeonCyan),
-                    ModelFace(listOf(2, 3, 7, 6), NeonPurple),
-                    ModelFace(listOf(8, 9, 10, 11), NeonRose),
-                    ModelFace(listOf(12, 13, 14, 15), NeonRose)
-                )
-                Triple(v, e, f)
-            }
+    val (vertices, edges, faces) = remember(activeMesh) {
+        val palette = listOf(NeonCyan, NeonPurple, NeonRose)
+        val coloredFaces = activeMesh.faces.mapIndexed { idx, indices ->
+            ModelFace(indices, palette[idx % palette.size])
         }
+        Triple(activeMesh.vertices, activeMesh.edges, coloredFaces)
     }
 
     Column(
@@ -393,15 +210,41 @@ data class ModelFace(val indices: List<Int>, val tint: Color)
                     fontSize = 13.5.sp
                 )
                 Text(
-                    text = "Interactive 3D Mesh • ${vertices.size} Vertices • ${edges.size} Edges",
+                    text = "Interactive 3D Mesh • ${vertices.size} Vertices • ${edges.size} Edges • ${faces.size} Faces",
                     style = MaterialTheme.typography.bodySmall,
                     color = NeonCyan,
                     fontSize = 10.5.sp
                 )
             }
 
-            // Renderer Mode + Auto-spin chips
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Export .OBJ + Renderer Mode + Auto-spin controls
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        try {
+                            val dir = File(context.filesDir, "generated_3d").apply { mkdirs() }
+                            val safeName = selectedKind.label.lowercase() + "_" + System.currentTimeMillis() + ".obj"
+                            val outFile = File(dir, safeName)
+                            outFile.writeText(Model3dMeshCatalog.buildWavefrontObj(activeMesh, parsedTitle))
+                            exportedObjPath = outFile.name
+                            Toast.makeText(context, "Exported 3D OBJ: ${outFile.name}", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .minimumInteractiveComponentSize()
+                        .testTag("export_3d_obj_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Export Wavefront OBJ",
+                        tint = NeonGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -443,6 +286,14 @@ data class ModelFace(val indices: List<Int>, val tint: Color)
                     }
                 }
             }
+        }
+        if (exportedObjPath != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Saved Wavefront .OBJ: generated_3d/$exportedObjPath",
+                color = NeonGreen,
+                fontSize = 10.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -625,26 +476,30 @@ data class ModelFace(val indices: List<Int>, val tint: Color)
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(6.dp),
+                    .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 IconButton(
                     onClick = { userScale = (userScale - 0.15f).coerceIn(0.6f, 2.0f) },
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(48.dp)
+                        .minimumInteractiveComponentSize()
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.7f))
+                        .testTag("3d_zoom_out_button")
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = NeonCyan, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = NeonCyan, modifier = Modifier.size(18.dp))
                 }
                 IconButton(
                     onClick = { userScale = (userScale + 0.15f).coerceIn(0.6f, 2.0f) },
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(48.dp)
+                        .minimumInteractiveComponentSize()
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.7f))
+                        .testTag("3d_zoom_in_button")
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = NeonCyan, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = NeonCyan, modifier = Modifier.size(18.dp))
                 }
             }
             } // end else (Canvas fallback)

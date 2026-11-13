@@ -180,6 +180,7 @@ fun ChatScreen(
     val orchestrator = remember { AyraOrchestrator(context) }
     val aiEngine = remember { UnifiedAiEngine(context) }
     val firebaseAiEngine = remember { com.ayra.ai.app.ai.FirebaseAiEngine(context) }
+    val externalAiProviders = remember { com.ayra.ai.app.ai.providers.ExternalAiProviders(context) }
     val audioCaptureManager = remember { com.ayra.ai.app.audio.AudioCaptureManager(context) }
     val cloudRepo = remember(currentUser?.uid) {
         if (currentUser != null && com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)) {
@@ -924,7 +925,13 @@ fun ChatScreen(
                         if (recordedFile != null) {
                             isTranscribingAudio = true
                             scope.launch {
-                                val res = firebaseAiEngine.transcribeAudioFile(recordedFile)
+                                var res = firebaseAiEngine.transcribeAudioFile(recordedFile)
+                                if (res.isFailure) {
+                                    val whisperText = externalAiProviders.transcribeAudioOpenAiCompatible(recordedFile)
+                                    if (whisperText.isNotBlank()) {
+                                        res = Result.success(whisperText)
+                                    }
+                                }
                                 runCatching { recordedFile.delete() }
                                 isTranscribingAudio = false
                                 res.onSuccess { transcript ->
@@ -1032,7 +1039,13 @@ fun ChatScreen(
                         if (recordedFile != null) {
                             isTranscribingAudio = true
                             scope.launch {
-                                val res = firebaseAiEngine.transcribeAudioFile(recordedFile)
+                                var res = firebaseAiEngine.transcribeAudioFile(recordedFile)
+                                if (res.isFailure) {
+                                    val whisperText = externalAiProviders.transcribeAudioOpenAiCompatible(recordedFile)
+                                    if (whisperText.isNotBlank()) {
+                                        res = Result.success(whisperText)
+                                    }
+                                }
                                 runCatching { recordedFile.delete() }
                                 isTranscribingAudio = false
                                 res.onSuccess { transcript ->
@@ -1151,9 +1164,9 @@ fun ChatScreen(
                             }
                             IconButton(
                                 onClick = { showAttachmentPicker = false },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(20.dp))
                             }
                         }
 
@@ -1241,8 +1254,10 @@ fun ChatScreen(
                                             "text/*",
                                             "application/msword",
                                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                            "application/json",
-                                            "*/*"
+                                            "application/vnd.ms-excel",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                                            "application/json"
                                         )
                                     )
                                 }
@@ -2243,14 +2258,14 @@ private fun GlassMessageBubble(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onCopy, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                        IconButton(onClick = onCopy, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(18.dp))
                         }
-                        IconButton(onClick = onSpeak, modifier = Modifier.size(28.dp)) {
+                        IconButton(onClick = onSpeak, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.VolumeUp, contentDescription = "Listen", tint = NeonCyan, modifier = Modifier.size(18.dp))
                         }
-                        IconButton(onClick = { onEdit(message.content) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit Note / নোট এডিট", tint = NeonPurple, modifier = Modifier.size(16.dp))
+                        IconButton(onClick = { onEdit(message.content) }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Note / নোট এডিট", tint = NeonPurple, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -2505,7 +2520,7 @@ private fun EmptyCosmicState(
                     .background(NeonCyan)
             )
             Text(
-                text = "Tap Top or Bottom '+' for Cyber Lab, VPN, Images & Tools",
+                text = "Tap Top or Bottom '+' for Cyber Lab, Studios, Research & Tools",
                 color = NeonCyan,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold

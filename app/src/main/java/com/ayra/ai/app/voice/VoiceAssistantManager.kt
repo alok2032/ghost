@@ -2,6 +2,11 @@ package com.ayra.ai.app.voice
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -11,9 +16,18 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.ayra.ai.app.data.AyraPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 
 sealed class VoiceUiState {
@@ -80,6 +94,52 @@ class VoiceAssistantManager(
 
     private var isTtsReady = false
     private var isDestroyed = false
+    private val voiceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var neuralVoiceJob: Job? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private var activeFocusRequest: AudioFocusRequest? = null
+    private val audioManager: AudioManager? by lazy {
+        runCatching { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }.getOrNull()
+    }
+    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            stopSpeaking()
+        }
+    }
+
+    private fun requestTtsAudioFocus() {
+        val am = audioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = activeFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setOnAudioFocusChangeListener(focusChangeListener)
+                    .build()
+                    .also { activeFocusRequest = it }
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(focusChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            }
+        }
+    }
+
+    private fun abandonTtsAudioFocus() {
+        val am = audioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                activeFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(focusChangeListener)
+            }
+        }
+    }
 
     init {
         // Defer Binder IPC for TTS & SpeechRecognizer until after Frame 1 renders cleanly
@@ -140,6 +200,7 @@ class VoiceAssistantManager(
 
                 override fun onDone(utteranceId: String?) {
                     _isSpeaking.value = false
+                    abandonTtsAudioFocus()
                     // Once done speaking, immediately re-listen if wake word is active
                     if (isAlwaysOnWakeWordEnabled && !isDestroyed) {
                         mainHandler.postDelayed({
@@ -151,6 +212,7 @@ class VoiceAssistantManager(
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
                     _isSpeaking.value = false
+                    abandonTtsAudioFocus()
                     if (isAlwaysOnWakeWordEnabled && !isDestroyed) {
                         mainHandler.postDelayed({
                             startListening()
@@ -212,12 +274,13 @@ class VoiceAssistantManager(
     }
 
     /**
-     * Speaks text using dynamic sentiment-modulated pitch and rate.
+     * Speaks text using ElevenLabs neural voice (when configured) with seamless fallback
+     * to dynamic sentiment-modulated Android TTS.
      */
     fun speak(text: String, overrideSentiment: UserSentiment? = null) {
-        if (tts == null) ensureTtsInitialized()
-        if (!isTtsReady || text.isBlank()) return
+        if (isDestroyed || text.isBlank()) return
         stopListening()
+        requestTtsAudioFocus()
 
         // Determine active sentiment profile
         val targetSentiment = when {
@@ -236,8 +299,111 @@ class VoiceAssistantManager(
             .replace(Regex("```[\\s\\S]*?```"), "Code snippet provided in chat.")
             .replace(Regex("[*#`_~>|\\[\\]()]"), " ")
             .trim()
+        if (cleaned.isBlank()) return
 
-        // Detect language script
+        neuralVoiceJob?.cancel()
+        releaseMediaPlayer()
+
+        val elevenKey = runCatching { AyraPreferences.getElevenLabsKey(context) }.getOrDefault("").trim()
+        if (elevenKey.isNotBlank()) {
+            neuralVoiceJob = voiceScope.launch {
+                val audioBytes = runCatching {
+                    ElevenLabsVoiceEngine(context).synthesizeSpeech(cleaned)
+                }.getOrNull()
+
+                if (audioBytes != null && audioBytes.isNotEmpty() && !isDestroyed) {
+                    val tempFile = runCatching {
+                        File(context.cacheDir, "ayra_voice_${System.currentTimeMillis()}.mp3").apply {
+                            writeBytes(audioBytes)
+                        }
+                    }.getOrNull()
+
+                    if (tempFile != null) {
+                        val started = withContext(Dispatchers.Main) {
+                            playNeuralAudioFile(tempFile)
+                        }
+                        if (started) return@launch
+                        runCatching { tempFile.delete() }
+                    }
+                }
+
+                if (!isDestroyed) {
+                    withContext(Dispatchers.Main) {
+                        speakViaSystemTts(cleaned, targetSentiment)
+                    }
+                }
+            }
+            return
+        }
+
+        speakViaSystemTts(cleaned, targetSentiment)
+    }
+
+    private fun playNeuralAudioFile(file: File): Boolean {
+        return try {
+            tts?.stop()
+            releaseMediaPlayer()
+            val mp = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                setDataSource(file.absolutePath)
+                setOnPreparedListener { player ->
+                    if (isDestroyed) {
+                        releaseMediaPlayer()
+                        return@setOnPreparedListener
+                    }
+                    _isSpeaking.value = true
+                    player.start()
+                }
+                setOnCompletionListener {
+                    _isSpeaking.value = false
+                    abandonTtsAudioFocus()
+                    releaseMediaPlayer()
+                    runCatching { file.delete() }
+                    if (isAlwaysOnWakeWordEnabled && !isDestroyed) {
+                        mainHandler.postDelayed({ startListening() }, 400)
+                    }
+                }
+                setOnErrorListener { _, _, _ ->
+                    _isSpeaking.value = false
+                    abandonTtsAudioFocus()
+                    releaseMediaPlayer()
+                    runCatching { file.delete() }
+                    false
+                }
+                prepareAsync()
+            }
+            mediaPlayer = mp
+            true
+        } catch (_: Exception) {
+            releaseMediaPlayer()
+            false
+        }
+    }
+
+    private fun releaseMediaPlayer() {
+        runCatching {
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) mp.stop()
+                mp.reset()
+                mp.release()
+            }
+        }
+        mediaPlayer = null
+    }
+
+    private fun speakViaSystemTts(cleaned: String, targetSentiment: UserSentiment) {
+        if (tts == null) ensureTtsInitialized()
+        if (!isTtsReady || cleaned.isBlank()) {
+            _isSpeaking.value = false
+            abandonTtsAudioFocus()
+            return
+        }
+
         val isBengali = cleaned.any { it in '\u0980'..'\u09FF' }
         val isHindi = cleaned.any { it in '\u0900'..'\u097F' }
 
@@ -249,7 +415,6 @@ class VoiceAssistantManager(
 
         setupVoiceModulation(locale, targetSentiment)
 
-        // Split text into natural sentence chunks to avoid TTS buffer overflow and ensure smooth delivery
         val sentenceDelimiters = Regex("(?<=[।!?\\n])\\s+|(?<=\\.)\\s+")
         val chunks = cleaned.split(sentenceDelimiters).filter { it.isNotBlank() }
 
@@ -278,8 +443,11 @@ class VoiceAssistantManager(
     }
 
     fun stopSpeaking() {
+        neuralVoiceJob?.cancel()
+        releaseMediaPlayer()
         tts?.stop()
         _isSpeaking.value = false
+        abandonTtsAudioFocus()
     }
 
     fun startManualListening() {
@@ -417,7 +585,11 @@ class VoiceAssistantManager(
 
     fun destroy() {
         isDestroyed = true
+        neuralVoiceJob?.cancel()
+        voiceScope.cancel()
+        releaseMediaPlayer()
         mainHandler.removeCallbacksAndMessages(null)
+        abandonTtsAudioFocus()
         tts?.stop()
         tts?.shutdown()
         try {

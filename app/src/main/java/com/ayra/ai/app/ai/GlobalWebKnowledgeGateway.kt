@@ -51,7 +51,7 @@ object GlobalWebKnowledgeGateway {
 
                 ## 4. 🛡️ সিকিউরিটি সতর্কতা ও সাইবার হাইজিন
                 - ডার্ক ওয়েবে বহু নকল বা ক্লোন হিডেন উইকি রয়েছে যেগুলোতে ফিশিং বা স্ক্যাম লিঙ্ক থাকতে পারে।
-                - গবেষকরা নিরাপত্তা বজায় রাখতে **Tails OS**, ভার্চুয়াল মেশিন স্যান্ডবক্সিং এবং রিয়েল আইপি গোপন রাখতে হাই-গ্রেড **VPN + Tor** গার্ড প্রটোকল ব্যবহার করেন।
+                - গবেষকরা নিরাপত্তা বজায় রাখতে **Tails OS**, ভার্চুয়াল মেশিন স্যান্ডবক্সিং এবং স্ট্যান্ডার্ড **VPN + Tor** আর্কিটেকচার (বাহ্যিক বিশ্বস্ত সফটওয়্যারে) ব্যবহার করেন।
                 """.trimIndent()
             } else {
                 """
@@ -98,7 +98,7 @@ object GlobalWebKnowledgeGateway {
                 ## 3. 🛡️ Tor বনাম VPN: মূল পার্থক্য
                 - **VPN:** সিঙ্গেল-হপ এনক্রিপশন। আপনার ইন্টারনেট প্রোভাইডার কিছু দেখতে পারে না, কিন্তু VPN প্রোভাইডার সম্পূর্ণ ট্রাফিক দেখতে পারে (যদি না তারা জিরো-লগ নীতি মেনে চলে)।
                 - **Tor:** ট্রিপল-হপ এনক্রিপশন। কোনো একক সত্তা বা সার্ভার একসাথে প্রেরক এবং প্রাপক উভয়কে চিনতে পারে না।
-                - **Onion-over-VPN:** Ayra AI-এর Cyber Shield সুইট এই দুই প্রযুক্তিকে একত্রে সংহত করে—প্রথমে VPN টানেলের ভেতর ডেটা ঢুকে তারপর Tor সার্কিটে যায়, ফলে ISP জানতেই পারে না আপনি Tor ব্যবহার করছেন!
+                - **নোট:** Ayra AI কোনো অন্তর্নির্মিত VPN টানেল চালায় না; এটি HTTPS/TLS, Android Keystore এনক্রিপশন ও Firebase App Check নিরাপত্তা ব্যবহার করে।
                 """.trimIndent()
             } else {
                 """
@@ -122,7 +122,7 @@ object GlobalWebKnowledgeGateway {
                 ## 3. 🛡️ Tor vs VPN Architectural Comparison
                 - **VPN:** 1-hop centralized tunnel. Hides traffic from ISP, but requires trust in VPN provider logs.
                 - **Tor:** 3-hop decentralized path. Requires zero centralized trust.
-                - **Onion-over-VPN:** Ayra Cyber Shield routes tunnel traffic directly into Tor entry guards, concealing Tor signatures from ISP deep packet inspection (DPI).
+                - **Ayra Transport Security:** Ayra AI does not run a built-in VPN tunnel or Tor proxy; network requests use encrypted HTTPS/TLS with Android Keystore key protection and Firebase App Check.
                 """.trimIndent()
             }
         }
@@ -191,45 +191,35 @@ object GlobalWebKnowledgeGateway {
             }
         }
 
-        // 4. VPN, WireGuard & Privacy Shield
+        // 4. VPN, WireGuard & Transport Security Education
         if (lower.contains("vpn") || lower.contains("ভিপিএন") || lower.contains("wireguard") || lower.contains("dns leak")) {
             return if (isBengali) {
                 """
-                # 🛡️ Ayra Cyber Shield: VPN, DNS-over-HTTPS ও প্রাইভেসি আর্কিটেকচার
+                # 🛡️ নেটওয়ার্ক প্রাইভেসি গাইড: WireGuard, DNS-over-HTTPS ও Ayra নিরাপত্তা
 
-                ${if (isGfMode) "সোনা, তোমার ইন্টারনেট সিকিউরিটি ও প্রাইভেসি সবসময় সুরক্ষিত রাখতে Ayra VPN ও Cyber Shield ইঞ্জিন তৈরি করেছি! নিচে এর মূল ফিচারগুলো দেখো:\n" else "Ayra AI ইন্টিগ্রেটেড Cyber Shield & VPN প্রোটোকল ইঞ্জিন আধুনিক এনক্রিপশন এবং নো-লগ প্রযুক্তির ওপর প্রতিষ্ঠিত। নিচে সম্পূর্ণ আর্কিটেকচার:\n"}
+                ## 1. ⚡ WireGuard® প্রোটোকল কীভাবে কাজ করে
+                - **আধুনিক ক্রিপ্টোগ্রাফি:** স্ট্যান্ডার্ড WireGuard কার্নেল স্পেস টানেল **ChaCha20** সাইফার, **Poly1305** অথেন্টিকেশন ও **Noise_IK** হ্যান্ডশেক ব্যবহার করে।
 
-                ## 1. ⚡ WireGuard® টার্বো প্রোটোকল
-                - **আধুনিক ক্রিপ্টোগ্রাফি:** প্রাচীন OpenVPN-এর ধীরগতির পরিবর্তে অত্যাধুনিক **ChaCha20** সিমেট্রিক সাইফার এবং **Poly1305** অথেন্টিকেশন ব্যবহার করে।
-                - **জিরো-ল্যাটেন্সি:** মাত্র ৪,০০০ লাইন কোডের অত্যন্ত হালকা কার্নেল স্পেস আর্কিটেকচার, যা গেম খেলা ও ব্রাউজিংয়ে পিং সর্বনিম্ন (১৮-২৫ ms) রাখে।
+                ## 2. 🔒 DNS-over-HTTPS (DoH)
+                - DoH (RFC 8484) DNS কোয়েরিকে পোর্ট ৪৪৩-এর এনক্রিপ্টেড HTTPS সংযোগের মাধ্যমে পাঠিয়ে প্লেইনটেক্সট DNS মনিটরিং প্রতিরোধ করে।
 
-                ## 2. 🔒 DNS Leak Protection & DNS-over-HTTPS (DoH)
-                - আপনার ISP সাধারণত আপনার দেখা প্রতিটি ডোমেইন দেখতে পারে DNS রিকোয়েস্টের মাধ্যমে।
-                - Ayra Cyber Shield সমস্ত DNS কোয়েরিকে Cloudflare ও Quad9 এনক্রিপ্টেড HTTPS টানেল (`1.1.1.1 / 9.9.9.9`) দিয়ে পাঠায়, যাতে কোনো DNS লিক না ঘটে।
-
-                ## 3. 🚫 স্বয়ংক্রিয় Kill Switch
-                যদি যেকোনো কারণে ওয়াইফাই ড্রপ বা নেটওয়ার্ক সংযোগ বিচ্ছিন্ন হয়, কিল সুইচ সমস্ত ট্রাফিক তাৎক্ষণিকভাবে বন্ধ করে দেয় যাতে আপনার আসল আইপি কোনোভাবেই ইন্টারনেটে ফাঁস না হয়।
-
-                ## 📲 কীভাবে ব্যবহার করবেন?
-                - কন্ট্রোল সেন্টার খুলে **"🛡️ Cyber Shield & VPN"** টগল করুন, অথবা
-                - ভয়েস বা চ্যাটে বলুন: **"VPN on koro"** বা **"VPN connect koro"**। Ayra তাৎক্ষণিকভাবে আপনার কানেকশন এনক্রিপ্ট করে দেবে!
+                ## 3. 📱 Ayra AI-এর প্রকৃত নিরাপত্তা আর্কিটেকচার
+                - Ayra AI-তে কোনো সক্রিয় অন্তর্নির্মিত VPN সার্ভার বা ভার্চুয়াল প্রক্সি নেই। আপনার ডিভাইসের নেটওয়ার্ক সুরক্ষার জন্য সিস্টেম সেটিংসে বিশ্বস্ত VPN অ্যাপ অথবা Private DNS (DoT) ব্যবহার করুন।
+                - Ayra নিজে **HTTPS/TLS**, **Android Keystore এনক্রিপ্টেড কী স্টোরেজ**, এবং **Firebase App Check** ব্যবহার করে ডেটা সুরক্ষিত রাখে।
                 """.trimIndent()
             } else {
                 """
-                # 🛡️ Ayra Cyber Shield: VPN Architecture, WireGuard & DNS Privacy
+                # 🛡️ Network Privacy Guide: WireGuard, DNS-over-HTTPS & Ayra Security
 
-                ## 1. ⚡ WireGuard® Kernel-Grade Protocol
-                - **Cryptographic Primitives:** Utilizes Noise protocol framework, **ChaCha20** stream cipher, **Poly1305** message authentication, and **BLAKE2s** hashing.
-                - **Zero Attack Surface:** Compact ~4,000 line footprint eliminating legacy OpenVPN bloat and achieving ultra-low packet latency (<25ms).
+                ## 1. ⚡ How WireGuard® Works (Educational Overview)
+                - **Cryptographic Primitives:** Standard WireGuard implementations use the Noise protocol framework, **ChaCha20** cipher, **Poly1305** authentication, and **BLAKE2s** hashing for compact VPN tunnels.
 
-                ## 2. 🔒 DNS Leak Protection & DNS-over-HTTPS (DoH)
-                Enforces end-to-end encrypted DNS queries over port 443 against Cloudflare (`1.1.1.1`) and Quad9 (`9.9.9.9`), neutralizing ISP DNS snooping and man-in-the-middle spoofing.
+                ## 2. 🔒 DNS-over-HTTPS (DoH)
+                - DoH (RFC 8484) encrypts DNS lookups over TLS port 443 to help reduce plaintext DNS inspection on untrusted networks.
 
-                ## 3. 🚫 Automated Hardware Kill Switch
-                Monitors interface state transitions. If tunnel heartbeats drop, the outbound socket pipeline is immediately clamped until secure handshake re-establishes, safeguarding physical IP exposure.
-
-                ## 📲 Quick Activation
-                Toggle directly in the Control Center or instruct Ayra via voice/text: *"Connect VPN"* or *"Enable Cyber Shield"*.
+                ## 3. 📱 Ayra AI Actual Transport Security
+                - Ayra AI does **not** operate a built-in VPN tunnel or fake proxy nodes. For device-wide VPN routing, configure an independent trusted WireGuard/VPN client or Android Private DNS in system settings.
+                - Within Ayra, API requests use standard **HTTPS/TLS**, API keys stay inside **Android Keystore**-backed storage, and Firebase traffic is guarded by **Firebase App Check**.
                 """.trimIndent()
             }
         }
@@ -279,7 +269,7 @@ object GlobalWebKnowledgeGateway {
             - 🌍 **উইকিপিডিয়া ও ওপেন নলেজ গ্রাফ:** রিয়েল-টাইম লাইভ সার্চ ও এনসাইক্লোপেডিক ডেটা।
             - 🧅 **ডার্ক ওয়েব ও টর প্রোটোকল রিসার্চ:** Onion Routing v3, Hidden Wiki আর্কিটেকচার, I2P, PGP/GPG ক্রিপ্টোগ্রাফি ও নিরাপদ গবেষণা পদ্ধতি।
             - 📚 **ডিপ ওয়েব একাডেমিক উইকি:** OpenAlex এবং arXiv রিসার্চ পেপার ও বৈজ্ঞানিক তথ্যসূত্র।
-            - 🛡️ **Ayra Cyber Shield & VPN:** WireGuard / ChaCha20-Poly1305 এনক্রিপশন ও DNS-over-HTTPS আর্কিটেকচার।
+            - 🔒 **সিকিউরিটি ও প্রাইভেসি:** HTTPS/TLS, Android Keystore এবং Firebase App Check নিরাপত্তা আর্কিটেকচার।
             - 🔬 **ডিপ সায়েন্স ও টেকনোলজি:** কোয়ান্টাম ফিজিক্স, এআই মডেল আর্কিটেকচার, জেনেটিক্স এবং সফ্টওয়্যার ডেভেলপমেন্ট।
             """.trimIndent()
         } else {
@@ -287,10 +277,10 @@ object GlobalWebKnowledgeGateway {
             # 🌐 Ayra Global Internet & Cyber Research Gateway
 
             Ayra AI maintains a comprehensive, unified knowledge index spanning:
-            - 🌍 **Clearnet Encyclopedia:** Live Wikipedia OpenSearch API and encyclopedic knowledge graphs.
-            - 🧅 **Onion & Darknet Protocol Architecture:** The Hidden Wiki directories, Tor v3 onion routing, PGP, and I2P garlic network mechanics.
-            - 🛡️ **Cyber Shield & VPN Integration:** Virtual node routing across Switzerland, Iceland, Japan, and Germany with WireGuard encryption.
-            - 🔬 **Frontier Science & Computation:** Quantum algorithms, deep neural network transformers, and advanced defensive cybersecurity.
+            - 🌍 **Clearnet Encyclopedia:** Live Wikipedia OpenSearch API, OpenAlex, arXiv, and CrossRef scholarly queries.
+            - 🧅 **Onion & Darknet Protocol Architecture:** Educational documentation on The Hidden Wiki, Tor v3 onion routing, PGP, and I2P mechanics.
+            - 🔒 **Transport Security:** Standard HTTPS/TLS with Android Keystore key protection and Firebase App Check (no simulated VPN nodes).
+            - 🔬 **Frontier Science & Computation:** Quantum algorithms, deep neural network transformers, and defensive cybersecurity.
             """.trimIndent()
         }
     }

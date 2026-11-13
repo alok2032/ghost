@@ -1,7 +1,7 @@
 {
   "firestore": [
     {
-      "database": "ai-studio-android-aloknewa-06b08921-0f18-4a1c-bb55-d19df025b22f",
+      "database": "ai-studio-android-ghost-b6cea197-8f33-489e-97e7-0457254cf7ed",
       "rules": "firestore.rules"
     }
   ],

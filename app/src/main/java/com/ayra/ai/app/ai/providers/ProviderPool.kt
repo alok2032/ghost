@@ -135,12 +135,12 @@ class ProviderPool @JvmOverloads constructor(
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    private fun isTrivialGreeting(prompt: String): Boolean {
-        val clean = prompt.lowercase().trim().trimEnd('?', '!', '.')
+    internal fun isTrivialGreeting(prompt: String): Boolean {
+        val clean = prompt.lowercase().trim().trimEnd('!', '.', '।')
         if (clean in casualGreetings) return true
-        return clean.length <= 16 && !clean.contains("?") && !clean.contains("কি") &&
-            !clean.contains("কী") && !clean.contains("how") && !clean.contains("what") &&
-            !clean.contains("why") && !clean.contains("code") && !clean.contains("write")
+        if (clean.contains("?") || clean.any { it.isDigit() }) return false
+        val greetingRegex = Regex("^(hi+|hello+|hey+|hii+|yo+|salam|namaste|good morning|good afternoon|good evening|good night|kemon acho|ki khobor|হ্যালো|হাই|ধন্যবাদ|thanks|thank you)(\\s+[a-z0-9]{1,12})?$")
+        return greetingRegex.matches(clean)
     }
 
     /**
@@ -286,7 +286,11 @@ class ProviderPool @JvmOverloads constructor(
             channels
         } else {
             fallbackProviders.map { p ->
-                val defaultModel = request.preferredModelId ?: externalProviders.getDefaultModelForProvider(p)
+                val defaultModel = if (request.preferredProvider == p && !request.preferredModelId.isNullOrBlank()) {
+                    request.preferredModelId
+                } else {
+                    externalProviders.getDefaultModelForProvider(p)
+                }
                 AiModelChannel(
                     id = "fallback_${p.id}",
                     provider = p,
@@ -599,24 +603,55 @@ class ProviderPool @JvmOverloads constructor(
         collector.emit(AyraStreamEvent.Thinking("Synthesizing with ${synthesizer.displayName}..."))
 
         val streamedSynth = StringBuilder()
-        val streamSucceeded = withTimeoutOrNull(14_000L) {
-            try {
-                externalProviders.streamChatResponse(
-                    prompt = synthesisPrompt,
-                    systemPrompt = "",
-                    history = emptyList(),
-                    imageBase64 = null,
-                    preferredProvider = synthesizer.provider,
-                    preferredModelId = synthesizer.modelId
-                ).collect { token ->
-                    streamedSynth.append(token)
-                    collector.emit(AyraStreamEvent.Token(token))
+        var synthProviderUsed = synthesizer.provider
+
+        suspend fun tryStreamSynthesizer(target: AiModelChannel): Boolean {
+            streamedSynth.clear()
+            return withTimeoutOrNull(14_000L) {
+                try {
+                    if (target.id.startsWith("firebase_ai_") && firebaseEnsembleActive) {
+                        firebaseAiEngine.streamText(
+                            prompt = synthesisPrompt,
+                            systemPrompt = "",
+                            history = emptyList(),
+                            imageBase64 = null,
+                            modelName = target.modelId,
+                            enableSearchGrounding = false
+                        ).collect { token ->
+                            streamedSynth.append(token)
+                            collector.emit(AyraStreamEvent.Token(token))
+                        }
+                    } else {
+                        externalProviders.streamChatResponse(
+                            prompt = synthesisPrompt,
+                            systemPrompt = "",
+                            history = emptyList(),
+                            imageBase64 = null,
+                            preferredProvider = target.provider,
+                            preferredModelId = target.modelId
+                        ).collect { token ->
+                            streamedSynth.append(token)
+                            collector.emit(AyraStreamEvent.Token(token))
+                        }
+                    }
+                    streamedSynth.isNotBlank()
+                } catch (_: Exception) {
+                    false
                 }
-                true
-            } catch (_: Exception) {
-                false
+            } ?: false
+        }
+
+        var streamSucceeded = tryStreamSynthesizer(synthesizer)
+        if (!streamSucceeded || ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString()).isBlank()) {
+            val backupSynth = successfulDrafts
+                .firstOrNull { it.first.id != synthesizer.id && it.first.provider != AiProviderType.POLLINATIONS_FREE }
+                ?.first
+            if (backupSynth != null) {
+                collector.emit(AyraStreamEvent.Thinking("Switching synthesizer to ${backupSynth.displayName}..."))
+                synthProviderUsed = backupSynth.provider
+                streamSucceeded = tryStreamSynthesizer(backupSynth)
             }
-        } ?: false
+        }
 
         val synthText = ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString())
         val participatingNames = successfulDrafts.joinToString(" + ") { it.first.displayName }
@@ -627,14 +662,14 @@ class ProviderPool @JvmOverloads constructor(
             val resp = ProviderResponse(
                 text = synthText,
                 modelUsed = "Multi-AI Ensemble ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
-                provider = synthesizer.provider
+                provider = synthProviderUsed
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
             collector.emit(AyraStreamEvent.Complete(resp))
             return@supervisorScope
         }
 
-        // Fallback: return the richest responding specialist draft directly (no second blocking synthesis timeout)
+        // Fallback: return the richest responding specialist draft directly
         val bestDraft = successfulDrafts.maxByOrNull { it.second.length } ?: successfulDrafts.first()
         val resp = ProviderResponse(
             text = bestDraft.second,

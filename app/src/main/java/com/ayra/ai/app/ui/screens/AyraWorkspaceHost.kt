@@ -95,7 +95,7 @@ fun AyraWorkspaceHost(
 
         if (useRail) {
             Scaffold(
-                containerColor = CosmicBackground,
+                containerColor = MaterialTheme.colorScheme.background,
                 contentWindowInsets = WindowInsets(0, 0, 0, 0)
             ) { innerPadding ->
                 Row(
@@ -104,7 +104,7 @@ fun AyraWorkspaceHost(
                         .padding(innerPadding)
                 ) {
                     NavigationRail(
-                        containerColor = CosmicSurface,
+                        containerColor = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxHeight()
                     ) {
                         WorkspaceTab.entries.forEach { tab ->
@@ -115,7 +115,7 @@ fun AyraWorkspaceHost(
                                     Icon(
                                         imageVector = tab.icon,
                                         contentDescription = tab.label,
-                                        tint = if (activeTab == tab) NeonCyan else TextSecondary
+                                        tint = if (activeTab == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 label = { Text(tab.label, fontSize = 11.sp) },
@@ -130,10 +130,10 @@ fun AyraWorkspaceHost(
             }
         } else {
             Scaffold(
-                containerColor = CosmicBackground,
+                containerColor = MaterialTheme.colorScheme.background,
                 contentWindowInsets = WindowInsets.navigationBars,
                 bottomBar = {
-                    NavigationBar(containerColor = CosmicSurface) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         WorkspaceTab.entries.forEach { tab ->
                             NavigationBarItem(
                                 selected = activeTab == tab,
@@ -142,7 +142,7 @@ fun AyraWorkspaceHost(
                                     Icon(
                                         imageVector = tab.icon,
                                         contentDescription = tab.label,
-                                        tint = if (activeTab == tab) NeonCyan else TextSecondary
+                                        tint = if (activeTab == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
                                 label = {

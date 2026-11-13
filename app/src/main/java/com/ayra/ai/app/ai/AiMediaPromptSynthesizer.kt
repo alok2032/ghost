@@ -219,7 +219,51 @@ object AiMediaPromptSynthesizer {
         }
     }
 
-    private fun expandViaNvidia(subject: String, apiKey: String, modelId: String, type: String): String {
+    private fun expandViaFastOpenAiProviders(
+        subject: String,
+        context: android.content.Context,
+        type: String
+    ): String {
+        val candidates = mutableListOf<Triple<String, String, String>>()
+        val minimaxKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaMinimaxKey(context)
+        val museKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaMuseKey(context)
+        if (minimaxKey.isNotBlank()) {
+            candidates.add(Triple("https://integrate.api.nvidia.com/v1/chat/completions", minimaxKey, ExternalAiProviders.NVIDIA_MINIMAX_MODEL))
+        }
+        if (museKey.isNotBlank()) {
+            candidates.add(Triple("https://integrate.api.nvidia.com/v1/chat/completions", museKey, ExternalAiProviders.NVIDIA_MUSE_MODEL))
+        }
+        val groqKey = com.ayra.ai.app.data.AyraPreferences.getGroqApiKey(context)
+        if (groqKey.isNotBlank()) {
+            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.GROQ.endpointUrl, groqKey, ExternalAiProviders.GROQ_LLAMA_MODEL))
+        }
+        val cerebrasKey = com.ayra.ai.app.data.AyraPreferences.getCerebrasApiKey(context)
+        if (cerebrasKey.isNotBlank()) {
+            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS.endpointUrl, cerebrasKey, ExternalAiProviders.CEREBRAS_LLAMA_MODEL))
+        }
+        val openRouterKey = com.ayra.ai.app.data.AyraPreferences.getOpenRouterKey(context)
+        if (openRouterKey.isNotBlank()) {
+            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER.endpointUrl, openRouterKey, "meta-llama/llama-3.3-70b-instruct:free"))
+        }
+        val githubKey = com.ayra.ai.app.data.AyraPreferences.getGitHubModelsKey(context)
+        if (githubKey.isNotBlank()) {
+            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.GITHUB_MODELS.endpointUrl, githubKey, ExternalAiProviders.GITHUB_MODELS_DEFAULT))
+        }
+
+        for ((endpoint, key, modelId) in candidates) {
+            val expanded = expandViaOpenAiEndpoint(subject, endpoint, key, modelId, type)
+            if (expanded.isNotBlank()) return expanded
+        }
+        return ""
+    }
+
+    internal fun expandViaOpenAiEndpoint(
+        subject: String,
+        endpointUrl: String,
+        apiKey: String,
+        modelId: String,
+        type: String
+    ): String {
         return try {
             val systemInstruction = if (type == "VIDEO") {
                 "Convert this visual request into a vivid 1-sentence 4k cinematic video prompt in English describing motion, lighting, and camera angle. Output ONLY the prompt."
@@ -238,7 +282,7 @@ object AiMediaPromptSynthesizer {
             }
 
             val request = Request.Builder()
-                .url("https://integrate.api.nvidia.com/v1/chat/completions")
+                .url(endpointUrl)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
                 .build()
@@ -249,7 +293,7 @@ object AiMediaPromptSynthesizer {
                     val json = JSONObject(body)
                     val msg = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
                     val raw = if (msg != null && !msg.isNull("content")) msg.optString("content", "") else ""
-                    val cleaned = com.ayra.ai.app.ai.providers.ExternalAiProviders.sanitizeModelOutput(raw)
+                    val cleaned = ExternalAiProviders.sanitizeModelOutput(raw)
                     if (cleaned.isNotBlank()) return cleaned.lineSequence().first().trim()
                 }
             }

@@ -71,6 +71,8 @@ fun ProviderKeysSection(
         listOf(
             Triple(AiProviderType.GEMINI, "Google AI Studio", "https://aistudio.google.com/app/apikey"),
             Triple(AiProviderType.GROQ, "Groq Console (Free Tier)", "https://console.groq.com/keys"),
+            Triple(AiProviderType.CEREBRAS, "Cerebras Cloud (Free Tier)", "https://cloud.cerebras.ai/"),
+            Triple(AiProviderType.SAMBANOVA, "SambaNova Cloud (Free Tier)", "https://cloud.sambanova.ai/"),
             Triple(AiProviderType.HUGGINGFACE, "Hugging Face Tokens", "https://huggingface.co/settings/tokens"),
             Triple(AiProviderType.GITHUB_MODELS, "GitHub PAT (Models)", "https://github.com/settings/tokens"),
             Triple(AiProviderType.OPENAI, "OpenAI API", "https://platform.openai.com/api-keys"),
@@ -916,6 +918,8 @@ private fun saveKey(context: Context, provider: AiProviderType, key: String) {
         AiProviderType.GEMINI -> AyraPreferences.setCustomGeminiKey(context, key)
         AiProviderType.NVIDIA_NIM -> AyraPreferences.setNvidiaKey(context, key)
         AiProviderType.GROQ -> AyraPreferences.setGroqKey(context, key)
+        AiProviderType.CEREBRAS -> AyraPreferences.setCerebrasKey(context, key)
+        AiProviderType.SAMBANOVA -> AyraPreferences.setSambaNovaKey(context, key)
         AiProviderType.HUGGINGFACE -> AyraPreferences.setHuggingFaceKey(context, key)
         AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, key)
         AiProviderType.POLLINATIONS_FREE -> AyraPreferences.setFreeAiPoolEnabled(context, key.isNotBlank())

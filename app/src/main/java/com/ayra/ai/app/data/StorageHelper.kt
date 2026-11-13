@@ -8,13 +8,22 @@ import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Base64
+import com.ayra.ai.app.ai.DataAnalysisEngine
+import org.json.JSONArray
+import org.json.JSONObject
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
+import java.util.zip.Inflater
+import java.util.zip.ZipInputStream
 
 /**
  * Robust device storage manager for saving attachments permanently in phone storage,
@@ -68,81 +77,303 @@ object StorageHelper {
     }
 
     /**
-     * Extracts readable textual content from uploaded files (PDF, TXT, DOC, JSON, MD, CSV, Code).
+     * Extracts readable textual content from uploaded files
+     * (PDF, DOCX, XLSX, PPTX, CSV/TSV with statistical summary, TXT, MD, JSON, Code).
      * Bounded to 50,000 characters with honest truncation notice.
      */
     fun extractTextFromDocument(context: Context, uri: Uri, fileName: String?): String {
         val name = fileName ?: getFileName(context, uri) ?: "document"
-        val isPdf = name.endsWith(".pdf", ignoreCase = true)
+        val lower = name.lowercase(Locale.ROOT)
 
-        if (isPdf) {
+        if (lower.endsWith(".pdf")) {
             return extractTextFromPdf(context, uri)
         }
 
         val maxChars = 50_000
         return try {
-            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-            if (raw.length > maxChars) {
-                raw.take(maxChars) + "\n\n[Notice: Document text truncated at 50,000 characters for optimal AI model context processing.]"
+            val extracted = when {
+                lower.endsWith(".docx") -> context.contentResolver.openInputStream(uri)?.use { extractDocxText(it) }.orEmpty()
+                lower.endsWith(".xlsx") -> context.contentResolver.openInputStream(uri)?.use { extractXlsxText(it, name) }.orEmpty()
+                lower.endsWith(".pptx") -> context.contentResolver.openInputStream(uri)?.use { extractPptxText(it) }.orEmpty()
+                else -> {
+                    val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                    if (lower.endsWith(".csv") || lower.endsWith(".tsv")) {
+                        val stats = DataAnalysisEngine.summarizeTabularText(raw, name)
+                        "$stats\n\n### Raw Table Preview\n$raw"
+                    } else {
+                        raw
+                    }
+                }
+            }
+
+            if (extracted.isBlank()) {
+                "Document `$name` yielded no readable text content."
+            } else if (extracted.length > maxChars) {
+                extracted.take(maxChars) + "\n\n[Notice: Document text truncated at 50,000 characters for optimal AI model context processing.]"
             } else {
-                raw
+                extracted
             }
         } catch (e: Exception) {
             "Unable to read file contents: ${e.message}"
         }
     }
 
+    internal fun extractDocxText(input: InputStream): String {
+        ZipInputStream(input).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name.equals("word/document.xml", ignoreCase = true)) {
+                    val xml = zip.readBytes().toString(Charsets.UTF_8)
+                    val factory = XmlPullParserFactory.newInstance()
+                    val parser = factory.newPullParser()
+                    parser.setInput(StringReader(xml))
+                    val sb = StringBuilder()
+                    var event = parser.eventType
+                    while (event != XmlPullParser.END_DOCUMENT) {
+                        when (event) {
+                            XmlPullParser.START_TAG -> {
+                                val tag = parser.name?.substringAfter(":")
+                                if (tag == "t") {
+                                    sb.append(parser.nextText())
+                                } else if (tag == "tab") {
+                                    sb.append("\t")
+                                }
+                            }
+                            XmlPullParser.END_TAG -> {
+                                val tag = parser.name?.substringAfter(":")
+                                if (tag == "p" || tag == "tr") {
+                                    if (sb.isNotEmpty() && !sb.endsWith("\n")) sb.append("\n")
+                                }
+                            }
+                        }
+                        event = parser.next()
+                    }
+                    return sb.toString().trim()
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return ""
+    }
+
+    internal fun extractPptxText(input: InputStream): String {
+        val slides = linkedMapOf<String, String>()
+        ZipInputStream(input).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                val n = entry.name.lowercase(Locale.ROOT)
+                if (n.startsWith("ppt/slides/slide") && n.endsWith(".xml")) {
+                    val xml = zip.readBytes().toString(Charsets.UTF_8)
+                    val factory = XmlPullParserFactory.newInstance()
+                    val parser = factory.newPullParser()
+                    parser.setInput(StringReader(xml))
+                    val slideSb = StringBuilder()
+                    var event = parser.eventType
+                    while (event != XmlPullParser.END_DOCUMENT) {
+                        if (event == XmlPullParser.START_TAG && parser.name?.substringAfter(":") == "t") {
+                            val txt = parser.nextText().trim()
+                            if (txt.isNotEmpty()) slideSb.append(txt).append(" ")
+                        } else if (event == XmlPullParser.END_TAG && parser.name?.substringAfter(":") == "p") {
+                            if (slideSb.isNotEmpty() && !slideSb.endsWith("\n")) slideSb.append("\n")
+                        }
+                        event = parser.next()
+                    }
+                    if (slideSb.isNotBlank()) slides[entry.name] = slideSb.toString().trim()
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return slides.entries
+            .sortedBy { it.key }
+            .mapIndexed { idx, entry -> "## Slide ${idx + 1}\n${entry.value}" }
+            .joinToString("\n\n")
+    }
+
+    internal fun extractXlsxText(input: InputStream, fileName: String = "workbook.xlsx"): String {
+        val sharedStrings = mutableListOf<String>()
+        val sheetXmls = linkedMapOf<String, String>()
+        ZipInputStream(input).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                val lowerName = entry.name.lowercase(Locale.ROOT)
+                when {
+                    lowerName == "xl/sharedstrings.xml" -> {
+                        val xml = zip.readBytes().toString(Charsets.UTF_8)
+                        val parser = XmlPullParserFactory.newInstance().newPullParser()
+                        parser.setInput(StringReader(xml))
+                        var currentItem = StringBuilder()
+                        var insideSi = false
+                        var event = parser.eventType
+                        while (event != XmlPullParser.END_DOCUMENT) {
+                            when (event) {
+                                XmlPullParser.START_TAG -> {
+                                    val tag = parser.name?.substringAfter(":")
+                                    if (tag == "si") {
+                                        insideSi = true
+                                        currentItem = StringBuilder()
+                                    } else if (insideSi && tag == "t") {
+                                        currentItem.append(parser.nextText())
+                                    }
+                                }
+                                XmlPullParser.END_TAG -> {
+                                    if (parser.name?.substringAfter(":") == "si") {
+                                        sharedStrings.add(currentItem.toString())
+                                        insideSi = false
+                                    }
+                                }
+                            }
+                            event = parser.next()
+                        }
+                    }
+                    lowerName.startsWith("xl/worksheets/sheet") && lowerName.endsWith(".xml") -> {
+                        sheetXmls[entry.name] = zip.readBytes().toString(Charsets.UTF_8)
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+
+        val sb = StringBuilder()
+        sheetXmls.entries.sortedBy { it.key }.forEachIndexed { idx, (_, xml) ->
+            val rows = mutableListOf<List<String>>()
+            var currentRow = mutableListOf<String>()
+            var cellType = ""
+            var cellValue = ""
+            val parser = XmlPullParserFactory.newInstance().newPullParser()
+            parser.setInput(StringReader(xml))
+            var event = parser.eventType
+            while (event != XmlPullParser.END_DOCUMENT) {
+                when (event) {
+                    XmlPullParser.START_TAG -> {
+                        when (parser.name?.substringAfter(":")) {
+                            "row" -> currentRow = mutableListOf()
+                            "c" -> {
+                                cellType = parser.getAttributeValue(null, "t").orEmpty()
+                                cellValue = ""
+                            }
+                            "v", "t" -> cellValue = parser.nextText()
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        when (parser.name?.substringAfter(":")) {
+                            "c" -> {
+                                val resolved = if (cellType == "s") {
+                                    val ssIdx = cellValue.toIntOrNull()
+                                    if (ssIdx != null && ssIdx in sharedStrings.indices) sharedStrings[ssIdx] else cellValue
+                                } else cellValue
+                                currentRow.add(resolved.replace(",", " "))
+                            }
+                            "row" -> if (currentRow.isNotEmpty()) rows.add(currentRow)
+                        }
+                    }
+                }
+                event = parser.next()
+            }
+            if (rows.isNotEmpty()) {
+                val csvTable = rows.joinToString("\n") { it.joinToString(",") }
+                sb.append("### Sheet ${idx + 1}\n")
+                sb.append(DataAnalysisEngine.summarizeTabularText(csvTable, "${fileName}_sheet${idx + 1}.csv"))
+                sb.append("\n\n").append(rows.take(150).joinToString("\n") { it.joinToString(" | ") }).append("\n\n")
+            }
+        }
+        return sb.toString().trim()
+    }
+
     /**
-     * Extracts text from PDF files via PDF token parsing and text extraction.
+     * Extracts text from uncompressed and FlateDecode-compressed PDF streams.
+     */
+    internal fun extractPdfTextTokensFromBytes(bytes: ByteArray): String {
+        val sources = mutableListOf<String>()
+        val rawLatin = String(bytes, Charsets.ISO_8859_1)
+        sources.add(rawLatin)
+
+        // Decompress /FlateDecode compressed PDF streams using zlib Inflater
+        var searchIdx = 0
+        while (true) {
+            val streamTag = rawLatin.indexOf("stream", searchIdx)
+            if (streamTag == -1) break
+            var dataStart = streamTag + 6
+            if (dataStart < bytes.size && bytes[dataStart] == '\r'.code.toByte()) dataStart++
+            if (dataStart < bytes.size && bytes[dataStart] == '\n'.code.toByte()) dataStart++
+            val endTag = rawLatin.indexOf("endstream", dataStart)
+            if (endTag == -1) break
+            val headerLookback = rawLatin.substring((streamTag - 160).coerceAtLeast(0), streamTag)
+            if (headerLookback.contains("FlateDecode")) {
+                var dataEnd = endTag
+                if (dataEnd > dataStart && bytes[dataEnd - 1] == '\n'.code.toByte()) dataEnd--
+                if (dataEnd > dataStart && bytes[dataEnd - 1] == '\r'.code.toByte()) dataEnd--
+                if (dataEnd > dataStart) {
+                    val slice = bytes.copyOfRange(dataStart, dataEnd)
+                    runCatching {
+                        val inflater = Inflater()
+                        inflater.setInput(slice)
+                        val out = ByteArrayOutputStream()
+                        val buf = ByteArray(4096)
+                        var safety = 0
+                        while (!inflater.finished() && safety < 256) {
+                            val count = inflater.inflate(buf)
+                            if (count <= 0) break
+                            out.write(buf, 0, count)
+                            safety++
+                        }
+                        inflater.end()
+                        if (out.size() > 0) {
+                            sources.add(String(out.toByteArray(), Charsets.ISO_8859_1))
+                        }
+                    }
+                }
+            }
+            searchIdx = endTag + 9
+        }
+
+        val sb = StringBuilder()
+        val tjRegex = Pattern.compile("\\(([^()\\\\]*)\\)\\s*(?:Tj|')")
+        val arrayRegex = Pattern.compile("\\[([^\\]]*)\\]\\s*TJ")
+        val innerRegex = Pattern.compile("\\(([^()\\\\]*)\\)")
+
+        sources.forEach { src ->
+            val matcher = tjRegex.matcher(src)
+            while (matcher.find()) {
+                val token = matcher.group(1)?.trim()
+                if (!token.isNullOrBlank()) sb.append(token).append(" ")
+            }
+            val arrayMatcher = arrayRegex.matcher(src)
+            while (arrayMatcher.find()) {
+                val inner = arrayMatcher.group(1) ?: ""
+                val innerMatcher = innerRegex.matcher(inner)
+                while (innerMatcher.find()) {
+                    val part = innerMatcher.group(1)?.trim()
+                    if (!part.isNullOrBlank()) sb.append(part).append(" ")
+                }
+            }
+        }
+        return sb.toString().replace(Regex("\\s+"), " ").trim()
+    }
+
+    /**
+     * Extracts text from PDF files via uncompressed + FlateDecode PDF token parsing.
      * Enforces 50,000 character maximum with transparent truncation notice.
      */
     private fun extractTextFromPdf(context: Context, uri: Uri): String {
-        val sb = StringBuilder()
         var tempFile: File? = null
-        try {
+        return try {
             tempFile = File(context.cacheDir, "pdf_inspect_${System.currentTimeMillis()}.pdf")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output -> input.copyTo(output) }
             }
 
-            // 1. First attempt: Stream token text extraction (uncompressed string tokens)
             val bytes = tempFile.readBytes()
-            val textContent = String(bytes, Charsets.ISO_8859_1)
+            val extracted = extractPdfTextTokensFromBytes(bytes)
 
-            val textTokens = mutableListOf<String>()
-            val matcher = Pattern.compile("\\(([^()\\\\]*)\\)\\s*(?:Tj|\')").matcher(textContent)
-            while (matcher.find()) {
-                val token = matcher.group(1)?.trim()
-                if (!token.isNullOrBlank() && token.length > 1) {
-                    textTokens.add(token)
-                }
-            }
-
-            if (textTokens.isNotEmpty()) {
-                sb.append(textTokens.joinToString(" "))
-            }
-
-            // Also check Tj array tokens: [(token1) 20 (token2)] TJ
-            val arrayMatcher = Pattern.compile("\\[([^\\]]*)\\]\\s*TJ").matcher(textContent)
-            while (arrayMatcher.find()) {
-                val inner = arrayMatcher.group(1) ?: ""
-                val innerMatcher = Pattern.compile("\\(([^()\\\\]*)\\)").matcher(inner)
-                while (innerMatcher.find()) {
-                    val part = innerMatcher.group(1)?.trim()
-                    if (!part.isNullOrBlank()) {
-                        sb.append(part).append(" ")
-                    }
-                }
-            }
-
-            // 2. Page info extraction via PdfRenderer
             val pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
             val renderer = PdfRenderer(pfd)
             val pageCount = renderer.pageCount
             renderer.close()
             pfd.close()
 
-            val extracted = sb.toString().trim()
             val maxChars = 50_000
             val truncatedText = if (extracted.length > maxChars) {
                 extracted.take(maxChars) + "\n\n[Notice: PDF text truncated at 50,000 characters for optimal AI model context processing.]"
@@ -150,13 +381,13 @@ object StorageHelper {
                 extracted
             }
 
-            if (truncatedText.isNotBlank() && truncatedText.length > 40) {
-                return "[PDF Document - $pageCount Page(s)]\n\n$truncatedText"
+            if (truncatedText.isNotBlank() && truncatedText.length > 15) {
+                "[PDF Document - $pageCount Page(s)]\n\n$truncatedText"
             } else {
-                return "[PDF Document - $pageCount Page(s)]\nDocument contains structured graphical text and layout data ready for analysis."
+                "[PDF Document - $pageCount Page(s)]\nNo embedded plain-text stream found (likely a scanned image or outline font PDF — first page preview will be sent to Vision AI when available)."
             }
         } catch (e: Exception) {
-            return "[PDF Document]\nError extracting PDF text: ${e.message}"
+            "[PDF Document]\nError extracting PDF text: ${e.message}"
         } finally {
             tempFile?.delete()
         }
@@ -507,5 +738,259 @@ object StorageHelper {
 
         docFile.writeText(wordXml, Charsets.UTF_8)
         return docFile
+    }
+
+    // --- Saved Files & Workspace Artifacts Explorer ---
+
+    data class WorkspaceArtifact(
+        val name: String,
+        val folder: String,
+        val file: File,
+        val sizeBytes: Long,
+        val lastModifiedMs: Long
+    )
+
+    private val ARTIFACT_FOLDERS = listOf(
+        "generated_pdfs",
+        "generated_docs",
+        "generated_images",
+        "generated_audio",
+        "generated_3d",
+        "project_zips",
+        "chat_exports",
+        "saved_attachments",
+        "code_projects"
+    )
+
+    fun listWorkspaceArtifacts(context: Context): List<WorkspaceArtifact> {
+        val result = mutableListOf<WorkspaceArtifact>()
+        ARTIFACT_FOLDERS.forEach { folder ->
+            val dir = File(context.filesDir, folder)
+            if (dir.exists() && dir.isDirectory) {
+                dir.listFiles()?.forEach { f ->
+                    if (f.isFile) {
+                        result.add(
+                            WorkspaceArtifact(
+                                name = f.name,
+                                folder = folder,
+                                file = f,
+                                sizeBytes = f.length(),
+                                lastModifiedMs = f.lastModified()
+                            )
+                        )
+                    } else if (f.isDirectory && folder == "code_projects") {
+                        val size = f.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        result.add(
+                            WorkspaceArtifact(
+                                name = "${f.name} (Project Folder)",
+                                folder = folder,
+                                file = f,
+                                sizeBytes = size,
+                                lastModifiedMs = f.lastModified()
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        return result.sortedByDescending { it.lastModifiedMs }
+    }
+
+    fun deleteWorkspaceArtifact(file: File): Boolean {
+        return try {
+            if (file.isDirectory) file.deleteRecursively() else file.delete()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    // --- Key-Free Local Workspace JSON Backup & Restore ---
+
+    data class WorkspaceBackupPayload(
+        val sessions: List<ChatSession>,
+        val messages: List<ChatMessage>,
+        val plugins: List<InstalledGitHubPlugin>
+    )
+
+    /**
+     * Serializes sessions, messages, installed GitHub plugins, and non-secret AyraPreferences into JSON.
+     * Strictly NEVER includes API keys, tokens, or secrets from SecureKeyStore / EncryptedPreferences.
+     */
+    fun exportSafeWorkspaceBackupJson(
+        context: Context,
+        sessions: List<ChatSession>,
+        messages: List<ChatMessage>,
+        plugins: List<InstalledGitHubPlugin>
+    ): String {
+        val root = JSONObject().apply {
+            put("schemaVersion", 1)
+            put("app", "Ayra AI")
+            put("exportedAtMs", System.currentTimeMillis())
+            put("containsSecrets", false)
+
+            put("preferences", JSONObject().apply {
+                put("personaMode", AyraPreferences.getSavedPersona(context))
+                put("routingMode", AyraPreferences.getRoutingMode(context))
+                put("preferredLanguage", AyraPreferences.getPreferredLanguage(context))
+                put("themeMode", AyraPreferences.getThemeMode(context))
+                put("searchGroundingEnabled", AyraPreferences.isSearchGroundingEnabled(context))
+                put("freeAiPoolEnabled", AyraPreferences.isFreeAiPoolEnabled(context))
+                put("memoryEnabled", AyraPreferences.isMemoryEnabled(context))
+                put("customInstructions", AyraPreferences.getUserCustomInstructions(context))
+                put("rememberedFacts", JSONArray(AyraPreferences.getRememberedFacts(context).toList()))
+            })
+
+            put("sessions", JSONArray().apply {
+                sessions.forEach { s ->
+                    put(JSONObject().apply {
+                        put("id", s.id)
+                        put("title", s.title)
+                        put("personaMode", s.personaMode)
+                        put("modelTier", s.modelTier)
+                        put("isPinned", s.isPinned)
+                        put("createdAt", s.createdAt)
+                        put("updatedAt", s.updatedAt)
+                        put("messageCount", s.messageCount)
+                        put("lastMessagePreview", s.lastMessagePreview)
+                    })
+                }
+            })
+
+            put("messages", JSONArray().apply {
+                messages.forEach { m ->
+                    put(JSONObject().apply {
+                        put("sessionId", m.sessionId)
+                        put("role", m.role)
+                        put("content", m.content)
+                        put("timestamp", m.timestamp)
+                        put("craftType", m.craftType ?: "")
+                        put("craftPayload", m.craftPayload ?: "")
+                        put("actionCommand", m.actionCommand ?: "")
+                    })
+                }
+            })
+
+            put("plugins", JSONArray().apply {
+                plugins.forEach { p ->
+                    put(JSONObject().apply {
+                        put("repoFullName", p.repoFullName)
+                        put("repoUrl", p.repoUrl)
+                        put("name", p.name)
+                        put("owner", p.owner)
+                        put("description", p.description)
+                        put("defaultBranch", p.defaultBranch)
+                        put("stars", p.stars)
+                        put("primaryLanguage", p.primaryLanguage)
+                        put("pluginType", p.pluginType)
+                        put("topicsJson", p.topicsJson)
+                        put("capabilitiesSummary", p.capabilitiesSummary)
+                        put("skillPromptContext", p.skillPromptContext)
+                        put("openApiSpecJson", p.openApiSpecJson)
+                        put("commandsJson", p.commandsJson)
+                        put("fileTreeJson", p.fileTreeJson)
+                        put("isEnabled", p.isEnabled)
+                        put("installedAt", p.installedAt)
+                        put("lastSyncedAt", p.lastSyncedAt)
+                    })
+                }
+            })
+        }
+        return root.toString(2)
+    }
+
+    fun importSafeWorkspaceBackupJson(context: Context, jsonString: String): WorkspaceBackupPayload {
+        val root = JSONObject(jsonString)
+        val prefs = root.optJSONObject("preferences")
+        if (prefs != null) {
+            if (prefs.has("personaMode")) AyraPreferences.savePersona(context, prefs.optString("personaMode", "AI_ASSISTANT"))
+            if (prefs.has("routingMode")) AyraPreferences.setRoutingMode(context, prefs.optString("routingMode", "auto"))
+            if (prefs.has("preferredLanguage")) AyraPreferences.setPreferredLanguage(context, prefs.optString("preferredLanguage", "Auto"))
+            if (prefs.has("themeMode")) AyraPreferences.setThemeMode(context, prefs.optString("themeMode", "dark"))
+            if (prefs.has("searchGroundingEnabled")) AyraPreferences.setSearchGroundingEnabled(context, prefs.optBoolean("searchGroundingEnabled", true))
+            if (prefs.has("freeAiPoolEnabled")) AyraPreferences.setFreeAiPoolEnabled(context, prefs.optBoolean("freeAiPoolEnabled", true))
+            if (prefs.has("memoryEnabled")) AyraPreferences.setMemoryEnabled(context, prefs.optBoolean("memoryEnabled", true))
+            if (prefs.has("customInstructions")) AyraPreferences.setUserCustomInstructions(context, prefs.optString("customInstructions", ""))
+            val factsArr = prefs.optJSONArray("rememberedFacts")
+            if (factsArr != null) {
+                for (i in 0 until factsArr.length()) {
+                    val fact = factsArr.optString(i).trim()
+                    if (fact.isNotBlank()) AyraPreferences.addRememberedFact(context, fact)
+                }
+            }
+        }
+
+        val sessionsList = mutableListOf<ChatSession>()
+        val sArr = root.optJSONArray("sessions")
+        if (sArr != null) {
+            for (i in 0 until sArr.length()) {
+                val o = sArr.optJSONObject(i) ?: continue
+                sessionsList.add(
+                    ChatSession(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", "Restored Session"),
+                        personaMode = o.optString("personaMode", "AI_ASSISTANT"),
+                        modelTier = o.optString("modelTier", "auto"),
+                        isPinned = o.optBoolean("isPinned", false),
+                        createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+                        updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
+                        messageCount = o.optInt("messageCount", 0),
+                        lastMessagePreview = o.optString("lastMessagePreview", "")
+                    )
+                )
+            }
+        }
+
+        val messagesList = mutableListOf<ChatMessage>()
+        val mArr = root.optJSONArray("messages")
+        if (mArr != null) {
+            for (i in 0 until mArr.length()) {
+                val o = mArr.optJSONObject(i) ?: continue
+                messagesList.add(
+                    ChatMessage(
+                        sessionId = o.optLong("sessionId", 1L),
+                        role = o.optString("role", "user"),
+                        content = o.optString("content", ""),
+                        timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                        craftType = o.optString("craftType", "").ifBlank { null },
+                        craftPayload = o.optString("craftPayload", "").ifBlank { null },
+                        actionCommand = o.optString("actionCommand", "").ifBlank { null }
+                    )
+                )
+            }
+        }
+
+        val pluginsList = mutableListOf<InstalledGitHubPlugin>()
+        val pArr = root.optJSONArray("plugins")
+        if (pArr != null) {
+            for (i in 0 until pArr.length()) {
+                val o = pArr.optJSONObject(i) ?: continue
+                val repoFullName = o.optString("repoFullName", "").trim()
+                if (repoFullName.isBlank()) continue
+                pluginsList.add(
+                    InstalledGitHubPlugin(
+                        repoFullName = repoFullName,
+                        repoUrl = o.optString("repoUrl", "https://github.com/$repoFullName"),
+                        name = o.optString("name", repoFullName.substringAfter("/")),
+                        owner = o.optString("owner", repoFullName.substringBefore("/")),
+                        description = o.optString("description", ""),
+                        defaultBranch = o.optString("defaultBranch", "main"),
+                        stars = o.optInt("stars", 0),
+                        primaryLanguage = o.optString("primaryLanguage", "Unknown"),
+                        pluginType = o.optString("pluginType", "CODE_PLUGIN"),
+                        topicsJson = o.optString("topicsJson", "[]"),
+                        capabilitiesSummary = o.optString("capabilitiesSummary", ""),
+                        skillPromptContext = o.optString("skillPromptContext", ""),
+                        openApiSpecJson = o.optString("openApiSpecJson", "[]"),
+                        commandsJson = o.optString("commandsJson", "[]"),
+                        fileTreeJson = o.optString("fileTreeJson", "[]"),
+                        isEnabled = o.optBoolean("isEnabled", true),
+                        installedAt = o.optLong("installedAt", System.currentTimeMillis()),
+                        lastSyncedAt = o.optLong("lastSyncedAt", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        return WorkspaceBackupPayload(sessionsList, messagesList, pluginsList)
     }
 }

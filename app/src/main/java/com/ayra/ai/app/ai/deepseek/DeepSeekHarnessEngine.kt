@@ -39,13 +39,23 @@ class DeepSeekHarnessEngine(private val context: Context? = null) {
         val systemPrompt = "You are DeepSeek-R1. Use rigorous step-by-step chain-of-thought reasoning before arriving at conclusions. Wrap internal thinking in <think>...</think> tags, followed by your final answer in the user's language."
 
         val useDirectDeepSeek = externalProviders.isProviderConfigured(AiProviderType.DEEPSEEK)
-        val resp = externalProviders.generateChatResponse(
-            prompt = prompt,
-            systemPrompt = systemPrompt,
-            preferredProvider = if (useDirectDeepSeek) AiProviderType.DEEPSEEK else null,
-            preferredModelId = if (useDirectDeepSeek) "deepseek-reasoner" else null,
-            withSearchGrounding = false
-        )
+        val resp = try {
+            externalProviders.generateChatResponseWithReasoning(
+                prompt = prompt,
+                systemPrompt = systemPrompt,
+                preferredProvider = if (useDirectDeepSeek) AiProviderType.DEEPSEEK else null,
+                preferredModelId = if (useDirectDeepSeek) "deepseek-reasoner" else null
+            )
+        } catch (e: Exception) {
+            val pool = com.ayra.ai.app.ai.providers.ProviderPool(context, externalProviders)
+            pool.executeSync(
+                com.ayra.ai.app.ai.providers.ChatRequest(
+                    prompt = prompt,
+                    mode = com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST,
+                    systemPromptOverride = systemPrompt
+                )
+            )
+        }
 
         val rawText = resp.text
         val thinkRegex = Regex("<think>([\\s\\S]*?)</think>", RegexOption.IGNORE_CASE)

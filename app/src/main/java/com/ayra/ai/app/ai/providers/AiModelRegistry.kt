@@ -198,13 +198,65 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.GROQ)
             ),
             RegistryModelEntry(
-                id = "hf_qwen_72b",
+                id = "cerebras_llama_3_3_70b",
+                provider = AiProviderType.CEREBRAS,
+                modelId = ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
+                displayName = "Cerebras Llama 3.3 70B",
+                category = ModelCategory.GENERAL,
+                endpoint = "https://api.cerebras.ai/v1/chat/completions",
+                authRequirement = "Bearer API Key (Free Tier)",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "High-throughput free developer tier",
+                contextWindow = "128k tokens",
+                supportsStreaming = true,
+                supportsVision = false,
+                supportsToolCalling = true,
+                modelVersion = "3.3-70b",
+                healthStatus = statusFor(AiProviderType.CEREBRAS)
+            ),
+            RegistryModelEntry(
+                id = "sambanova_deepseek_v3",
+                provider = AiProviderType.SAMBANOVA,
+                modelId = ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
+                displayName = "SambaNova DeepSeek V3.1 Terminus",
+                category = ModelCategory.REASONING,
+                endpoint = "https://api.sambanova.ai/v1/chat/completions",
+                authRequirement = "Bearer API Key (Free Cloud Tier)",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "SambaNova Cloud free developer quota",
+                contextWindow = "128k tokens",
+                supportsStreaming = true,
+                supportsVision = false,
+                supportsToolCalling = true,
+                modelVersion = "deepseek-v3.1",
+                healthStatus = statusFor(AiProviderType.SAMBANOVA)
+            ),
+            RegistryModelEntry(
+                id = "sambanova_whisper_v3",
+                provider = AiProviderType.SAMBANOVA,
+                modelId = ExternalAiProviders.SAMBANOVA_WHISPER_MODEL,
+                displayName = "SambaNova / Groq Whisper Large v3",
+                category = ModelCategory.AUDIO,
+                endpoint = "https://api.sambanova.ai/v1/audio/transcriptions",
+                authRequirement = "SambaNova or Groq API Key",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "Audio transcription (Speech-to-Text)",
+                contextWindow = "25MB audio",
+                supportsStreaming = false,
+                supportsVision = false,
+                supportsToolCalling = false,
+                supportsAudio = true,
+                modelVersion = "whisper-v3",
+                healthStatus = if (ext?.isProviderConfigured(AiProviderType.SAMBANOVA) == true || ext?.isProviderConfigured(AiProviderType.GROQ) == true) ModelHealthStatus.UNKNOWN else ModelHealthStatus.UNCONFIGURED
+            ),
+            RegistryModelEntry(
+                id = "huggingface_qwen_72b",
                 provider = AiProviderType.HUGGINGFACE,
                 modelId = ExternalAiProviders.HF_QWEN_MODEL,
                 displayName = "Hugging Face Qwen 2.5 72B",
                 category = ModelCategory.CODING,
                 endpoint = "https://router.huggingface.co/v1/chat/completions",
-                authRequirement = "HF Access Token (Free Tier)",
+                authRequirement = "HF Token (Free Tier)",
                 tierStatus = ProviderTierStatus.FREE_TIER_API,
                 rateLimitNote = "Monthly free inference credits",
                 contextWindow = "128k tokens",
@@ -522,5 +574,68 @@ object AiModelRegistry {
         }.awaitAll()
         _entries.value = updated
         updated
+    }
+
+    /**
+     * Queries live `/models` endpoints on configured providers via [ExternalAiProviders.discoverDynamicModels]
+     * and merges newly discovered models into [_entries] without duplicating existing entries.
+     */
+    suspend fun discoverAndMergeLiveModels(context: Context): Int = withContext(Dispatchers.IO) {
+        refreshConfigurationStates(context)
+        val ext = ExternalAiProviders(context)
+        val activeProviders = ext.getActiveConfiguredProviders()
+            .filter { it != AiProviderType.POLLINATIONS_FREE && it != AiProviderType.OMNI_ROUTE && it != AiProviderType.LOCAL_OLLAMA }
+
+        var addedCount = 0
+        val currentList = _entries.value.toMutableList()
+        val existingModelPairs = currentList.map { "${it.provider.id}:${it.modelId}" }.toMutableSet()
+
+        coroutineScope {
+            val results = activeProviders.map { provider ->
+                async(Dispatchers.IO) {
+                    provider to runCatching { ext.discoverDynamicModels(provider) }.getOrDefault(emptyList())
+                }
+            }.awaitAll()
+
+            val now = System.currentTimeMillis()
+            for ((provider, models) in results) {
+                models.take(6).forEach { info ->
+                    val pairKey = "${provider.id}:${info.id}"
+                    if (existingModelPairs.add(pairKey)) {
+                        val safeId = "live_${provider.id}_${info.id.replace(Regex("[^a-zA-Z0-9_]"), "_").take(36)}"
+                        currentList.add(
+                            RegistryModelEntry(
+                                id = safeId,
+                                provider = provider,
+                                modelId = info.id,
+                                displayName = "${info.displayName} (Discovered)",
+                                category = if (info.isReasoning) ModelCategory.REASONING else ModelCategory.GENERAL,
+                                endpoint = provider.defaultBaseUrl,
+                                authRequirement = "Configured Key",
+                                tierStatus = when (provider) {
+                                    AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+                                    AiProviderType.GITHUB_MODELS, AiProviderType.HUGGINGFACE, AiProviderType.NVIDIA_NIM -> ProviderTierStatus.FREE_TIER_API
+                                    AiProviderType.GEMINI -> ProviderTierStatus.FREE_FIREBASE_AI_LOGIC
+                                    else -> ProviderTierStatus.PAID_API
+                                },
+                                rateLimitNote = "Discovered via live /models catalog",
+                                contextWindow = info.contextWindow,
+                                supportsStreaming = true,
+                                supportsVision = info.supportsVision,
+                                supportsToolCalling = true,
+                                modelVersion = "live",
+                                healthStatus = ModelHealthStatus.UNKNOWN,
+                                lastCheckedMs = now
+                            )
+                        )
+                        addedCount++
+                    }
+                }
+            }
+        }
+        if (addedCount > 0) {
+            _entries.value = currentList
+        }
+        addedCount
     }
 }

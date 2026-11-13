@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -28,6 +31,8 @@ enum class AiProviderType(val id: String, val displayName: String, val defaultBa
     GEMINI("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/"),
     NVIDIA_NIM("nvidia_nim", "NVIDIA NIM AI", "https://integrate.api.nvidia.com/v1/"),
     GROQ("groq", "Groq Cloud (Free Tier)", "https://api.groq.com/openai/v1/"),
+    CEREBRAS("cerebras", "Cerebras Cloud (Free Tier)", "https://api.cerebras.ai/v1/"),
+    SAMBANOVA("sambanova", "SambaNova Cloud (Free Tier)", "https://api.sambanova.ai/v1/"),
     HUGGINGFACE("huggingface", "Hugging Face Router", "https://router.huggingface.co/v1/"),
     GITHUB_MODELS("github_models", "GitHub Models (Free Tier)", "https://models.inference.ai.azure.com/"),
     OPENAI("openai", "OpenAI", "https://api.openai.com/v1/"),
@@ -161,6 +166,12 @@ class ExternalAiProviders @JvmOverloads constructor(
 
         const val GROQ_LLAMA_MODEL = "llama-3.3-70b-versatile"
         const val GROQ_QWEN_MODEL = "qwen/qwen3-32b"
+        const val GROQ_WHISPER_MODEL = "whisper-large-v3-turbo"
+        const val CEREBRAS_LLAMA_MODEL = "llama-3.3-70b"
+        const val CEREBRAS_QWEN_MODEL = "qwen-3-32b"
+        const val SAMBANOVA_DEEPSEEK_MODEL = "DeepSeek-V3.1-Terminus"
+        const val SAMBANOVA_QWEN_MODEL = "Qwen3-32B"
+        const val SAMBANOVA_WHISPER_MODEL = "Whisper-Large-v3"
         const val HF_QWEN_MODEL = "Qwen/Qwen2.5-72B-Instruct"
         const val GITHUB_GPT4O_MODEL = "gpt-4o-mini"
 
@@ -222,6 +233,10 @@ class ExternalAiProviders @JvmOverloads constructor(
             // Free-Tier / Open Weights Fast Inference Cloud Gateways
             AiModelInfo(GROQ_LLAMA_MODEL, "Groq Llama 3.3 70B ⚡", AiProviderType.GROQ, "Ultra-fast LPU inference with generous free tier", "128k tokens", false, false, false),
             AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen3 32B 🧠", AiProviderType.GROQ, "High-speed STEM & multilingual reasoning on Groq LPU", "128k tokens", false, true, false),
+            AiModelInfo(CEREBRAS_LLAMA_MODEL, "Cerebras Llama 3.3 70B 🚀", AiProviderType.CEREBRAS, "Wafer-scale high-speed inference with generous free tier", "128k tokens", false, false, false),
+            AiModelInfo(CEREBRAS_QWEN_MODEL, "Cerebras Qwen 3 32B ⚡", AiProviderType.CEREBRAS, "Wafer-scale STEM, math & coding reasoning", "128k tokens", false, true, false),
+            AiModelInfo(SAMBANOVA_DEEPSEEK_MODEL, "SambaNova DeepSeek V3.1 🔬", AiProviderType.SAMBANOVA, "Fast RDU inference for coding, math & deep reasoning", "128k tokens", false, true, false),
+            AiModelInfo(SAMBANOVA_QWEN_MODEL, "SambaNova Qwen3 32B 🌐", AiProviderType.SAMBANOVA, "Fast RDU multilingual & STEM reasoning", "64k tokens", false, true, false),
             AiModelInfo(HF_QWEN_MODEL, "HF Qwen 2.5 72B Instruct 🤗", AiProviderType.HUGGINGFACE, "Open-weights Hugging Face Inference Router", "128k tokens", false, true, false),
             AiModelInfo(GITHUB_GPT4O_MODEL, "GitHub Models GPT-4o Mini 🐙", AiProviderType.GITHUB_MODELS, "Free-tier GitHub Models inference gateway", "128k tokens", true, false, false),
 
@@ -365,7 +380,29 @@ class ExternalAiProviders @JvmOverloads constructor(
                 keyResolver = { c -> c?.let { AyraPreferences.getGroqKey(it) } ?: "" }
             ),
             AiModelChannel(
-                id = "hf_qwen_72b",
+                id = "cerebras_llama_3_3",
+                provider = AiProviderType.CEREBRAS,
+                modelId = CEREBRAS_LLAMA_MODEL,
+                displayName = "Cerebras Llama 3.3 70B",
+                specialties = setOf("general", "fast", "coding", "reasoning"),
+                supportsVision = false,
+                isReasoning = false,
+                maxTokens = 4096,
+                keyResolver = { c -> c?.let { AyraPreferences.getCerebrasKey(it) } ?: "" }
+            ),
+            AiModelChannel(
+                id = "sambanova_deepseek",
+                provider = AiProviderType.SAMBANOVA,
+                modelId = SAMBANOVA_DEEPSEEK_MODEL,
+                displayName = "SambaNova DeepSeek V3.1",
+                specialties = setOf("coding", "math", "reasoning", "research"),
+                supportsVision = false,
+                isReasoning = true,
+                maxTokens = 4096,
+                keyResolver = { c -> c?.let { AyraPreferences.getSambaNovaKey(it) } ?: "" }
+            ),
+            AiModelChannel(
+                id = "huggingface_qwen_72b",
                 provider = AiProviderType.HUGGINGFACE,
                 modelId = HF_QWEN_MODEL,
                 displayName = "HF Qwen 2.5 72B",
@@ -653,8 +690,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 val usr = turns.lastOrNull { it.role == "user" }?.content ?: ""
                 queryPollinationsFallback(usr, sys, channel.modelId)
             }
-            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.HUGGINGFACE,
-            AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
+            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+            AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
             AiProviderType.XAI, AiProviderType.MISTRAL, AiProviderType.PERPLEXITY,
             AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA -> {
                 callOpenAiCompatible(channel.provider, turns, channel.modelId, key, channel.maxTokens)
@@ -720,8 +757,11 @@ class ExternalAiProviders @JvmOverloads constructor(
                 circuitBreaker.canExecute(preferredProvider)
             ) {
                 try {
+                    val callStart = System.currentTimeMillis()
                     val resultText = callSpecificProvider(preferredProvider, model, turns, key, withSearchGrounding)
+                    val callLatency = (System.currentTimeMillis() - callStart).coerceAtLeast(1L)
                     if (resultText.isNotBlank()) {
+                        AiUsageTracker.recordCall(context, preferredProvider, true, callLatency)
                         circuitBreaker.recordSuccess(preferredProvider)
                         if (imageBase64 == null && history.isNullOrEmpty()) {
                             circuitBreaker.putCachedResponse(cacheKey, resultText)
@@ -734,6 +774,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                         )
                     }
                 } catch (e: Exception) {
+                    AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
                     if (e is ProviderError.Unauthorized || preferredModelId == null) {
                         circuitBreaker.recordFailure(preferredProvider)
                     }
@@ -741,12 +782,15 @@ class ExternalAiProviders @JvmOverloads constructor(
             }
         }
 
-        // 2. Specialist Channel Auto-Router across Gemini, NVIDIA NIM (all 4 models), OpenRouter, etc.
+        // 2. Specialist Channel Auto-Router across Gemini, NVIDIA NIM (all 4 models), Groq, Cerebras, SambaNova, OpenRouter, etc.
         val channels = getActiveChannels(hasImage = !imageBase64.isNullOrBlank())
         for (channel in channels) {
+            val chStart = System.currentTimeMillis()
             try {
                 val resultText = callChannel(channel, turns, withSearchGrounding)
+                val chLatency = (System.currentTimeMillis() - chStart).coerceAtLeast(1L)
                 if (resultText.isNotBlank()) {
+                    AiUsageTracker.recordCall(context, channel.provider, true, chLatency)
                     circuitBreaker.recordSuccess(channel.provider)
                     circuitBreaker.recordChannelSuccess(channel.id)
                     if (imageBase64 == null && history.isNullOrEmpty()) {
@@ -760,6 +804,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                     )
                 }
             } catch (_: Exception) {
+                AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
                 circuitBreaker.recordChannelFailure(channel.id)
                 continue
             }
@@ -784,6 +829,73 @@ class ExternalAiProviders @JvmOverloads constructor(
         throw ProviderError.NetworkFailure("All AI providers are currently unreachable. Please check your internet connection or API keys in Settings.")
     }
 
+    suspend fun generateChatResponseWithReasoning(
+        prompt: String,
+        systemPrompt: String,
+        history: List<ChatMessage>? = null,
+        preferredProvider: AiProviderType? = null,
+        preferredModelId: String? = null
+    ): ProviderResponse = withContext(Dispatchers.IO) {
+        val turns = buildConversationTurns(systemPrompt, history, prompt, null)
+        val startTime = System.currentTimeMillis()
+
+        val candidates = mutableListOf<Pair<AiProviderType, String>>()
+        if (preferredProvider != null && isProviderConfigured(preferredProvider) && circuitBreaker.canExecute(preferredProvider)) {
+            candidates.add(preferredProvider to (preferredModelId ?: getDefaultModelForProvider(preferredProvider)))
+        }
+        val reasoningFallbacks = listOf(
+            AiProviderType.DEEPSEEK to "deepseek-reasoner",
+            AiProviderType.SAMBANOVA to SAMBANOVA_DEEPSEEK_MODEL,
+            AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free",
+            AiProviderType.GROQ to GROQ_QWEN_MODEL,
+            AiProviderType.CEREBRAS to CEREBRAS_QWEN_MODEL,
+            AiProviderType.POLLINATIONS_FREE to "deepseek"
+        )
+        reasoningFallbacks.forEach { pair ->
+            if (candidates.none { it.first == pair.first && it.second == pair.second } &&
+                isProviderConfigured(pair.first) && circuitBreaker.canExecute(pair.first)
+            ) {
+                candidates.add(pair)
+            }
+        }
+
+        for ((provider, model) in candidates) {
+            val key = getKeyForProviderAndModel(provider, model)
+            if (key.isBlank() && provider != AiProviderType.LOCAL_OLLAMA && provider != AiProviderType.POLLINATIONS_FREE) continue
+            val callStart = System.currentTimeMillis()
+            try {
+                val text = when (provider) {
+                    AiProviderType.POLLINATIONS_FREE -> queryPollinationsFallback(prompt, systemPrompt, model, preserveReasoning = true)
+                    AiProviderType.GEMINI, AiProviderType.ANTHROPIC, AiProviderType.OMNI_ROUTE ->
+                        callSpecificProviderPublic(provider, model, turns, key, false)
+                    else -> callOpenAiCompatible(provider, turns, model, key, maxTokens = 8192, preserveReasoning = true)
+                }
+                val latency = (System.currentTimeMillis() - callStart).coerceAtLeast(1L)
+                if (text.isNotBlank()) {
+                    AiUsageTracker.recordCall(context, provider, true, latency)
+                    circuitBreaker.recordSuccess(provider)
+                    return@withContext ProviderResponse(
+                        text = text,
+                        modelUsed = "${provider.displayName} ($model)",
+                        provider = provider,
+                        latencyMs = System.currentTimeMillis() - startTime
+                    )
+                }
+            } catch (_: Exception) {
+                AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - callStart)
+            }
+        }
+
+        return@withContext generateChatResponse(
+            prompt = prompt,
+            systemPrompt = systemPrompt,
+            history = history,
+            preferredProvider = preferredProvider,
+            preferredModelId = preferredModelId,
+            withSearchGrounding = false
+        )
+    }
+
     /**
      * Streams tokens in real-time via Kotlin Flow.
      */
@@ -802,8 +914,8 @@ class ExternalAiProviders @JvmOverloads constructor(
 
         when (provider) {
             AiProviderType.GEMINI -> streamGemini(turns, model, key, this)
-            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.HUGGINGFACE,
-            AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
+            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+            AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
             AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA -> {
                 val maxTok = if (provider == AiProviderType.NVIDIA_NIM && model.contains("minimax", true)) 8192 else 4096
                 streamOpenAiCompatible(provider, turns, model, key, maxTok, this)
@@ -829,8 +941,8 @@ class ExternalAiProviders @JvmOverloads constructor(
     ): String {
         return when (provider) {
             AiProviderType.GEMINI -> callGemini(turns, model, apiKey, withSearchGrounding)
-            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.HUGGINGFACE,
-            AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
+            AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+            AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
             AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA -> {
                 val maxTok = if (provider == AiProviderType.NVIDIA_NIM && model.contains("minimax", true)) 8192 else 4096
                 callOpenAiCompatible(provider, turns, model, apiKey, maxTok)
@@ -1106,13 +1218,15 @@ class ExternalAiProviders @JvmOverloads constructor(
 
     // --- 2. OpenAI-Compatible Implementation (NVIDIA NIM, OpenAI, DeepSeek, xAI, Mistral, Perplexity, OpenRouter, Ollama) ---
 
-    private fun getBaseUrlForProvider(provider: AiProviderType): String {
+    internal fun getBaseUrlForProvider(provider: AiProviderType): String {
         baseUrlOverrides[provider]?.let { custom ->
             return if (custom.endsWith("/")) custom else "$custom/"
         }
         return when (provider) {
             AiProviderType.NVIDIA_NIM -> "https://integrate.api.nvidia.com/v1/"
             AiProviderType.GROQ -> "https://api.groq.com/openai/v1/"
+            AiProviderType.CEREBRAS -> "https://api.cerebras.ai/v1/"
+            AiProviderType.SAMBANOVA -> "https://api.sambanova.ai/v1/"
             AiProviderType.HUGGINGFACE -> "https://router.huggingface.co/v1/"
             AiProviderType.GITHUB_MODELS -> "https://models.inference.ai.azure.com/"
             AiProviderType.OPENAI -> "https://api.openai.com/v1/"
@@ -1178,7 +1292,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         turns: List<ChatTurn>,
         model: String,
         apiKey: String,
-        maxTokens: Int = 4096
+        maxTokens: Int = 4096,
+        preserveReasoning: Boolean = false
     ): String {
         val baseUrl = getBaseUrlForProvider(provider)
         val endpoint = "${baseUrl}chat/completions"
@@ -1226,13 +1341,20 @@ class ExternalAiProviders @JvmOverloads constructor(
                 val rawContent = if (message != null && !message.isNull("content")) {
                     message.optString("content", "")
                 } else ""
+                val reasoningContent = if (message != null && !message.isNull("reasoning_content")) {
+                    message.optString("reasoning_content", "").trim()
+                } else ""
+                if (preserveReasoning) {
+                    if (reasoningContent.isNotBlank() && rawContent.isNotBlank() && !rawContent.contains("<think>", ignoreCase = true)) {
+                        return "<think>\n$reasoningContent\n</think>\n\n${rawContent.trim()}"
+                    }
+                    if (rawContent.isNotBlank()) return rawContent.trim()
+                    if (reasoningContent.isNotBlank()) return "<think>\n$reasoningContent\n</think>"
+                }
                 val cleaned = sanitizeModelOutput(rawContent)
                 if (cleaned.isNotBlank()) return cleaned
                 // If model placed answer only in reasoning_content because of strict budget
-                val reasoningFallback = if (message != null && !message.isNull("reasoning_content")) {
-                    message.optString("reasoning_content", "").trim()
-                } else ""
-                if (reasoningFallback.isNotBlank()) return sanitizeModelOutput(reasoningFallback)
+                if (reasoningContent.isNotBlank()) return sanitizeModelOutput(reasoningContent)
             }
             ""
         }
@@ -1475,7 +1597,8 @@ class ExternalAiProviders @JvmOverloads constructor(
     private fun queryPollinationsFallback(
         prompt: String,
         systemPrompt: String,
-        preferredModel: String = "openai"
+        preferredModel: String = "openai",
+        preserveReasoning: Boolean = false
     ): String {
         val url = baseUrlOverrides[AiProviderType.POLLINATIONS_FREE]?.let {
             if (it.endsWith("/")) it else "$it/"
@@ -1515,7 +1638,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                         if (text.length >= 2 && !text.contains("error code", ignoreCase = true) && !text.startsWith("<!DOCTYPE")) text else ""
                     } else ""
                 }
-                if (result.isNotBlank()) return sanitizeModelOutput(result)
+                if (result.isNotBlank()) return if (preserveReasoning) result else sanitizeModelOutput(result)
             } catch (_: Exception) {}
         }
         return ""
@@ -1571,6 +1694,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 .ifBlank { AyraPreferences.getNvidiaGemmaKey(ctx) }
                 .ifBlank { AyraPreferences.getNvidiaKey(ctx) }
             AiProviderType.GROQ -> AyraPreferences.getGroqKey(ctx)
+            AiProviderType.CEREBRAS -> AyraPreferences.getCerebrasKey(ctx)
+            AiProviderType.SAMBANOVA -> AyraPreferences.getSambaNovaKey(ctx)
             AiProviderType.HUGGINGFACE -> AyraPreferences.getHuggingFaceKey(ctx)
             AiProviderType.GITHUB_MODELS -> AyraPreferences.getGitHubModelsKey(ctx)
             AiProviderType.OPENAI -> AyraPreferences.getOpenAiKey(ctx)
@@ -1608,6 +1733,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         val list = mutableListOf<AiProviderType>()
         if (isProviderConfigured(AiProviderType.GEMINI)) list.add(AiProviderType.GEMINI)
         if (isProviderConfigured(AiProviderType.GROQ)) list.add(AiProviderType.GROQ)
+        if (isProviderConfigured(AiProviderType.CEREBRAS)) list.add(AiProviderType.CEREBRAS)
+        if (isProviderConfigured(AiProviderType.SAMBANOVA)) list.add(AiProviderType.SAMBANOVA)
         if (isProviderConfigured(AiProviderType.NVIDIA_NIM)) list.add(AiProviderType.NVIDIA_NIM)
         if (isProviderConfigured(AiProviderType.GITHUB_MODELS)) list.add(AiProviderType.GITHUB_MODELS)
         if (isProviderConfigured(AiProviderType.HUGGINGFACE)) list.add(AiProviderType.HUGGINGFACE)
@@ -1634,6 +1761,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiProviderType.GEMINI -> GEMINI_FLASH_MODEL
             AiProviderType.NVIDIA_NIM -> NVIDIA_MINIMAX_MODEL
             AiProviderType.GROQ -> GROQ_LLAMA_MODEL
+            AiProviderType.CEREBRAS -> CEREBRAS_LLAMA_MODEL
+            AiProviderType.SAMBANOVA -> SAMBANOVA_DEEPSEEK_MODEL
             AiProviderType.HUGGINGFACE -> HF_QWEN_MODEL
             AiProviderType.GITHUB_MODELS -> GITHUB_GPT4O_MODEL
             AiProviderType.OPENAI -> "gpt-4o"
@@ -1669,10 +1798,17 @@ class ExternalAiProviders @JvmOverloads constructor(
         }
 
         val start = System.currentTimeMillis()
-        val testTurns = listOf(ChatTurn("user", "Reply with just the single word: READY"))
-        val response = callSpecificProvider(provider, model, testTurns, key, withSearchGrounding = false)
-        if (response.isBlank()) throw ProviderError.NetworkFailure("Empty response received from ${provider.displayName}")
-        System.currentTimeMillis() - start
+        try {
+            val testTurns = listOf(ChatTurn("user", "Reply with just the single word: READY"))
+            val response = callSpecificProvider(provider, model, testTurns, key, withSearchGrounding = false)
+            if (response.isBlank()) throw ProviderError.NetworkFailure("Empty response received from ${provider.displayName}")
+            val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(1L)
+            AiUsageTracker.recordCall(context, provider, true, elapsed)
+            elapsed
+        } catch (e: Exception) {
+            AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
+            throw e
+        }
     }
 
     /**
@@ -1681,53 +1817,74 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getOptimalModelForRoutingMode(mode: AiRoutingMode): Pair<AiProviderType, String> {
         val configured = getActiveConfiguredProviders()
         return when (mode) {
-            AiRoutingMode.FAST -> {
-                if (configured.contains(AiProviderType.GEMINI)) Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MINIMAX_MODEL)
-                else if (configured.contains(AiProviderType.OPENAI)) Pair(AiProviderType.OPENAI, "gpt-4o-mini")
-                else if (configured.contains(AiProviderType.DEEPSEEK)) Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
-                else Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
+            AiRoutingMode.FAST -> when {
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_LLAMA_MODEL)
+                configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, CEREBRAS_LLAMA_MODEL)
+                configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MINIMAX_MODEL)
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_QWEN_MODEL)
+                configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o-mini")
+                configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
+                else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
             }
-            AiRoutingMode.BEST_QUALITY -> {
-                if (configured.contains(AiProviderType.GEMINI)) Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
-                else if (configured.contains(AiProviderType.ANTHROPIC)) Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
-                else if (configured.contains(AiProviderType.OPENAI)) Pair(AiProviderType.OPENAI, "gpt-4o")
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MUSE_MODEL)
-                else if (configured.contains(AiProviderType.DEEPSEEK)) Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
-                else Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
+            AiRoutingMode.BEST_QUALITY -> when {
+                configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
+                configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
+                configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o")
+                configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_DEEPSEEK_MODEL)
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MUSE_MODEL)
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_LLAMA_MODEL)
+                else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
             }
-            AiRoutingMode.REASONING -> {
-                if (configured.contains(AiProviderType.DEEPSEEK)) Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
-                else if (configured.contains(AiProviderType.GEMINI)) Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_GLM_MODEL)
-                else if (configured.contains(AiProviderType.OPENAI)) Pair(AiProviderType.OPENAI, "o3-mini")
-                else if (configured.contains(AiProviderType.PERPLEXITY)) Pair(AiProviderType.PERPLEXITY, "sonar-reasoning")
-                else Pair(AiProviderType.OPENROUTER, "deepseek/deepseek-r1")
+            AiRoutingMode.REASONING -> when {
+                configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
+                configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_DEEPSEEK_MODEL)
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_QWEN_MODEL)
+                configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, CEREBRAS_QWEN_MODEL)
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_GLM_MODEL)
+                configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "o3-mini")
+                configured.contains(AiProviderType.PERPLEXITY) -> Pair(AiProviderType.PERPLEXITY, "sonar-reasoning")
+                else -> Pair(AiProviderType.OPENROUTER, "deepseek/deepseek-r1:free")
             }
-            AiRoutingMode.CODING -> {
-                if (configured.contains(AiProviderType.ANTHROPIC)) Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
-                else if (configured.contains(AiProviderType.MISTRAL)) Pair(AiProviderType.MISTRAL, "codestral-latest")
-                else if (configured.contains(AiProviderType.GEMINI)) Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_GLM_MODEL)
-                else if (configured.contains(AiProviderType.OPENAI)) Pair(AiProviderType.OPENAI, "gpt-4o")
-                else Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-coder-32b-instruct")
+            AiRoutingMode.CODING -> when {
+                configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
+                configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, "codestral-latest")
+                configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_DEEPSEEK_MODEL)
+                configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, GEMINI_PRO_MODEL)
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_GLM_MODEL)
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_LLAMA_MODEL)
+                configured.contains(AiProviderType.GITHUB_MODELS) -> Pair(AiProviderType.GITHUB_MODELS, GITHUB_GPT4O_MODEL)
+                configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, HF_QWEN_MODEL)
+                configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o")
+                else -> Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-coder-32b-instruct")
             }
-            AiRoutingMode.PRIVACY_LOCAL -> {
-                if (configured.contains(AiProviderType.LOCAL_OLLAMA)) Pair(AiProviderType.LOCAL_OLLAMA, "llama3.3")
-                else if (configured.contains(AiProviderType.DEEPSEEK)) Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
-                else Pair(AiProviderType.OPENROUTER, "meta-llama/llama-3.3-70b-instruct")
+            AiRoutingMode.PRIVACY_LOCAL -> when {
+                configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "llama3.3")
+                configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
+                else -> Pair(AiProviderType.OPENROUTER, "meta-llama/llama-3.3-70b-instruct")
             }
-            AiRoutingMode.COST_EFFICIENT -> {
-                if (configured.contains(AiProviderType.GEMINI)) Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
-                else if (configured.contains(AiProviderType.POLLINATIONS_FREE)) Pair(AiProviderType.POLLINATIONS_FREE, "openai")
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MINIMAX_MODEL)
-                else Pair(AiProviderType.GEMINI, GEMINI_FLASH_LITE_MODEL)
+            AiRoutingMode.COST_EFFICIENT -> when {
+                configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_LLAMA_MODEL)
+                configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, CEREBRAS_LLAMA_MODEL)
+                configured.contains(AiProviderType.GITHUB_MODELS) -> Pair(AiProviderType.GITHUB_MODELS, GITHUB_GPT4O_MODEL)
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_DEEPSEEK_MODEL)
+                configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, "openai")
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MINIMAX_MODEL)
+                else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_LITE_MODEL)
             }
-            AiRoutingMode.QWEN_UNCENSORED -> {
-                if (configured.contains(AiProviderType.LOCAL_OLLAMA)) Pair(AiProviderType.LOCAL_OLLAMA, "orcarouter/Qwen3.8-27B-Uncensored:q4_k_m")
-                else if (configured.contains(AiProviderType.OPENROUTER)) Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-72b-instruct")
-                else if (configured.contains(AiProviderType.NVIDIA_NIM)) Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MUSE_MODEL)
-                else Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
+            AiRoutingMode.QWEN_UNCENSORED -> when {
+                configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "orcarouter/Qwen3.8-27B-Uncensored:q4_k_m")
+                configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-72b-instruct")
+                configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, HF_QWEN_MODEL)
+                configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_QWEN_MODEL)
+                configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, CEREBRAS_QWEN_MODEL)
+                configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_QWEN_MODEL)
+                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MUSE_MODEL)
+                else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
             }
             AiRoutingMode.AUTO -> {
                 val best = getBestAvailableProvider()
@@ -1778,8 +1935,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                         }
                     }
                 }
-                AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.HUGGINGFACE,
-                AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
+                AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+                AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK, AiProviderType.XAI,
                 AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER -> {
                     val baseUrl = getBaseUrlForProvider(provider)
                     val url = "${baseUrl}models"
@@ -1859,5 +2016,58 @@ class ExternalAiProviders @JvmOverloads constructor(
         } else {
             CURATED_MODELS.filter { it.provider == provider }
         }
+    }
+
+    /**
+     * Genuine Whisper Speech-to-Text fallback using configured Groq (`whisper-large-v3-turbo`),
+     * SambaNova (`Whisper-Large-v3`), or OpenAI (`whisper-1`) `/audio/transcriptions`.
+     */
+    suspend fun transcribeAudioOpenAiCompatible(
+        audioFile: File,
+        promptHint: String = ""
+    ): String = withContext(Dispatchers.IO) {
+        if (!audioFile.exists() || audioFile.length() <= 0L) return@withContext ""
+        val candidates = listOf(
+            Triple(AiProviderType.GROQ, GROQ_WHISPER_MODEL, getProviderKey(AiProviderType.GROQ)),
+            Triple(AiProviderType.SAMBANOVA, SAMBANOVA_WHISPER_MODEL, getProviderKey(AiProviderType.SAMBANOVA)),
+            Triple(AiProviderType.OPENAI, "whisper-1", getProviderKey(AiProviderType.OPENAI))
+        ).filter { it.third.isNotBlank() }
+
+        for ((provider, model, key) in candidates) {
+            val start = System.currentTimeMillis()
+            try {
+                val baseUrl = getBaseUrlForProvider(provider)
+                val endpoint = "${baseUrl}audio/transcriptions"
+                val mime = if (audioFile.name.endsWith(".wav", true)) "audio/wav" else "audio/mp4"
+                val bodyBuilder = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", audioFile.name, audioFile.asRequestBody(mime.toMediaType()))
+                    .addFormDataPart("model", model)
+                if (promptHint.isNotBlank()) {
+                    bodyBuilder.addFormDataPart("prompt", promptHint)
+                }
+                val req = Request.Builder()
+                    .url(endpoint)
+                    .header("Authorization", "Bearer $key")
+                    .post(bodyBuilder.build())
+                    .build()
+
+                httpClient.newCall(req).execute().use { resp ->
+                    val raw = resp.body?.string().orEmpty()
+                    val latency = (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                    if (resp.isSuccessful && raw.isNotBlank()) {
+                        val text = runCatching { JSONObject(raw).optString("text", "") }.getOrDefault("")
+                        if (text.isNotBlank()) {
+                            AiUsageTracker.recordCall(context, provider, true, latency)
+                            return@withContext text.trim()
+                        }
+                    }
+                    AiUsageTracker.recordCall(context, provider, false, latency)
+                }
+            } catch (_: Exception) {
+                AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
+            }
+        }
+        ""
     }
 }

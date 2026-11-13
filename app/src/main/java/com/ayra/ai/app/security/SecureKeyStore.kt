@@ -48,6 +48,8 @@ object SecureKeyStore {
     const val KEY_GROQ = "groq_api_key"
     const val KEY_HUGGINGFACE = "huggingface_api_key"
     const val KEY_GITHUB_MODELS = "github_models_api_key"
+    const val KEY_CEREBRAS = "cerebras_api_key"
+    const val KEY_SAMBANOVA = "sambanova_api_key"
     const val KEY_COMFYUI_URL = "comfyui_server_url"
 
     private fun getPrefs(context: Context): SharedPreferences {

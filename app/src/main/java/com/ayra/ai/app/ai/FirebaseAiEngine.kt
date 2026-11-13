@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
+import com.ayra.ai.app.ai.providers.AiProviderType
+import com.ayra.ai.app.ai.providers.AiUsageTracker
 import com.ayra.ai.app.data.ChatMessage
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
@@ -93,6 +95,16 @@ class FirebaseAiEngine(private val context: Context?) {
         }
     }
 
+    internal fun modelFallbackChain(requestedModel: String): List<String> {
+        val clean = requestedModel.trim().ifBlank { MODEL_FLASH }
+        return when (clean) {
+            MODEL_PRO_REASONING -> listOf(MODEL_PRO_REASONING, MODEL_FLASH, MODEL_FAST_LITE)
+            MODEL_FLASH -> listOf(MODEL_FLASH, MODEL_FAST_LITE)
+            MODEL_FAST_LITE -> listOf(MODEL_FAST_LITE, MODEL_FLASH)
+            else -> listOf(clean, MODEL_FLASH, MODEL_FAST_LITE).distinct()
+        }
+    }
+
     suspend fun generateText(
         prompt: String,
         systemPrompt: String = "",
@@ -102,43 +114,45 @@ class FirebaseAiEngine(private val context: Context?) {
         enableSearchGrounding: Boolean = false
     ): String = withContext(Dispatchers.IO) {
         if (!isAvailable(context)) return@withContext ""
-        try {
-            withTimeout(TEXT_TIMEOUT_MS) {
-                val tools = if (enableSearchGrounding) listOf(Tool.googleSearch()) else null
-                val model = aiClient.generativeModel(
-                    modelName = modelName,
-                    systemInstruction = if (systemPrompt.isNotBlank()) content { text(systemPrompt) } else null,
-                    tools = tools
-                )
+        val bitmap = decodeBase64ToBitmap(imageBase64)
+        val fullPrompt = buildHistoryAugmentedPrompt(prompt, history)
+        val candidates = modelFallbackChain(modelName)
 
-                val bitmap = decodeBase64ToBitmap(imageBase64)
-                val fullPrompt = buildHistoryAugmentedPrompt(prompt, history)
-                val inputContent = content {
-                    text(fullPrompt)
-                    if (bitmap != null) {
-                        image(bitmap)
+        for (candidateModel in candidates) {
+            val groundingAttempts = if (enableSearchGrounding) listOf(true, false) else listOf(false)
+            for (useSearch in groundingAttempts) {
+                val startMs = System.currentTimeMillis()
+                try {
+                    val text = withTimeout(TEXT_TIMEOUT_MS) {
+                        val tools = if (useSearch) listOf(Tool.googleSearch()) else null
+                        val model = aiClient.generativeModel(
+                            modelName = candidateModel,
+                            systemInstruction = if (systemPrompt.isNotBlank()) content { text(systemPrompt) } else null,
+                            tools = tools
+                        )
+                        val inputContent = content {
+                            text(fullPrompt)
+                            if (bitmap != null) {
+                                image(bitmap)
+                            }
+                        }
+                        model.generateContent(inputContent).text?.trim().orEmpty()
                     }
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    if (text.isNotBlank()) {
+                        AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
+                        return@withContext text
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                    Log.w(TAG, "generateText failed for $candidateModel (search=$useSearch): ${e.message}")
                 }
-                val response = model.generateContent(inputContent)
-                response.text?.trim().orEmpty()
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "generateText failed for $modelName: ${e.message}")
-            // Fallback once without Search tool if tool grounding failed on model
-            if (enableSearchGrounding) {
-                return@withContext generateText(
-                    prompt = prompt,
-                    systemPrompt = systemPrompt,
-                    history = history,
-                    imageBase64 = imageBase64,
-                    modelName = modelName,
-                    enableSearchGrounding = false
-                )
-            }
-            ""
         }
+        ""
     }
 
     fun streamText(
@@ -152,20 +166,23 @@ class FirebaseAiEngine(private val context: Context?) {
         if (!isAvailable(context)) return@flow
         val bitmap = decodeBase64ToBitmap(imageBase64)
         val fullPrompt = buildHistoryAugmentedPrompt(prompt, history)
-        val inputContent = content {
-            text(fullPrompt)
-            if (bitmap != null) {
-                image(bitmap)
-            }
-        }
+        val candidates = modelFallbackChain(modelName)
+        var lastError: Exception? = null
 
-        suspend fun collectStream(useSearch: Boolean): Boolean {
+        suspend fun collectStream(candidateModel: String, useSearch: Boolean): Boolean {
+            val startMs = System.currentTimeMillis()
             val tools = if (useSearch) listOf(Tool.googleSearch()) else null
             val model = aiClient.generativeModel(
-                modelName = modelName,
+                modelName = candidateModel,
                 systemInstruction = if (systemPrompt.isNotBlank()) content { text(systemPrompt) } else null,
                 tools = tools
             )
+            val inputContent = content {
+                text(fullPrompt)
+                if (bitmap != null) {
+                    image(bitmap)
+                }
+            }
             var emittedAny = false
             withTimeout(TEXT_TIMEOUT_MS) {
                 model.generateContentStream(inputContent).collect { chunk ->
@@ -176,22 +193,34 @@ class FirebaseAiEngine(private val context: Context?) {
                     }
                 }
             }
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            if (emittedAny) {
+                AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
+            }
             return emittedAny
         }
 
-        try {
-            val ok = collectStream(enableSearchGrounding)
-            if (!ok && enableSearchGrounding) {
-                collectStream(false)
+        for (candidateModel in candidates) {
+            val groundingAttempts = if (enableSearchGrounding) listOf(true, false) else listOf(false)
+            for (useSearch in groundingAttempts) {
+                val attemptStart = System.currentTimeMillis()
+                try {
+                    if (collectStream(candidateModel, useSearch)) {
+                        return@flow
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastError = e
+                    val elapsed = (System.currentTimeMillis() - attemptStart).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                    Log.w(TAG, "streamText failed for $candidateModel (search=$useSearch): ${e.message}")
+                }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (enableSearchGrounding) {
-                collectStream(false)
-            } else {
-                throw e
-            }
+        }
+
+        if (lastError != null) {
+            throw lastError
         }
     }.flowOn(Dispatchers.IO)
 
@@ -210,6 +239,7 @@ class FirebaseAiEngine(private val context: Context?) {
             return@withContext FirebaseImageResult.Failure("Firebase AI Logic is not initialized.")
         }
 
+        val startMs = System.currentTimeMillis()
         try {
             withTimeout(IMAGE_TIMEOUT_MS) {
                 val model = aiClient.generativeModel(
@@ -240,6 +270,7 @@ class FirebaseAiEngine(private val context: Context?) {
                     ?.firstOrNull()
 
                 val bitmap: Bitmap? = imagePart?.image
+                val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                 if (bitmap != null) {
                     val outDir = File(appContext.filesDir, "generated_images").apply {
                         if (!exists()) mkdirs()
@@ -248,12 +279,14 @@ class FirebaseAiEngine(private val context: Context?) {
                     FileOutputStream(outFile).use { fos ->
                         bitmap.compress(Bitmap.CompressFormat.PNG, 95, fos)
                     }
+                    AiUsageTracker.recordCall(appContext, AiProviderType.GEMINI, true, elapsed)
                     FirebaseImageResult.Success(
                         file = outFile,
                         caption = response.text?.trim().orEmpty(),
                         modelUsed = "Gemini Nano Banana 2.1 🎨"
                     )
                 } else {
+                    AiUsageTracker.recordCall(appContext, AiProviderType.GEMINI, false, elapsed)
                     val textReason = response.text?.trim().orEmpty()
                     FirebaseImageResult.Failure(
                         userMessage = textReason.ifBlank {
@@ -265,6 +298,8 @@ class FirebaseAiEngine(private val context: Context?) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            AiUsageTracker.recordCall(appContext, AiProviderType.GEMINI, false, elapsed)
             val msg = e.localizedMessage ?: e.message ?: "Image generation failed"
             val isQuotaOrBilling = msg.contains("quota", ignoreCase = true) ||
                 msg.contains("billing", ignoreCase = true) ||
@@ -297,6 +332,7 @@ class FirebaseAiEngine(private val context: Context?) {
             return@withContext Result.failure(IllegalArgumentException("Audio recording exceeds 19 MB limit."))
         }
 
+        val startMs = System.currentTimeMillis()
         try {
             withTimeout(TEXT_TIMEOUT_MS) {
                 val bytes = audioFile.readBytes()
@@ -307,15 +343,19 @@ class FirebaseAiEngine(private val context: Context?) {
                 }
                 val response = model.generateContent(input)
                 val transcript = response.text?.trim().orEmpty()
+                val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                 if (transcript.isBlank()) {
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
                     Result.failure(IllegalStateException("No speech detected in audio clip."))
                 } else {
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
                     Result.success(transcript)
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, System.currentTimeMillis() - startMs)
             Log.e(TAG, "transcribeAudioFile error", e)
             Result.failure(e)
         }

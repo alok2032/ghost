@@ -86,6 +86,7 @@ class AyraSuperpowersEngineTest {
         assertTrue("Bengali response should mention সুপারপাওয়ার", response.contains("সুপারপাওয়ার ইঞ্জিন"))
         assertTrue("Bengali response should cite obra/superpowers protocol", response.contains("obra/superpowers"))
         assertTrue("Must include 4-phase checklist", response.contains("এক্সিকিউশন চেকলিস্ট"))
+        assertTrue("Must report honest offline notice", response.contains("- [ ]") && response.contains("অফলাইন"))
     }
 
     @Test
@@ -100,5 +101,6 @@ class AyraSuperpowersEngineTest {
         assertTrue("English response should mention Superpower Engine", response.contains("Superpower Engine"))
         assertTrue("English response should cite obra/superpowers protocol", response.contains("obra/superpowers"))
         assertTrue("Must include 4-phase checklist", response.contains("Superpowers Execution Checklist"))
+        assertTrue("Must report honest offline notice", response.contains("- [ ]") && response.contains("Offline"))
     }
 }

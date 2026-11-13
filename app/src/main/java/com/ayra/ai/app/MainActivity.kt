@@ -9,12 +9,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.ayra.ai.app.cloud.GoogleAuthManager
+import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.ui.screens.AuthScreen
 import com.ayra.ai.app.ui.screens.AyraWorkspaceHost
@@ -58,7 +60,15 @@ class MainActivity : ComponentActivity() {
         val chatDao = ChatDatabase.getDatabase(applicationContext).chatDao()
 
         setContent {
-            AyraTheme {
+            val themeMode by AyraPreferences.themeModeFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getThemeMode(applicationContext)
+            )
+            val useDark = when (themeMode) {
+                "light" -> false
+                "dark" -> true
+                else -> isSystemInDarkTheme()
+            }
+            AyraTheme(darkTheme = useDark) {
                 val currentUser by authManager.authStateFlow.collectAsStateWithLifecycle(
                     initialValue = authManager.currentUser
                 )

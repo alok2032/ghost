@@ -145,15 +145,81 @@ class AyraOrchestrator(private val context: Context) {
                 return@flow
             }
             AyraToolIntent.DEEP_RESEARCH -> {
-                emit(AyraEvent.Status("Conducting grounded multi-source research..."))
-                val researchResp = unifiedAiEngine.generateUnifiedResponse(
-                    prompt = trimmed,
-                    personaMode = persona,
-                    modelTier = tier,
-                    attachedDocumentText = documentText,
-                    attachedImageBase64 = imageBase64
-                )
-                emit(AyraEvent.Complete(researchResp))
+                val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
+                val topic = trimmed.replace(Regex("(?i)^(deep research|ডিপ রিসার্চ|গভীর গবেষণা|research on|গবেষণা করো|research:)\\s*"), "").trim()
+                    .ifBlank { trimmed }
+                emit(AyraEvent.Status("Gathering web & academic sources for: $topic..."))
+
+                var liveGrounding = ""
+                var citationsBlock = ""
+                runCatching {
+                    if (com.ayra.ai.app.data.AyraPreferences.getTavilySearchKey(context).isNotBlank()) {
+                        val searchRes = com.ayra.ai.app.search.TavilySearchEngine(context).search(topic, maxResults = 3)
+                        if (searchRes.formattedSummary.isNotBlank()) {
+                            liveGrounding = searchRes.formattedSummary
+                            citationsBlock = searchRes.formattedSummary.substringAfter("### 📚 Grounded Web Sources", "")
+                        }
+                    }
+                }
+                if (liveGrounding.isBlank()) {
+                    liveGrounding = runCatching {
+                        AutonomousKnowledgeEngine.queryMultiLayerWiki(topic, isBengali)
+                    }.getOrDefault("")
+                }
+
+                val researchSysPrompt = """
+                    You are Ayra AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on: $topic.
+                    Use the user's language (${if (isBengali) "Bengali (বাংলা)" else "English"}).
+                    Format clearly with markdown sections: Executive Thesis, Theoretical Foundations, Empirical State-of-the-Art, Trade-offs & Bottlenecks, Future Outlook, and Conclusion.
+                """.trimIndent()
+
+                val combinedDoc = listOfNotNull(
+                    documentText?.takeIf { it.isNotBlank() },
+                    liveGrounding.takeIf { it.isNotBlank() }?.let { "=== VERIFIED LIVE GROUNDING ===\n$it" }
+                ).joinToString("\n\n").ifBlank { null }
+
+                var completed = false
+                var failed = false
+                providerPool.streamChat(
+                    ChatRequest(
+                        prompt = trimmed,
+                        persona = persona,
+                        mode = ProviderPoolMode.BEST,
+                        history = history,
+                        imageBase64 = imageBase64,
+                        documentText = combinedDoc,
+                        systemPromptOverride = researchSysPrompt
+                    )
+                ).collect { streamEvent ->
+                    when (streamEvent) {
+                        is AyraStreamEvent.Thinking -> emit(AyraEvent.Status("Synthesizing research with ${streamEvent.model}..."))
+                        is AyraStreamEvent.Token -> emit(AyraEvent.Token(streamEvent.text))
+                        is AyraStreamEvent.Draft -> emit(AyraEvent.Status("Research draft received from ${streamEvent.model}"))
+                        is AyraStreamEvent.Complete -> {
+                            completed = true
+                            val baseText = streamEvent.response.text
+                            val fullText = if (citationsBlock.isNotBlank() && !baseText.contains("### 📚 Grounded Web Sources")) {
+                                "$baseText\n\n### 📚 Grounded Web Sources$citationsBlock"
+                            } else baseText
+                            emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ayra Deep Research (${streamEvent.response.modelUsed}) 🔬")))
+                        }
+                        is AyraStreamEvent.Error -> {
+                            failed = true
+                        }
+                    }
+                }
+                if (!completed && failed) {
+                    if (liveGrounding.isNotBlank()) {
+                        val fallbackText = if (isBengali) {
+                            "# 🔬 ডিপ রিসার্চ: $topic\n\n*(এআই সিন্থেসিস সাময়িকভাবে অনুপলব্ধ; নিচে যাচাইকৃত লাইভ তথ্য দেখানো হলো)*\n\n$liveGrounding"
+                        } else {
+                            "# 🔬 Deep Research: $topic\n\n*(AI synthesis currently unreachable; showing verified live web evidence)*\n\n$liveGrounding"
+                        }
+                        emit(AyraEvent.Complete(AiResponse(text = fallbackText, craftType = "RESEARCH", modelUsed = "Verified Web Evidence 🌐")))
+                    } else {
+                        emit(AyraEvent.Error(AyraError.NoNetwork("Deep Research providers and network grounding unavailable.")))
+                    }
+                }
                 return@flow
             }
             AyraToolIntent.GITHUB_PLUGIN -> {
@@ -196,46 +262,97 @@ class AyraOrchestrator(private val context: Context) {
                 return@flow
             }
             AyraToolIntent.CHAT -> {
-                // Honor explicit Superpowers protocol first if triggered
+                val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
+                // Stream explicit Superpowers protocol live through ProviderPool BEST
                 val superpower = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(trimmed)
                 if (superpower != null || tier == "superpowers") {
-                    emit(AyraEvent.Status("Running ${superpower?.displayName ?: "Superpowers Engine"}..."))
-                    val spResp = unifiedAiEngine.generateUnifiedResponse(
-                        prompt = trimmed,
-                        personaMode = persona,
-                        modelTier = tier,
-                        attachedDocumentText = documentText,
-                        attachedDocumentName = documentName,
-                        attachedImageBase64 = imageBase64,
-                        conversationHistory = history
-                    )
-                    emit(AyraEvent.Complete(spResp))
+                    val activeSp = superpower ?: com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.SuperpowerType.SYSTEMATIC_DEBUGGING
+                    emit(AyraEvent.Status("Running ${activeSp.displayName}..."))
+                    val spPrompt = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.buildSuperpowerSystemPrompt(activeSp, isBengali, context)
+                    val ragCtx = runCatching {
+                        val dao = ChatDatabase.getDatabase(context).knowledgeDocumentDao()
+                        val (formatted, hits) = DocumentRagEngine(dao).buildCitedContext(trimmed, topK = 4)
+                        if (hits.isNotEmpty()) formatted else ""
+                    }.getOrDefault("")
+                    val docMerged = listOfNotNull(documentText?.takeIf { it.isNotBlank() }, ragCtx.takeIf { it.isNotBlank() }).joinToString("\n\n").ifBlank { null }
+
+                    providerPool.streamChat(
+                        ChatRequest(
+                            prompt = trimmed,
+                            persona = persona,
+                            mode = ProviderPoolMode.BEST,
+                            history = history,
+                            imageBase64 = imageBase64,
+                            documentText = docMerged,
+                            systemPromptOverride = spPrompt
+                        )
+                    ).collect { streamEvent ->
+                        when (streamEvent) {
+                            is AyraStreamEvent.Thinking -> emit(AyraEvent.Status("${activeSp.displayName} • ${streamEvent.model}..."))
+                            is AyraStreamEvent.Token -> emit(AyraEvent.Token(streamEvent.text))
+                            is AyraStreamEvent.Draft -> emit(AyraEvent.Status("Superpowers draft from ${streamEvent.model}"))
+                            is AyraStreamEvent.Complete -> emit(AyraEvent.Complete(AiResponse(text = streamEvent.response.text, modelUsed = "${activeSp.displayName} (${streamEvent.response.modelUsed})")))
+                            is AyraStreamEvent.Error -> emit(AyraEvent.Error(streamEvent.error))
+                        }
+                    }
                     return@flow
                 }
 
+                val externalProviders = com.ayra.ai.app.ai.providers.ExternalAiProviders(context)
+
                 // Main CHAT & Coding execution through Unified Multi-AI ProviderPool
                 val poolMode = when (tier) {
-                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc" -> ProviderPoolMode.BEST
+                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" -> ProviderPoolMode.BEST
                     "fast", "gemini_flash" -> ProviderPoolMode.FAST
                     else -> ProviderPoolMode.AUTO
                 }
 
-                val prefProvider = when (tier) {
-                    "gemini_flash", "gemini_pro" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI
-                    else -> null
+                val (prefProvider, prefModel) = when (tier) {
+                    "gemini_flash" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL
+                    "gemini_pro" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL
+                    "deepseek_harness", "deepseek_r1" -> {
+                        listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
+                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
+                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
+                    }
+                    "llama_3_3" -> {
+                        listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
+                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
+                    }
+                    "qwen_uncensored" -> {
+                        listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+                            com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
+                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
+                    }
+                    else -> null to null
                 }
 
-                val prefModel = when (tier) {
-                    "gemini_flash" -> com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL
-                    "gemini_pro" -> com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL
-                    else -> null
-                }
+                val godModeGrounding = if (tier == "godmode") {
+                    com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(trimmed)
+                } else ""
 
                 val sysOverride = when (tier) {
                     "qwen_uncensored" -> com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK
-                    "godmode" -> "You are G0DM0D3 Security Research Engine. Analyze technical, architectural, and security topics rigorously and directly in the user's language."
-                    "ecc" -> "You are ECC Enterprise Cognitive Engine. Disambiguate entities and provide structured, factual, high-precision answers in the user's language."
-                    "deepseek_harness", "deepseek_r1" -> "You are DeepSeek Chain-of-Thought Engine. Provide rigorous step-by-step reasoning and verify math/code carefully in the user's language."
+                    "godmode" -> buildString {
+                        append("You are G0DM0D3 Security Research Engine (Plinius Architecture). Analyze technical, architectural, and security topics rigorously and directly in the user's language.")
+                        if (godModeGrounding.isNotBlank()) append("\n\n").append(godModeGrounding)
+                    }
+                    "ecc" -> {
+                        val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(trimmed)
+                        "You are ECC Enterprise Cognitive Engine. Domain: ${cognitive.domain}. Key Entities: ${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}. Disambiguate entities and provide structured, factual, high-precision answers in the user's language."
+                    }
+                    "deepseek_harness", "deepseek_r1" -> "You are DeepSeek-R1 Chain-of-Thought Engine. Provide rigorous step-by-step reasoning and verify math/code carefully in the user's language."
+                    "higgsfield" -> "You are Open-Higgsfield Cinematography & Motion Physics Director. Design camera trajectories, optical lenses, and lighting scenes precisely in the user's language."
                     else -> null
                 }
 

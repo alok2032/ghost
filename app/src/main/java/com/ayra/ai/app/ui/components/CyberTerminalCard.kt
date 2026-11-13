@@ -180,9 +180,9 @@ fun CyberTerminalCard(
                         cm.setPrimaryClip(ClipData.newPlainText("Terminal Log", allText))
                         Toast.makeText(context, "Terminal log copied!", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Log", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Log", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }
 
                 IconButton(
@@ -190,16 +190,16 @@ fun CyberTerminalCard(
                         history.clear()
                         history.add(TerminalOutput("clear", CyberTerminalEngine.WELCOME_BANNER))
                     },
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Clear", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Delete, contentDescription = "Clear", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }
 
                 IconButton(
                     onClick = onClose,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close Terminal", tint = NeonRose, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Close Terminal", tint = NeonRose, modifier = Modifier.size(18.dp))
                 }
             }
 

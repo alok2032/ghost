@@ -29,21 +29,34 @@ class Qwen38UncensoredEngine(private val context: Context? = null) {
     suspend fun queryQwen(prompt: String, systemInstruction: String? = null): AiResponse = withContext(Dispatchers.IO) {
         val sys = systemInstruction ?: ABLITERATED_SYSTEM_PACK
 
-        val (prefProvider, prefModel) = when {
-            externalProviders.isProviderConfigured(AiProviderType.LOCAL_OLLAMA) ->
-                Pair(AiProviderType.LOCAL_OLLAMA, OLLAMA_DEFAULT_SERVING)
-            externalProviders.isProviderConfigured(AiProviderType.OPENROUTER) ->
-                Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-72b-instruct")
-            else -> Pair(null, null)
-        }
-
-        val resp = externalProviders.generateChatResponse(
-            prompt = prompt,
-            systemPrompt = sys,
-            preferredProvider = prefProvider,
-            preferredModelId = prefModel,
-            withSearchGrounding = false
+        val qwenCandidates = listOf(
+            AiProviderType.LOCAL_OLLAMA to OLLAMA_DEFAULT_SERVING,
+            AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+            AiProviderType.HUGGINGFACE to ExternalAiProviders.HF_QWEN_MODEL,
+            AiProviderType.GROQ to ExternalAiProviders.GROQ_QWEN_MODEL,
+            AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_QWEN_MODEL,
+            AiProviderType.SAMBANOVA to ExternalAiProviders.SAMBANOVA_QWEN_MODEL,
+            AiProviderType.NVIDIA_NIM to ExternalAiProviders.NVIDIA_MUSE_MODEL
         )
+        val firstConfigured = qwenCandidates.firstOrNull { (p, _) -> externalProviders.isProviderConfigured(p) }
+
+        val resp = try {
+            externalProviders.generateChatResponse(
+                prompt = prompt,
+                systemPrompt = sys,
+                preferredProvider = firstConfigured?.first,
+                preferredModelId = firstConfigured?.second,
+                withSearchGrounding = false
+            )
+        } catch (_: Exception) {
+            com.ayra.ai.app.ai.providers.ProviderPool(context, externalProviders).executeSync(
+                com.ayra.ai.app.ai.providers.ChatRequest(
+                    prompt = prompt,
+                    mode = com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST,
+                    systemPromptOverride = sys
+                )
+            )
+        }
 
         AiResponse(
             text = resp.text,

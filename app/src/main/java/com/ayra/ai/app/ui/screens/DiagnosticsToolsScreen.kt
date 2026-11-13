@@ -1,7 +1,13 @@
 package com.ayra.ai.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,36 +18,68 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.data.StorageHelper
+import com.ayra.ai.app.data.StorageHelper.WorkspaceArtifact
 import com.ayra.ai.app.ui.components.CyberTerminalCard
 import com.ayra.ai.app.ui.components.GitHubPluginHubSection
 import com.ayra.ai.app.ui.components.ProviderKeysSection
 import com.ayra.ai.app.ui.theme.CosmicBackground
+import com.ayra.ai.app.ui.theme.GlassSurfaceDark
+import com.ayra.ai.app.ui.theme.NeonCyan
+import com.ayra.ai.app.ui.theme.NeonGreen
+import com.ayra.ai.app.ui.theme.NeonPurple
+import com.ayra.ai.app.ui.theme.NeonRose
 import com.ayra.ai.app.ui.theme.TextPrimary
 import com.ayra.ai.app.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class ToolsSubTab(val label: String) {
     KEYS("API Keys Vault"),
+    WORKSPACE("Files & Backup"),
     TERMINAL("Cyber Terminal"),
     PLUGINS("GitHub Plugins")
 }
@@ -57,26 +95,28 @@ fun DiagnosticsToolsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CosmicBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            text = "Tools, Security Vault & Plugins",
+            text = "Tools, Security Vault & Workspace",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Manage encrypted Android Keystore API keys, run live network/CVE terminal probes, or install GitHub Skill & OpenAPI plugins.",
+            text = "Manage encrypted Android Keystore keys, M3 appearance, workspace artifacts, safe JSON backups, terminal probes & GitHub plugins.",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
@@ -85,6 +125,13 @@ fun DiagnosticsToolsScreen(
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Keys", fontSize = 12.sp) },
                 modifier = Modifier.testTag("tools_subtab_keys")
+            )
+            FilterChip(
+                selected = activeTab == ToolsSubTab.WORKSPACE,
+                onClick = { activeTab = ToolsSubTab.WORKSPACE },
+                leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Workspace", fontSize = 12.sp) },
+                modifier = Modifier.testTag("tools_subtab_workspace")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.TERMINAL,
@@ -106,6 +153,9 @@ fun DiagnosticsToolsScreen(
             ToolsSubTab.KEYS -> {
                 ProviderKeysSection(context = context)
             }
+            ToolsSubTab.WORKSPACE -> {
+                WorkspaceAndBackupPanel(context = context)
+            }
             ToolsSubTab.TERMINAL -> {
                 CyberTerminalCard(
                     onClose = { activeTab = ToolsSubTab.KEYS }
@@ -125,5 +175,316 @@ fun DiagnosticsToolsScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun WorkspaceAndBackupPanel(context: android.content.Context) {
+    val scope = rememberCoroutineScope()
+    val db = remember { ChatDatabase.getDatabase(context) }
+
+    val themeMode by AyraPreferences.themeModeFlow.collectAsStateWithLifecycle(
+        initialValue = AyraPreferences.getThemeMode(context)
+    )
+    var searchGrounding by remember { mutableStateOf(AyraPreferences.isSearchGroundingEnabled(context)) }
+    var freePool by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
+    var memoryEnabled by remember { mutableStateOf(AyraPreferences.isMemoryEnabled(context)) }
+    var artifacts by remember { mutableStateOf<List<WorkspaceArtifact>>(emptyList()) }
+    var backupStatus by remember { mutableStateOf<String?>(null) }
+
+    fun reloadArtifacts() {
+        artifacts = StorageHelper.listWorkspaceArtifacts(context)
+    }
+
+    LaunchedEffect(Unit) {
+        reloadArtifacts()
+    }
+
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val countSummary = withContext(Dispatchers.IO) {
+                    val sessions = db.chatSessionDao().getAllSessionsOnce()
+                    val messages = db.chatDao().getAllMessages().first()
+                    val plugins = db.gitHubPluginDao().getAllPluginsSync()
+                    val json = StorageHelper.exportSafeWorkspaceBackupJson(
+                        context = context,
+                        sessions = sessions,
+                        messages = messages,
+                        plugins = plugins
+                    )
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                    }
+                    "Exported ${sessions.size} sessions, ${messages.size} messages & ${plugins.size} plugins (0 secrets included)."
+                }
+                backupStatus = countSummary
+                Toast.makeText(context, "Key-free workspace backup exported", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val resultMsg = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText().orEmpty()
+                        val payload = StorageHelper.importSafeWorkspaceBackupJson(context, raw)
+                        val sessionIdMap = mutableMapOf<Long, Long>()
+                        payload.sessions.forEach { oldSession ->
+                            val newId = db.chatSessionDao().insertSession(oldSession.copy(id = 0L))
+                            sessionIdMap[oldSession.id] = newId
+                        }
+                        payload.messages.forEach { msg ->
+                            val mappedSession = sessionIdMap[msg.sessionId] ?: msg.sessionId
+                            db.chatDao().insertMessage(msg.copy(id = 0L, sessionId = mappedSession))
+                        }
+                        payload.plugins.forEach { plugin ->
+                            db.gitHubPluginDao().upsertPlugin(plugin)
+                        }
+                        "Restored ${payload.sessions.size} sessions, ${payload.messages.size} messages & ${payload.plugins.size} plugins."
+                    }.getOrElse { err ->
+                        "Restore failed: ${err.localizedMessage ?: "Invalid JSON"}"
+                    }
+                }
+                backupStatus = resultMsg
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Appearance & Intelligence Toggles Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurfaceDark)
+                .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Appearance & Engine Controls",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = NeonCyan
+            )
+            Text("Material 3 Theme", color = TextSecondary, fontSize = 11.5.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("dark" to "Dark", "light" to "Light", "system" to "System").forEach { (mode, label) ->
+                    FilterChip(
+                        selected = themeMode == mode,
+                        onClick = { AyraPreferences.setThemeMode(context, mode) },
+                        label = { Text(label, fontSize = 12.sp) },
+                        modifier = Modifier.testTag("theme_mode_$mode")
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Live Search Grounding", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Augment answers with live DuckDuckGo / Wikipedia / CrossRef", color = TextSecondary, fontSize = 11.sp)
+                }
+                Switch(
+                    checked = searchGrounding,
+                    onCheckedChange = {
+                        searchGrounding = it
+                        AyraPreferences.setSearchGroundingEnabled(context, it)
+                    },
+                    modifier = Modifier.testTag("toggle_search_grounding")
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Global Free AI Pool", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Keyless community endpoints when personal keys aren't set", color = TextSecondary, fontSize = 11.sp)
+                }
+                Switch(
+                    checked = freePool,
+                    onCheckedChange = {
+                        freePool = it
+                        AyraPreferences.setFreeAiPoolEnabled(context, it)
+                    },
+                    modifier = Modifier.testTag("toggle_free_ai_pool")
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Persistent AI Memory", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Remember user profile facts & coding preferences across chats", color = TextSecondary, fontSize = 11.sp)
+                }
+                Switch(
+                    checked = memoryEnabled,
+                    onCheckedChange = {
+                        memoryEnabled = it
+                        AyraPreferences.setMemoryEnabled(context, it)
+                    },
+                    modifier = Modifier.testTag("toggle_ai_memory")
+                )
+            }
+        }
+
+        // Safe Key-Free JSON Backup & Restore Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurfaceDark)
+                .border(1.dp, NeonPurple.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Key-Free Workspace Backup & Restore",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = NeonPurple
+            )
+            Text(
+                text = "Exports chats, installed plugins, and non-secret preferences to JSON. API keys remain strictly inside Android Keystore and are NEVER exported.",
+                color = TextSecondary,
+                fontSize = 11.5.sp
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { exportBackupLauncher.launch("ayra_workspace_backup.json") },
+                    modifier = Modifier.weight(1f).testTag("workspace_export_backup_button")
+                ) {
+                    Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Export JSON", fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = { importBackupLauncher.launch(arrayOf("application/json", "text/plain")) },
+                    modifier = Modifier.weight(1f).testTag("workspace_import_backup_button")
+                ) {
+                    Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Restore JSON", fontSize = 12.sp)
+                }
+            }
+            backupStatus?.let { msg ->
+                Text(text = msg, color = NeonGreen, fontSize = 11.5.sp)
+            }
+        }
+
+        // Workspace Artifacts Explorer Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurfaceDark)
+                .border(1.dp, NeonGreen.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val totalKb = artifacts.sumOf { it.sizeBytes } / 1024L
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Workspace Files Explorer (${artifacts.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonGreen
+                    )
+                    Text(
+                        text = "Total storage: ${totalKb} KB across docs, images, 3D, audio & code ZIPs",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+                IconButton(
+                    onClick = { reloadArtifacts() },
+                    modifier = Modifier.size(48.dp).testTag("workspace_refresh_files_button")
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Files", tint = NeonCyan)
+                }
+            }
+
+            if (artifacts.isEmpty()) {
+                Text(
+                    text = "No generated documents, 3D meshes, images, audio, or code ZIPs on disk yet.",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            } else {
+                artifacts.take(40).forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(CosmicBackground)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = item.name, color = TextPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "${item.folder} • ${(item.sizeBytes / 1024L).coerceAtLeast(1L)} KB",
+                                color = TextSecondary,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                        if (item.file.isFile) {
+                            IconButton(
+                                onClick = {
+                                    runCatching {
+                                        val uri = FileProvider.getUriForFile(context, "com.ayra.ai.app.fileprovider", item.file)
+                                        val share = Intent(Intent.ACTION_SEND).apply {
+                                            type = "*/*"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(share, "Share ${item.name}"))
+                                    }.onFailure {
+                                        Toast.makeText(context, item.file.absolutePath, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "Share ${item.name}", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                if (StorageHelper.deleteWorkspaceArtifact(item.file)) {
+                                    reloadArtifacts()
+                                }
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete ${item.name}", tint = NeonRose, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }

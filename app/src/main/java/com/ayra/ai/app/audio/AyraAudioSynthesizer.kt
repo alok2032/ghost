@@ -1,8 +1,12 @@
 package com.ayra.ai.app.audio
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +24,51 @@ object AyraAudioSynthesizer {
 
     private var audioTrack: AudioTrack? = null
     private var synthJob: Job? = null
+    private var activeAudioManager: AudioManager? = null
+    private var activeFocusRequest: AudioFocusRequest? = null
     private val scope = CoroutineScope(Dispatchers.Default)
+
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            stop()
+        }
+    }
+
+    private fun requestFocus(context: Context?) {
+        val ctx = context ?: return
+        val am = runCatching { ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }.getOrNull() ?: return
+        activeAudioManager = am
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = activeFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    .setOnAudioFocusChangeListener(focusListener)
+                    .build()
+                    .also { activeFocusRequest = it }
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+            }
+        }
+    }
+
+    private fun abandonFocus() {
+        val am = activeAudioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                activeFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(focusListener)
+            }
+        }
+    }
 
     private val noteFreqMap = mapOf(
         "C" to 261.63, "C#" to 277.18, "Db" to 277.18,
@@ -39,9 +87,11 @@ object AyraAudioSynthesizer {
     fun playSynthSong(
         chordsText: String = "Am - F - C - G",
         bpm: Int = 110,
+        context: Context? = null,
         onPlaybackStateChange: ((Boolean) -> Unit)? = null
     ) {
         stop()
+        requestFocus(context)
 
         val parsedChords = parseChordProgression(chordsText).ifEmpty { defaultProgression }
         val clampedBpm = bpm.coerceIn(60, 170)
@@ -117,13 +167,14 @@ object AyraAudioSynthesizer {
                     track.release()
                 }
                 audioTrack = null
+                abandonFocus()
                 onPlaybackStateChange?.invoke(false)
             }
         }
     }
 
     fun playSynthSong(onPlaybackStateChange: ((Boolean) -> Unit)? = null) {
-        playSynthSong(chordsText = "Am - F - C - G", bpm = 110, onPlaybackStateChange = onPlaybackStateChange)
+        playSynthSong(chordsText = "Am - F - C - G", bpm = 110, context = null, onPlaybackStateChange = onPlaybackStateChange)
     }
 
     fun stop() {
@@ -134,6 +185,7 @@ object AyraAudioSynthesizer {
             audioTrack?.release()
         }
         audioTrack = null
+        abandonFocus()
     }
 
     internal fun parseChordProgression(chordsText: String): List<String> {

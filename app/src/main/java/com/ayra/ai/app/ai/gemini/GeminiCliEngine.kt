@@ -2,15 +2,19 @@ package com.ayra.ai.app.ai.gemini
 
 import android.content.Context
 import com.ayra.ai.app.ai.AiResponse
+import com.ayra.ai.app.ai.FirebaseAiEngine
 import com.ayra.ai.app.ai.providers.AiProviderType
+import com.ayra.ai.app.ai.providers.ChatRequest
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
+import com.ayra.ai.app.ai.providers.ProviderPool
+import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Direct Gemini CLI & REST Engine.
- * Executes direct Gemini API commands with system directives, web grounding,
- * and multimodal image attachments.
+ * Direct Gemini CLI & Firebase Engine.
+ * Executes direct Gemini REST or Firebase AI Logic commands with system directives,
+ * search grounding, multimodal image attachments, and ProviderPool failover.
  */
 class GeminiCliEngine(private val context: Context? = null) {
 
@@ -23,18 +27,54 @@ class GeminiCliEngine(private val context: Context? = null) {
     ): AiResponse = withContext(Dispatchers.IO) {
         val sys = systemDirective ?: "You are Gemini CLI Engine. Provide direct, highly accurate, and helpful answers in the user's language."
 
-        val resp = externalProviders.generateChatResponse(
-            prompt = prompt,
-            systemPrompt = sys,
-            imageBase64 = imageBase64,
-            preferredProvider = AiProviderType.GEMINI,
-            preferredModelId = ExternalAiProviders.GEMINI_FLASH_MODEL,
-            withSearchGrounding = true
-        )
+        if (externalProviders.isProviderConfigured(AiProviderType.GEMINI)) {
+            runCatching {
+                val resp = externalProviders.generateChatResponse(
+                    prompt = prompt,
+                    systemPrompt = sys,
+                    imageBase64 = imageBase64,
+                    preferredProvider = AiProviderType.GEMINI,
+                    preferredModelId = ExternalAiProviders.GEMINI_FLASH_MODEL,
+                    withSearchGrounding = true
+                )
+                if (resp.text.isNotBlank()) {
+                    return@withContext AiResponse(
+                        text = resp.text,
+                        modelUsed = resp.modelUsed.ifBlank { "Gemini 3.8 Flash (Direct CLI) ⚡" }
+                    )
+                }
+            }
+        }
 
+        if (FirebaseAiEngine.isAvailable(context) && externalProviders.allowExternalWikiGrounding) {
+            val fbRes = runCatching {
+                FirebaseAiEngine(context).generateText(
+                    prompt = prompt,
+                    systemPrompt = sys,
+                    imageBase64 = imageBase64,
+                    modelName = FirebaseAiEngine.MODEL_FLASH,
+                    enableSearchGrounding = true
+                )
+            }.getOrDefault("")
+            if (fbRes.isNotBlank()) {
+                return@withContext AiResponse(
+                    text = fbRes,
+                    modelUsed = "Gemini 3.8 Flash (Firebase AI CLI) ⚡"
+                )
+            }
+        }
+
+        val poolResp = ProviderPool(context, externalProviders).executeSync(
+            ChatRequest(
+                prompt = prompt,
+                mode = ProviderPoolMode.BEST,
+                imageBase64 = imageBase64,
+                systemPromptOverride = sys
+            )
+        )
         AiResponse(
-            text = resp.text,
-            modelUsed = resp.modelUsed.ifBlank { "Gemini 3.8 Flash (Direct CLI) ⚡" }
+            text = poolResp.text,
+            modelUsed = poolResp.modelUsed.ifBlank { "Gemini CLI (${poolResp.provider.displayName}) ⚡" }
         )
     }
 }

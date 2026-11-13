@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.ai.AiComparisonEngine
 import com.ayra.ai.app.ai.ComparisonArenaReport
 import com.ayra.ai.app.ai.providers.AiModelRegistry
+import com.ayra.ai.app.ai.providers.AiUsageTracker
 import com.ayra.ai.app.ai.providers.ModelCategory
 import com.ayra.ai.app.ai.providers.ModelHealthStatus
 import com.ayra.ai.app.ui.theme.CosmicBackground
@@ -78,13 +79,14 @@ fun ModelsArenaScreen(
     var activeTab by remember { mutableStateOf(ArenaTab.REGISTRY) }
 
     LaunchedEffect(Unit) {
+        AiUsageTracker.loadIfNeeded(context)
         AiModelRegistry.refreshConfigurationStates(context)
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CosmicBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(rememberScrollState()),
@@ -94,12 +96,12 @@ fun ModelsArenaScreen(
             text = "AI Model Ecosystem & Arena",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Inspect real provider configuration & latency, or benchmark multiple models in parallel with cross-model verification.",
+            text = "Inspect real provider configuration & latency, discover live /models, or benchmark multiple models in parallel.",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,33 +134,121 @@ fun ModelsArenaScreen(
 private fun RegistryHealthPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
     val entries by AiModelRegistry.entries.collectAsState()
+    val usageMetrics by AiUsageTracker.metricsFlow.collectAsState()
     var selectedCategory by remember { mutableStateOf<ModelCategory?>(null) }
     var isSweeping by remember { mutableStateOf(false) }
+    var isDiscovering by remember { mutableStateOf(false) }
+    var discoveryStatus by remember { mutableStateOf<String?>(null) }
 
     val filtered = remember(entries, selectedCategory) {
         if (selectedCategory == null) entries else entries.filter { it.category == selectedCategory }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(
-            onClick = {
-                if (isSweeping) return@Button
-                isSweeping = true
-                scope.launch {
-                    AiModelRegistry.runHealthSweep(context)
-                    isSweeping = false
-                }
-            },
-            enabled = !isSweeping,
-            modifier = Modifier.fillMaxWidth().testTag("registry_health_sweep_button")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isSweeping) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+            Button(
+                onClick = {
+                    if (isSweeping) return@Button
+                    isSweeping = true
+                    scope.launch {
+                        AiModelRegistry.runHealthSweep(context)
+                        isSweeping = false
+                    }
+                },
+                enabled = !isSweeping,
+                modifier = Modifier.weight(1f).testTag("registry_health_sweep_button")
+            ) {
+                if (isSweeping) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(if (isSweeping) "Sweeping..." else "Health Sweep", fontSize = 12.sp)
             }
-            Spacer(Modifier.width(8.dp))
-            Text(if (isSweeping) "Running Live Health Probes..." else "Run Live Health Sweep")
+
+            OutlinedButton(
+                onClick = {
+                    if (isDiscovering) return@OutlinedButton
+                    isDiscovering = true
+                    scope.launch {
+                        val discovered = AiModelRegistry.discoverAndMergeLiveModels(context)
+                        discoveryStatus = if (discovered > 0) {
+                            "Merged $discovered live models from configured endpoints."
+                        } else {
+                            "No additional live /models discovered from configured keys."
+                        }
+                        isDiscovering = false
+                    }
+                },
+                enabled = !isDiscovering,
+                modifier = Modifier.weight(1f).testTag("registry_discover_models_button")
+            ) {
+                if (isDiscovering) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(if (isDiscovering) "Probing..." else "Discover /models", fontSize = 12.sp)
+            }
+        }
+
+        discoveryStatus?.let { msg ->
+            Text(text = msg, color = NeonCyan, fontSize = 11.5.sp)
+        }
+
+        if (usageMetrics.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(GlassSurfaceDark)
+                    .border(1.dp, NeonPurple.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .padding(12.dp)
+                    .testTag("provider_usage_telemetry_card"),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Local Provider Telemetry (${usageMetrics.sumOf { it.totalRequests }} calls)",
+                        color = NeonPurple,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp
+                    )
+                    OutlinedButton(
+                        onClick = { AiUsageTracker.clearAll(context) },
+                        modifier = Modifier.testTag("telemetry_clear_button")
+                    ) {
+                        Text("Reset", fontSize = 11.sp)
+                    }
+                }
+                usageMetrics.take(8).forEach { metric ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = metric.displayName,
+                            color = TextPrimary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${metric.totalRequests} req • ${metric.successRatePercent}% ok • avg ${metric.avgLatencyMs}ms",
+                            color = if (metric.successRatePercent >= 75) NeonGreen else NeonGold,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
         }
 
         Row(

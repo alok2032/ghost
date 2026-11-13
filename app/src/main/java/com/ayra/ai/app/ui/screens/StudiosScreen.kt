@@ -45,7 +45,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import com.ayra.ai.app.ai.code.SavedCodeProject
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +72,7 @@ import coil.compose.SubcomposeAsyncImage
 import com.ayra.ai.app.ai.AiMediaPromptSynthesizer
 import com.ayra.ai.app.ai.FirebaseAiEngine
 import com.ayra.ai.app.ai.FirebaseImageResult
+import com.ayra.ai.app.ai.Model3dMeshCatalog
 import com.ayra.ai.app.ai.code.GeneratedProjectFile
 import com.ayra.ai.app.ai.code.ProjectWorkspaceManager
 import com.ayra.ai.app.ai.higgsfield.OpenHiggsfieldEngine
@@ -112,7 +117,7 @@ fun StudiosScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CosmicBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(rememberScrollState()),
@@ -122,12 +127,12 @@ fun StudiosScreen(
             text = "Ayra Creative & Code Studios",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Image synthesis/editing, motion storyboards, real WAV composition, WebGL2 PBR 3D, and multi-file ZIP code generation.",
+            text = "Image synthesis/editing, motion & Wan 2.1 video, real WAV composition, WebGL2 PBR 3D, and multi-file code editor/ZIP.",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Row(
@@ -153,7 +158,7 @@ fun StudiosScreen(
             StudioMode.IMAGE -> ImageStudioPanel(context = context)
             StudioMode.VIDEO -> VideoStoryboardPanel(context = context)
             StudioMode.MUSIC -> MusicStudioPanel(context = context)
-            StudioMode.THREE_D -> ThreeDStudioPanel()
+            StudioMode.THREE_D -> ThreeDStudioPanel(context = context)
             StudioMode.CODE -> CodeBuilderPanel(context = context)
         }
 
@@ -168,6 +173,8 @@ private fun ImageStudioPanel(context: android.content.Context) {
     val comfyClient = remember { ComfyUiClient() }
 
     var prompt by remember { mutableStateOf("") }
+    var negativePrompt by remember { mutableStateOf("") }
+    var imageAspect by remember { mutableStateOf("1:1") }
     var pickedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var isBusy by remember { mutableStateOf(false) }
     var generatedFile by remember { mutableStateOf<File?>(null) }
@@ -201,6 +208,24 @@ private fun ImageStudioPanel(context: android.content.Context) {
             modifier = Modifier.fillMaxWidth().testTag("studio_image_prompt_input"),
             maxLines = 4
         )
+
+        OutlinedTextField(
+            value = negativePrompt,
+            onValueChange = { negativePrompt = it },
+            label = { Text("Negative prompt (optional, e.g. blurry, watermark)") },
+            modifier = Modifier.fillMaxWidth().testTag("studio_image_negative_input"),
+            singleLine = true
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("1:1", "16:9", "9:16").forEach { ratio ->
+                FilterChip(
+                    selected = imageAspect == ratio,
+                    onClick = { imageAspect = ratio },
+                    label = { Text(ratio, fontSize = 11.5.sp) }
+                )
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -238,7 +263,10 @@ private fun ImageStudioPanel(context: android.content.Context) {
 
                         // 1. Try Firebase AI Logic Nano Banana 2.1
                         if (FirebaseAiEngine.isAvailable(context)) {
-                            when (val fbRes = firebaseAi.generateOrEditImage(clean, refBase64)) {
+                            val fbPrompt = if (negativePrompt.isNotBlank()) {
+                                "$clean (Avoid: ${negativePrompt.trim()})"
+                            } else clean
+                            when (val fbRes = firebaseAi.generateOrEditImage(fbPrompt, refBase64)) {
                                 is FirebaseImageResult.Success -> {
                                     generatedFile = fbRes.file
                                     statusLabel = "Generated via ${fbRes.modelUsed}"
@@ -251,14 +279,45 @@ private fun ImageStudioPanel(context: android.content.Context) {
                             }
                         }
 
-                        // 2. Try self-hosted ComfyUI if user configured URL
+                        // 2. Try self-hosted ComfyUI (T2I or Img2Img) if user configured URL
                         val comfyUrl = withContext(Dispatchers.IO) { AyraPreferences.getComfyUiUrl(context) }
-                        if (comfyUrl.isNotBlank() && refBase64 == null) {
+                        if (comfyUrl.isNotBlank()) {
                             val outDir = File(context.filesDir, "generated_images")
-                            when (val comfyRes = comfyClient.generateImage(comfyUrl, clean, outDir)) {
+                            val neg = negativePrompt.ifBlank { "blurry, low quality, distorted, watermark" }
+                            val comfyRes = if (refBase64 != null) {
+                                val refBytes = runCatching { Base64.decode(refBase64, Base64.DEFAULT) }.getOrNull()
+                                if (refBytes != null && refBytes.isNotEmpty()) {
+                                    comfyClient.generateImageToImage(
+                                        baseUrl = comfyUrl,
+                                        prompt = clean,
+                                        referenceImageBytes = refBytes,
+                                        outputDir = outDir,
+                                        negativePrompt = neg
+                                    )
+                                } else ComfyUiResult.Failure("Invalid reference image bytes.")
+                            } else {
+                                val (w, h) = when (imageAspect) {
+                                    "16:9" -> 1024 to 576
+                                    "9:16" -> 576 to 1024
+                                    else -> 768 to 768
+                                }
+                                comfyClient.generateImage(
+                                    baseUrl = comfyUrl,
+                                    prompt = clean,
+                                    outputDir = outDir,
+                                    width = w,
+                                    height = h,
+                                    negativePrompt = neg
+                                )
+                            }
+                            when (comfyRes) {
                                 is ComfyUiResult.ImageSuccess -> {
                                     generatedFile = comfyRes.file
-                                    statusLabel = "Generated via ComfyUI (${comfyRes.elapsedMs}ms)"
+                                    statusLabel = if (refBase64 != null) {
+                                        "Edited via ComfyUI Img2Img (${comfyRes.elapsedMs}ms)"
+                                    } else {
+                                        "Generated via ComfyUI (${comfyRes.elapsedMs}ms)"
+                                    }
                                     isBusy = false
                                     return@launch
                                 }
@@ -340,9 +399,13 @@ private fun ImageStudioPanel(context: android.content.Context) {
 @Composable
 private fun VideoStoryboardPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
+    val comfyClient = remember { ComfyUiClient() }
     var prompt by remember { mutableStateOf("") }
+    var negativePrompt by remember { mutableStateOf("") }
     var aspectRatio by remember { mutableStateOf("16:9") }
+    var preferComfyWanVideo by remember { mutableStateOf(true) }
     var videoPayloadJson by remember { mutableStateOf<String?>(null) }
+    var statusNote by remember { mutableStateOf<String?>(null) }
     var isBusy by remember { mutableStateOf(false) }
 
     Column(
@@ -355,7 +418,7 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            text = "Cinematic Motion Storyboard Studio",
+            text = "Cinematic Video & Motion Storyboard",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = NeonPurple
@@ -369,6 +432,14 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
             maxLines = 3
         )
 
+        OutlinedTextField(
+            value = negativePrompt,
+            onValueChange = { negativePrompt = it },
+            label = { Text("Negative prompt (optional)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("16:9", "9:16").forEach { ratio ->
                 FilterChip(
@@ -377,6 +448,11 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
                     label = { Text(if (ratio == "16:9") "16:9 Cinema" else "9:16 Portrait") }
                 )
             }
+            FilterChip(
+                selected = preferComfyWanVideo,
+                onClick = { preferComfyWanVideo = !preferComfyWanVideo },
+                label = { Text(if (preferComfyWanVideo) "ComfyUI Wan 2.1 + Fallback" else "Storyboard Only", fontSize = 11.sp) }
+            )
         }
 
         Button(
@@ -384,9 +460,46 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
                 val clean = prompt.trim()
                 if (clean.isBlank() || isBusy) return@Button
                 isBusy = true
+                statusNote = null
                 scope.launch {
+                    val comfyUrl = withContext(Dispatchers.IO) { AyraPreferences.getComfyUiUrl(context) }
+                    if (preferComfyWanVideo && comfyUrl.isNotBlank()) {
+                        val (w, h) = if (aspectRatio == "9:16") 480 to 832 else 832 to 480
+                        val outDir = File(context.filesDir, "generated_images")
+                        when (
+                            val res = comfyClient.generateVideo(
+                                baseUrl = comfyUrl,
+                                prompt = clean,
+                                outputDir = outDir,
+                                width = w,
+                                height = h,
+                                negativePrompt = negativePrompt.ifBlank { "static, blurry, distorted, watermark, low fps" }
+                            )
+                        ) {
+                            is ComfyUiResult.VideoSuccess -> {
+                                videoPayloadJson = JSONObject().apply {
+                                    put("title", clean.take(44))
+                                    put("prompt", clean)
+                                    put("aspectRatio", aspectRatio)
+                                    put("localVideoPath", res.file.absolutePath)
+                                    put("duration", "0:04")
+                                    put("cameraMotion", "Wan 2.1 ComfyUI MP4")
+                                }.toString()
+                                statusNote = "Rendered MP4 via ComfyUI Wan 2.1 (${res.elapsedMs}ms)"
+                                isBusy = false
+                                return@launch
+                            }
+                            is ComfyUiResult.Failure -> {
+                                statusNote = "ComfyUI video unavailable (${res.reason}); showing keyframe storyboard."
+                            }
+                            else -> {}
+                        }
+                    } else if (preferComfyWanVideo) {
+                        statusNote = "Configure ComfyUI server URL in Tools for live Wan 2.1 MP4 rendering; showing keyframe storyboard."
+                    }
+
                     val payload = withContext(Dispatchers.IO) {
-                        OpenHiggsfieldEngine(context).synthesizeVideoCraft(clean, aspectRatio).jsonPayload
+                        OpenHiggsfieldEngine(context).synthesizeVideoCraftWithAi(clean, aspectRatio).jsonPayload
                     }
                     videoPayloadJson = payload
                     isBusy = false
@@ -395,7 +508,11 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
             enabled = prompt.isNotBlank() && !isBusy,
             modifier = Modifier.fillMaxWidth().testTag("studio_generate_video_button")
         ) {
-            Text(if (isBusy) "Building Storyboard..." else "Generate Motion Storyboard")
+            Text(if (isBusy) "Rendering Video..." else "Generate Video / Storyboard")
+        }
+
+        statusNote?.let { note ->
+            Text(text = note, color = TextSecondary, fontSize = 11.sp)
         }
 
         videoPayloadJson?.let { json ->
@@ -492,10 +609,95 @@ private fun MusicStudioPanel(context: android.content.Context) {
 }
 
 @Composable
-private fun ThreeDStudioPanel() {
-    ThreeDModelCard(
-        title = "Ayra WebGL2 PBR 3D Studio"
-    )
+private fun ThreeDStudioPanel(context: android.content.Context) {
+    val scope = rememberCoroutineScope()
+    val pool = remember { ProviderPool(context) }
+    var prompt by remember { mutableStateOf("") }
+    var customPayload by remember { mutableStateOf<String?>(null) }
+    var isBusy by remember { mutableStateOf(false) }
+    var statusNote by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurfaceDark)
+                .border(1.dp, NeonCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "AI 3D Geometry Architect & WebGL2 PBR",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = NeonCyan
+            )
+            OutlinedTextField(
+                value = prompt,
+                onValueChange = { prompt = it },
+                label = { Text("Describe any 3D object (e.g. hexagonal drone, sci-fi tower)") },
+                modifier = Modifier.fillMaxWidth().testTag("studio_3d_prompt_input"),
+                singleLine = true
+            )
+            Button(
+                onClick = {
+                    val clean = prompt.trim()
+                    if (clean.isBlank() || isBusy) return@Button
+                    isBusy = true
+                    statusNote = "Synthesizing 3D Wavefront .OBJ geometry..."
+                    scope.launch {
+                        val resultPayload = withContext(Dispatchers.IO) {
+                            val title = "3D ${clean.take(40).replaceFirstChar { it.uppercase() }}"
+                            val rawObj = runCatching {
+                                pool.executeSync(
+                                    ChatRequest(
+                                        prompt = """
+                                            Generate a clean, low-poly 3D geometric mesh in Wavefront .OBJ format representing: "$clean".
+                                            Output ONLY valid `v x y z` vertex lines (12-36 vertices in -1.5..1.5) followed by `f i1 i2 i3` (or quad `f i1 i2 i3 i4`) face lines (at least 6 faces). No markdown or explanations.
+                                        """.trimIndent(),
+                                        mode = ProviderPoolMode.FAST,
+                                        systemPromptOverride = "You are a 3D CAD mesh generator outputting strictly raw Wavefront .OBJ lines."
+                                    )
+                                ).text
+                            }.getOrDefault("")
+                            val parsed = Model3dMeshCatalog.parseWavefrontObj(rawObj, "CUSTOM_AI")
+                            if (parsed != null) {
+                                statusNote = "AI synthesized custom mesh (${parsed.vertexCount} vertices, ${parsed.faceCount} faces)"
+                                JSONObject().apply {
+                                    put("title", title)
+                                    put("kind", "CUSTOM_AI")
+                                    put("vertices", parsed.vertexCount)
+                                    put("edges", parsed.edgeCount)
+                                    put("faces", parsed.faceCount)
+                                    put("objContent", Model3dMeshCatalog.buildWavefrontObj(parsed, title))
+                                }.toString()
+                            } else {
+                                statusNote = "Showing interactive WebGL2 PBR studio presets below."
+                                null
+                            }
+                        }
+                        if (resultPayload != null) {
+                            customPayload = resultPayload
+                        }
+                        isBusy = false
+                    }
+                },
+                enabled = prompt.isNotBlank() && !isBusy,
+                modifier = Modifier.fillMaxWidth().testTag("studio_generate_3d_button")
+            ) {
+                Text(if (isBusy) "Synthesizing Mesh..." else "Generate Custom AI 3D Mesh")
+            }
+            statusNote?.let {
+                Text(text = it, color = TextSecondary, fontSize = 11.sp)
+            }
+        }
+
+        ThreeDModelCard(
+            craftPayload = customPayload,
+            title = "Ayra WebGL2 PBR 3D Studio"
+        )
+    }
 }
 
 @Composable
@@ -508,8 +710,23 @@ private fun CodeBuilderPanel(context: android.content.Context) {
     var isBusy by remember { mutableStateOf(false) }
     var generatedFiles by remember { mutableStateOf<List<GeneratedProjectFile>>(emptyList()) }
     var selectedFileIndex by remember { mutableIntStateOf(0) }
+    var editedContent by remember { mutableStateOf("") }
+    var activeProjectDir by remember { mutableStateOf<File?>(null) }
+    var savedProjects by remember { mutableStateOf<List<SavedCodeProject>>(emptyList()) }
     var zipFile by remember { mutableStateOf<File?>(null) }
     var errorNote by remember { mutableStateOf<String?>(null) }
+
+    fun refreshSavedProjects() {
+        savedProjects = ProjectWorkspaceManager.listSavedProjects(context)
+    }
+
+    LaunchedEffect(Unit) {
+        refreshSavedProjects()
+    }
+
+    LaunchedEffect(selectedFileIndex, generatedFiles) {
+        editedContent = generatedFiles.getOrNull(selectedFileIndex)?.content.orEmpty()
+    }
 
     Column(
         modifier = Modifier
@@ -520,12 +737,49 @@ private fun CodeBuilderPanel(context: android.content.Context) {
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            text = "Multi-File Code & ZIP Project Builder",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = NeonGreen
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Multi-File Code & ZIP Project Builder",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = NeonGreen,
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedButton(onClick = { refreshSavedProjects() }) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh saved projects", modifier = Modifier.size(16.dp))
+            }
+        }
+
+        if (savedProjects.isNotEmpty()) {
+            Text("Saved Workspace Projects (${savedProjects.size}):", color = TextSecondary, fontSize = 11.sp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                savedProjects.forEach { proj ->
+                    FilterChip(
+                        selected = activeProjectDir?.absolutePath == proj.rootDir.absolutePath,
+                        onClick = {
+                            val loaded = ProjectWorkspaceManager.loadProjectFiles(proj.rootDir)
+                            activeProjectDir = proj.rootDir
+                            projectName = proj.name
+                            generatedFiles = loaded
+                            selectedFileIndex = 0
+                            editedContent = loaded.firstOrNull()?.content.orEmpty()
+                            zipFile = ProjectWorkspaceManager.createProjectZip(context, proj.name, proj.rootDir)
+                        },
+                        label = { Text("${proj.name} (${proj.fileCount})", fontSize = 11.sp) },
+                        modifier = Modifier.testTag("saved_project_chip_${proj.name}")
+                    )
+                }
+            }
+        }
 
         OutlinedTextField(
             value = projectName,
@@ -574,16 +828,19 @@ private fun CodeBuilderPanel(context: android.content.Context) {
                         aiOutput = resText,
                         fallbackProjectName = projectName.ifBlank { "ayra_project" }
                     )
-                    val (_, archive) = withContext(Dispatchers.IO) {
+                    val (dir, archive) = withContext(Dispatchers.IO) {
                         ProjectWorkspaceManager.writeProjectToDiskAndZip(
                             context = context,
                             projectName = projectName.ifBlank { "ayra_project" },
                             files = parsed
                         )
                     }
+                    activeProjectDir = dir
                     generatedFiles = parsed
                     selectedFileIndex = 0
+                    editedContent = parsed.firstOrNull()?.content.orEmpty()
                     zipFile = archive
+                    refreshSavedProjects()
                     isBusy = false
                 }
             },
@@ -615,21 +872,48 @@ private fun CodeBuilderPanel(context: android.content.Context) {
 
             val currentFile = generatedFiles.getOrNull(selectedFileIndex)
             if (currentFile != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF050811))
-                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(10.dp))
-                        .padding(10.dp)
-                ) {
-                    Text(
-                        text = currentFile.content,
-                        color = Color(0xFFE2E8F0),
+                OutlinedTextField(
+                    value = editedContent,
+                    onValueChange = { editedContent = it },
+                    label = { Text("Edit ${currentFile.relativePath}") },
+                    modifier = Modifier.fillMaxWidth().testTag("studio_code_editor_input"),
+                    maxLines = 12,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
+                        fontSize = 11.5.sp
                     )
+                )
+
+                val projDir = activeProjectDir
+                if (projDir != null) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val updatedArchive = withContext(Dispatchers.IO) {
+                                    val savedOk = ProjectWorkspaceManager.saveEditedProjectFile(
+                                        rootDir = projDir,
+                                        relativePath = currentFile.relativePath,
+                                        content = editedContent
+                                    )
+                                    if (savedOk) {
+                                        ProjectWorkspaceManager.createProjectZip(context, projectName.ifBlank { projDir.name }, projDir)
+                                    } else null
+                                }
+                                if (updatedArchive != null) {
+                                    generatedFiles = generatedFiles.mapIndexed { i, f ->
+                                        if (i == selectedFileIndex) f.copy(content = editedContent) else f
+                                    }
+                                    zipFile = updatedArchive
+                                    Toast.makeText(context, "Saved & updated ZIP!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("studio_save_rezip_button")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Save Edit & Re-ZIP Project")
+                    }
                 }
             }
 

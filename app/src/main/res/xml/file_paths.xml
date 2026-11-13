@@ -6,6 +6,8 @@
     <files-path name="chat_exports" path="chat_exports" />
     <files-path name="generated_audio" path="generated_audio" />
     <files-path name="generated_docs" path="generated_docs" />
+    <files-path name="generated_images" path="generated_images" />
+    <files-path name="generated_3d" path="generated_3d" />
     <files-path name="code_projects" path="code_projects" />
     <files-path name="project_zips" path="project_zips" />
     <files-path name="saved_attachments" path="saved_attachments" />

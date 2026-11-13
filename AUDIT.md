@@ -71,3 +71,24 @@
 - **Verification:**
   - Unit tests: **49 tests completed, 49 passed, 0 failures** (`gradle :app:testDebugUnitTest`).
   - Compilation: **Clean build succeeded** (`compile_applet`).
+
+### Phase 3–20: Master Upgrade — Honesty Repairs, Multi-Model Ecosystem, Studios & Workspace
+- **Status:** Completed
+- **Core Repairs & Honesty:**
+  - **ZeroHardcodedKeysTest Fix:** Renamed synthetic model channel/registry ID `"hf_qwen_72b"` to `"huggingface_qwen_72b"` so zero credential prefixes appear in `app/src/main`. Verified `ZeroHardcodedKeysTest` passes (`121/121` total unit/Robolectric tests passing).
+  - **Honest Offline States:** Removed canned offline app/code fallback templates (`AuraStore`, `CyberSnake`, `NexusOps`) in `AiAppAndCodeStudio.kt` and replaced fake `[x]` offline checkmarks in `AyraSuperpowersEngine.kt` with transparent `- [ ]` pending notices. Removed stale `"VPN"` references from `ChatScreen.kt` and updated `GlobalWebKnowledgeGateway.kt` to accurately reflect HTTPS/TLS, Android Keystore, and Firebase App Check.
+  - **3D Catalog Unification & .OBJ Export:** Created `Model3dMeshCatalog.kt` as single source of truth shared between `UnifiedAiEngine.kt` and `ThreeDModelCard.kt`; added accurate vertex/edge/face telemetry and 48dp Wavefront `.obj` file export.
+  - **Accessibility & Play Policy:** Updated `< 48.dp` icon buttons (`ThreeDModelCard`, `VideoPlayerCard`, `ChatScreen`, `CyberTerminalCard`, `ControlCenterSheet`) to `48.dp` minimum interactive targets; removed `*/*` catch-all from `ChatScreen` document picker; added `generated_images` and `generated_3d` to `file_paths.xml`.
+- **AI Ecosystem, Orchestration & Multimodal Upgrades:**
+  - **New Free-Tier Providers & Discovery:** Added `AiProviderType.CEREBRAS` and `AiProviderType.SAMBANOVA` across `SecureKeyStore`, `EncryptedPreferences`, `AyraPreferences`, `ExternalAiProviders`, `AiModelRegistry`, and `ProviderKeysSection`; added live `/models` discovery (`AiModelRegistry.discoverAndMergeLiveModels`) and persistent local telemetry (`AiUsageTracker`).
+  - **Document & Research Intelligence:** Added `DataAnalysisEngine` CSV/TSV statistical profiling, OOXML extractors (`.docx`, `.xlsx`, `.pptx`) and PDF `/FlateDecode` zlib stream decompression in `StorageHelper`, plus CrossRef scholarly lookup and SSRF-safe HTTPS webpage reader (`AutonomousKnowledgeEngine.fetchReadableWebpage`) with persistent research history in `ResearchDocsScreen`.
+  - **Video, Code & Audio Upgrades:** Added ComfyUI Image-to-Image and Wan 2.1 Video (`VHS_VideoCombine` + `VideoView` MP4 playback) in `ComfyUiClient`/`VideoPlayerCard`/`StudiosScreen`; added saved project reload/inline edit/re-ZIP in `ProjectWorkspaceManager` and `CodeBuilderPanel`; added `AudioFocusRequest` lifecycle handling in `VoiceAssistantManager` and `AyraAudioSynthesizer`, plus OpenAI-compatible Whisper (`/audio/transcriptions`) STT fallback in `ExternalAiProviders` and `ChatScreen`.
+  - **Material 3 Theme, Workspace Explorer & Key-Free Backup:** Implemented Dark/Light/System theme switching (`Color.kt`, `Theme.kt`, `MainActivity.kt`, `AyraWorkspaceHost.kt`), Workspace Files Explorer (`StorageHelper.listWorkspaceArtifacts` / `deleteWorkspaceArtifact`), and Key-Free Workspace JSON Backup & Restore (`exportSafeWorkspaceBackupJson` / `importSafeWorkspaceBackupJson`) strictly excluding `SecureKeyStore` secrets.
+- **External Repository Compatibility Notes (Phase 15):**
+  - `Comfy-Org/ComfyUI`: Requires local/cloud Python + PyTorch + CUDA GPU server; integrated cleanly via user-configured LAN/cloud ComfyUI URL (`ComfyUiClient`: text-to-image, img2img workflow, Wan 2.1 `VHS_VideoCombine` video + `/history` + `/view`).
+  - `OpenMontageInc/OpenMontage`: Desktop/server Python + FFmpeg + Node video pipeline (cannot execute natively inside Android sandbox); supported cleanly for codebase analysis, prompt/workflow assistance, and script inspection.
+  - `morluto/rea`: Server/Node architecture (cannot host native background daemon on Android without remote deployment); inspectable via `GitHubPluginEngine` repository analysis and compatibility advisor.
+- **Unit & Robolectric Test Verification:**
+  - `gradle :app:testDebugUnitTest --rerun-tasks`: **121 tests run, 121 passed, 0 skipped, 0 failed** across 21 test suites (including `AlokUpgradeVerificationTest` covering CSV stats, OOXML + FlateDecode PDF, key-free backup, 3D `.OBJ`, SSRF/HTML reader, MockWebServer ComfyUI Wan MP4, Project reload/edit/rezip, and Whisper `/audio/transcriptions` + `AiUsageTracker`).
+  - `gradle :app:testDebugUnitTest :app:assembleDebug`: **BUILD SUCCESSFUL** (`app/build/outputs/apk/debug/app-debug.apk` and `output-metadata.json` verified present).
+

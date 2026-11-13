@@ -64,6 +64,13 @@ import com.ayra.ai.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 
+import android.net.Uri
+import android.widget.VideoView
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.viewinterop.AndroidView
+import java.io.File
+
 @Composable
 fun VideoPlayerCard(
     jsonPayload: String,
@@ -72,6 +79,8 @@ fun VideoPlayerCard(
 ) {
     var title by remember { mutableStateOf("AI Cinematic Video") }
     var previewUrl by remember { mutableStateOf("") }
+    var localVideoPath by remember { mutableStateOf("") }
+    var videoUrl by remember { mutableStateOf("") }
     var keyframeUrls by remember { mutableStateOf<List<String>>(emptyList()) }
     var cameraMotion by remember { mutableStateOf("") }
     var lensType by remember { mutableStateOf("") }
@@ -85,6 +94,8 @@ fun VideoPlayerCard(
             val json = JSONObject(jsonPayload)
             title = json.optString("title", "AI Cinematic Video")
             previewUrl = json.optString("previewUrl", "")
+            localVideoPath = json.optString("localVideoPath", "")
+            videoUrl = json.optString("videoUrl", "")
             prompt = json.optString("prompt", "")
             cameraMotion = json.optString("cameraMotion", "")
             lensType = json.optString("lensType", "")
@@ -107,6 +118,15 @@ fun VideoPlayerCard(
                 parts[0].toIntOrNull()?.times(60)?.plus(parts.getOrNull(1)?.toIntOrNull() ?: 15) ?: 15
             } else 15
         } catch (_: Exception) {}
+    }
+
+    val playableVideoUri = remember(localVideoPath, videoUrl) {
+        val localFile = localVideoPath.takeIf { it.isNotBlank() }?.let { File(it) }
+        when {
+            localFile != null && localFile.exists() -> Uri.fromFile(localFile)
+            videoUrl.startsWith("https://") || videoUrl.startsWith("http://") || videoUrl.startsWith("file://") -> Uri.parse(videoUrl)
+            else -> null
+        }
     }
 
     var isPlaying by remember { mutableStateOf(true) }
@@ -193,7 +213,7 @@ fun VideoPlayerCard(
                         fontSize = 13.5.sp
                     )
                     Text(
-                        text = "AI Motion Storyboard Preview",
+                        text = if (playableVideoUri != null) "Real Video Stream Playback" else "AI Motion Storyboard Preview",
                         style = MaterialTheme.typography.bodySmall,
                         color = NeonCyan,
                         fontSize = 10.5.sp
@@ -258,7 +278,33 @@ fun VideoPlayerCard(
                     .border(1.dp, Color(0x3300FFFF), RoundedCornerShape(14.dp))
                     .clickable { isPlaying = !isPlaying }
             ) {
-                if (activeFrameUrl.isNotBlank()) {
+                if (playableVideoUri != null) {
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoURI(playableVideoUri)
+                                setOnPreparedListener { mp ->
+                                    mp.isLooping = true
+                                    val sec = (mp.duration / 1000).coerceAtLeast(1)
+                                    durationTotalSeconds = sec
+                                    if (isPlaying) start()
+                                }
+                            }
+                        },
+                        update = { view ->
+                            if (view.tag != playableVideoUri.toString()) {
+                                view.tag = playableVideoUri.toString()
+                                view.setVideoURI(playableVideoUri)
+                            }
+                            if (isPlaying && !view.isPlaying) {
+                                view.start()
+                            } else if (!isPlaying && view.isPlaying) {
+                                view.pause()
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize().testTag("real_video_player_view")
+                    )
+                } else if (activeFrameUrl.isNotBlank()) {
                     val activeModelUrl = if (retryTick == 0) activeFrameUrl else {
                         val sep = if (activeFrameUrl.contains("?")) "&" else "?"
                         "${activeFrameUrl}${sep}retry=$retryTick"
@@ -374,15 +420,17 @@ fun VideoPlayerCard(
                         IconButton(
                             onClick = { onExpand(previewUrl) },
                             modifier = Modifier
-                                .size(30.dp)
+                                .minimumInteractiveComponentSize()
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.6f))
+                                .testTag("video_fullscreen_button")
                         ) {
                             Icon(
                                 Icons.Default.Fullscreen,
                                 contentDescription = "Fullscreen",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -410,15 +458,17 @@ fun VideoPlayerCard(
                     IconButton(
                         onClick = { isPlaying = !isPlaying },
                         modifier = Modifier
-                            .size(32.dp)
+                            .minimumInteractiveComponentSize()
+                            .size(48.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF131B2E))
+                            .testTag("video_play_pause_button")
                     ) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = "Toggle Play",
                             tint = NeonCyan,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))

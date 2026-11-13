@@ -1391,24 +1391,24 @@ fun ControlCenterSheet(
                             )
                             IconButton(
                                 onClick = { onCopyPrompt(msg.content) },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
                                     contentDescription = "Copy prompt",
                                     tint = TextSecondary,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                             IconButton(
                                 onClick = { onSelectPrompt(msg.content) },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
                                     contentDescription = "Re-run prompt",
                                     tint = NeonGreen,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }

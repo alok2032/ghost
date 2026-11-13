@@ -20,3 +20,13 @@ val TextMuted = Color(0xFF64748B)
 
 val UserBubble = Color(0xFF1E293B)
 val UserBubbleBorder = Color(0xFF334155)
+
+// Crisp Material 3 Light Theme Tokens
+val LightBackground = Color(0xFFF8FAFC)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceVariant = Color(0xFFE2E8F0)
+val LightTextPrimary = Color(0xFF0F172A)
+val LightTextSecondary = Color(0xFF475569)
+val LightPrimaryAccent = Color(0xFF0284C7)
+val LightSecondaryAccent = Color(0xFF7C3AED)
+

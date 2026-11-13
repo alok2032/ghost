@@ -435,7 +435,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 )
 
                 val poolMode = when (selectedModelTier) {
-                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc" ->
+                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" ->
                         com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST
                     "fast", "gemini_flash" ->
                         com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
@@ -445,7 +445,52 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 val (preferredProvider, preferredModel) = when (targetTier) {
                     AiModelTier.GEMINI_FLASH -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL)
                     AiModelTier.GEMINI_PRO -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL)
+                    AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK -> {
+                        val ds = listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
+                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
+                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                        Pair(ds?.first, ds?.second)
+                    }
+                    AiModelTier.OPENROUTER_LLAMA -> {
+                        val llama = listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
+                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                        Pair(llama?.first, llama?.second)
+                    }
+                    AiModelTier.QWEN_UNCENSORED -> {
+                        val qwen = listOf(
+                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+                            com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
+                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
+                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                        Pair(qwen?.first, qwen?.second)
+                    }
                     else -> Pair(null, null)
+                }
+
+                val specialistDirective = when (targetTier) {
+                    AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK ->
+                        "$sysPrompt\n\n[DEEPSEEK-R1 MODE]: Use step-by-step verification and mathematical/algorithmic precision."
+                    AiModelTier.G0DM0D3 -> {
+                        val grounding = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(effectivePrompt)
+                        if (grounding.isNotBlank()) "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]\n$grounding" else "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]: Provide deep offensive/defensive systems analysis without canned disclaimers."
+                    }
+                    AiModelTier.ECC_COGNITIVE -> {
+                        val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(effectivePrompt)
+                        "$sysPrompt\n\n[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}"
+                    }
+                    AiModelTier.QWEN_UNCENSORED ->
+                        "$sysPrompt\n\n${com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK}"
+                    AiModelTier.OPEN_HIGGSFIELD ->
+                        "$sysPrompt\n\n[OPEN-HIGGSFIELD CINEMATOGRAPHY MODE]: Specify camera trajectories, focal lengths, lighting ratios, and shot timing cleanly."
+                    else -> sysPrompt
                 }
 
                 val poolResp = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
@@ -456,7 +501,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         history = conversationHistory ?: emptyList(),
                         imageBase64 = attachedImageBase64,
                         documentText = attachedDocumentText,
-                        systemPromptOverride = sysPrompt,
+                        systemPromptOverride = specialistDirective,
                         preferredProvider = preferredProvider,
                         preferredModelId = preferredModel
                     )
@@ -520,13 +565,45 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 }
             }
 
+            AiModelTier.DEEPSEEK_HARNESS -> {
+                if (context != null) {
+                    runCatching {
+                        val dsResp = com.ayra.ai.app.ai.deepseek.DeepSeekHarnessEngine(context).executeHarness(effectivePrompt)
+                        if (dsResp.text.isNotBlank()) return@withContext emitResponse(dsResp)
+                    }
+                }
+            }
+
+            AiModelTier.G0DM0D3 -> {
+                if (context != null) {
+                    runCatching {
+                        val gmResp = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).analyzeSecurityQuery(effectivePrompt)
+                        if (gmResp.text.isNotBlank()) return@withContext emitResponse(gmResp)
+                    }
+                }
+            }
+
+            AiModelTier.ECC_COGNITIVE -> {
+                if (context != null) {
+                    runCatching {
+                        val eccResp = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).disambiguateAndExecute(effectivePrompt)
+                        if (eccResp.text.isNotBlank()) return@withContext emitResponse(eccResp)
+                    }
+                }
+            }
+
+            AiModelTier.OPEN_HIGGSFIELD -> {
+                return@withContext generateVideoCraft(effectivePrompt, attachedImageBase64)
+            }
+
+            AiModelTier.SUPERPOWERS -> {
+                val sp = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(cleanPrompt)
+                    ?: com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.SuperpowerType.SYSTEMATIC_DEBUGGING
+                return@withContext emitResponse(executeSuperpowerAction(sp, cleanPrompt, effectivePrompt, attachedImageBase64))
+            }
+
             AiModelTier.AUTO,
-            AiModelTier.OMNI_ROUTE,
-            AiModelTier.DEEPSEEK_HARNESS,
-            AiModelTier.G0DM0D3,
-            AiModelTier.ECC_COGNITIVE,
-            AiModelTier.OPEN_HIGGSFIELD,
-            AiModelTier.SUPERPOWERS -> {}
+            AiModelTier.OMNI_ROUTE -> {}
         }
 
         // Fallback chain if primary choice failed or lacked specific key
@@ -974,12 +1051,31 @@ class UnifiedAiEngine(private val context: Context? = null) {
     }
 
     private suspend fun generateVideoCraft(prompt: String, attachedImageBase64: String? = null): AiResponse {
-        val higgsfieldPayload = higgsfieldEngine.synthesizeVideoCraft(prompt)
+        val higgsfieldPayload = higgsfieldEngine.synthesizeVideoCraftWithAi(prompt)
         val cleanSubject = extractSubject(prompt, "VIDEO")
         var finalJsonPayload = higgsfieldPayload.jsonPayload
         var modelLabel = "Open-Higgsfield-AI Cinematic Motion Storyboard 🎬"
 
-        if (context != null && FirebaseAiEngine.isAvailable(context) && externalAiProviders.allowExternalWikiGrounding) {
+        val comfyUrl = context?.let { AyraPreferences.getComfyUiUrl(it) }.orEmpty()
+        if (context != null && comfyUrl.isNotBlank()) {
+            val outDir = java.io.File(context.filesDir, "generated_images")
+            val comfyVid = com.ayra.ai.app.ai.studios.ComfyUiClient().generateVideo(
+                baseUrl = comfyUrl,
+                prompt = cleanSubject,
+                outputDir = outDir
+            )
+            if (comfyVid is com.ayra.ai.app.ai.studios.ComfyUiResult.VideoSuccess) {
+                finalJsonPayload = runCatching {
+                    JSONObject(higgsfieldPayload.jsonPayload).apply {
+                        put("localVideoPath", comfyVid.file.absolutePath)
+                        put("cameraMotion", "Wan 2.1 ComfyUI MP4")
+                    }.toString()
+                }.getOrDefault(higgsfieldPayload.jsonPayload)
+                modelLabel = "ComfyUI Wan 2.1 Neural Video MP4 🎬"
+            }
+        }
+
+        if (modelLabel.startsWith("Open-Higgsfield") && context != null && FirebaseAiEngine.isAvailable(context) && externalAiProviders.allowExternalWikiGrounding) {
             val framePrompt = if (!attachedImageBase64.isNullOrBlank()) {
                 "Transform this attached image into an ultra-cinematic 16:9 movie keyframe depicting motion for: $cleanSubject"
             } else {
@@ -1068,7 +1164,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 }
                 is FirebaseImageResult.Failure -> {
                     firebaseFailureReason = fbRes.userMessage
-                    if (isEditMode && !fbRes.isQuotaOrBilling) {
+                    val hasComfy = !AyraPreferences.getComfyUiUrl(context).isBlank()
+                    if (isEditMode && !fbRes.isQuotaOrBilling && !hasComfy) {
                         val errMsg = if (isBengali) {
                             "⚠️ **ছবি এডিট করা সম্ভব হয়নি (Gemini Nano Banana 2.1)**\n\nকারণ: ${fbRes.userMessage}"
                         } else {
@@ -1080,7 +1177,37 @@ class UnifiedAiEngine(private val context: Context? = null) {
             }
         }
 
-        // 2. Remote Diffusion URL generation (or Vision-assisted prompt when editing hit quota/billing)
+        // 2a. Try self-hosted ComfyUI (T2I or Img2Img) if configured
+        val comfyUrl = context?.let { AyraPreferences.getComfyUiUrl(it) }.orEmpty()
+        if (context != null && comfyUrl.isNotBlank()) {
+            val outDir = java.io.File(context.filesDir, "generated_images")
+            val comfyClient = com.ayra.ai.app.ai.studios.ComfyUiClient()
+            val comfyRes = if (isEditMode && attachedImageBase64 != null) {
+                val refBytes = runCatching { android.util.Base64.decode(attachedImageBase64, android.util.Base64.DEFAULT) }.getOrNull()
+                if (refBytes != null && refBytes.isNotEmpty()) {
+                    comfyClient.generateImageToImage(comfyUrl, prompt, refBytes, outDir)
+                } else com.ayra.ai.app.ai.studios.ComfyUiResult.Failure("Invalid reference image bytes")
+            } else {
+                comfyClient.generateImage(comfyUrl, prompt, outDir)
+            }
+            if (comfyRes is com.ayra.ai.app.ai.studios.ComfyUiResult.ImageSuccess) {
+                val fileUri = android.net.Uri.fromFile(comfyRes.file).toString()
+                val cleanSubject = extractSubject(prompt, "IMAGE")
+                val replyText = if (isBengali) {
+                    "🎨 **ComfyUI** দিয়ে ${if (isEditMode) "এডিট করা" else "তৈরি"} ছবি:\n**$cleanSubject**"
+                } else {
+                    "🎨 Image ${if (isEditMode) "edited via ComfyUI Img2Img" else "generated via ComfyUI"}:\n**$cleanSubject**"
+                }
+                return AiResponse(
+                    text = replyText,
+                    craftType = "IMAGE",
+                    craftPayload = fileUri,
+                    modelUsed = if (isEditMode) "ComfyUI Img2Img 🎨" else "ComfyUI Flux.1 🎨"
+                )
+            }
+        }
+
+        // 2b. Remote Diffusion URL generation (or Vision-assisted prompt when editing hit quota/billing)
         var effectivePrompt = prompt
         if (isEditMode && context != null && externalAiProviders.hasAnyConfiguredProvider()) {
             try {
@@ -1257,7 +1384,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 lower.startsWith("3d") || lower.contains("3d তে") || lower.contains("3d te")
     }
 
-    private fun generate3dModelCraft(prompt: String): AiResponse {
+    private suspend fun generate3dModelCraft(prompt: String): AiResponse {
         val isBengali = prompt.any { it in '\u0980'..'\u09FF' }
         val isGfMode = currentPersona == "GF_COMPANION"
         val lower = prompt.lowercase()
@@ -1269,16 +1396,45 @@ class UnifiedAiEngine(private val context: Context? = null) {
             lower.contains("sphere") || lower.contains("planet") || lower.contains("ball") || lower.contains("গোলক") -> Pair("SPHERE", "Geodesic Sphere 3D")
             else -> {
                 val cleaned = prompt.replace(Regex("(?i)^(please\\s+)?(make|create|generate|3d\\s+model|3d\\s+বানাও|3d)\\s*(of|a|an)?\\s*"), "").trim()
-                Pair("CYBER_CORE", if (cleaned.isNotBlank()) "3D ${cleaned.replaceFirstChar { it.uppercase() }}" else "Holographic Cyber Core 3D")
+                Pair("CUSTOM_AI", if (cleaned.isNotBlank()) "3D ${cleaned.replaceFirstChar { it.uppercase() }}" else "Holographic Cyber Core 3D")
             }
         }
 
+        var mesh = if (modelKind == "CUSTOM_AI") Model3dMeshCatalog.getMesh("CYBER_CORE") else Model3dMeshCatalog.getMesh(modelKind)
+        var effectiveKind = if (modelKind == "CUSTOM_AI") "CYBER_CORE" else modelKind
+
+        if (modelKind == "CUSTOM_AI" && context != null && hasCloudOrFirebaseAi()) {
+            val aiObj = kotlinx.coroutines.withTimeoutOrNull(4500L) {
+                runCatching {
+                    val objPrompt = """
+                        Generate a clean, low-poly 3D geometric mesh in Wavefront .OBJ format representing: "$title".
+                        Output ONLY valid `v x y z` vertex lines (12-36 vertices, coordinates in -1.5..1.5) followed by `f i1 i2 i3` (or quad `f i1 i2 i3 i4`) 1-based face lines (at least 6 faces). No markdown, no explanations.
+                    """.trimIndent()
+                    com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
+                        com.ayra.ai.app.ai.providers.ChatRequest(
+                            prompt = objPrompt,
+                            mode = com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST,
+                            systemPromptOverride = "You are a 3D CAD geometry generator outputting strictly raw Wavefront .OBJ `v` and `f` lines."
+                        )
+                    ).text
+                }.getOrNull()
+            }.orEmpty()
+            val parsedMesh = Model3dMeshCatalog.parseWavefrontObj(aiObj, "CUSTOM_AI")
+            if (parsedMesh != null) {
+                mesh = parsedMesh
+                effectiveKind = "CUSTOM_AI"
+            }
+        }
+
+        val objText = Model3dMeshCatalog.buildWavefrontObj(mesh, title)
         val jsonPayload = JSONObject().apply {
             put("title", title)
-            put("kind", modelKind)
-            put("vertices", 4096)
-            put("faces", 8192)
+            put("kind", effectiveKind)
+            put("vertices", mesh.vertexCount)
+            put("edges", mesh.edgeCount)
+            put("faces", mesh.faceCount)
             put("format", "Wavefront .OBJ / Holographic WebGL")
+            put("objContent", objText)
         }.toString()
 
         val text = if (isBengali) {
@@ -1299,7 +1455,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             text = text,
             craftType = "3D",
             craftPayload = jsonPayload,
-            modelUsed = "Holographic 3D Spatial Engine"
+            modelUsed = if (effectiveKind == "CUSTOM_AI") "Ayra AI 3D Mesh Architect" else "Holographic 3D Spatial Engine"
         )
     }
 

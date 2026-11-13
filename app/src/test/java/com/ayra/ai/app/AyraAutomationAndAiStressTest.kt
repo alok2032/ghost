@@ -177,24 +177,15 @@ class AyraAutomationAndAiStressTest {
         assertTrue(com.ayra.ai.app.ai.AiAppAndCodeStudio.isCodeOrAppGenerationIntent("একটি স্নেক গেম বানাও"))
         assertTrue(com.ayra.ai.app.ai.AiAppAndCodeStudio.isCodeOrAppGenerationIntent("build html5 canvas game"))
 
-        // Test website generation code output
+        // Test honest offline behavior (no canned fake templates returned when no provider is configured)
         val webRes = com.ayra.ai.app.ai.AiAppAndCodeStudio.generateCodeOrApp("e-commerce store website", isBengali = true, isGfMode = false)
-        assertEquals("CODE_PROJECT", webRes.craftType)
-        assertTrue(webRes.text.contains("<!DOCTYPE html>"))
-        assertTrue(webRes.text.contains("AuraStore"))
-        assertTrue(webRes.text.contains("addToCart"))
+        assertEquals(null, webRes.craftType)
+        assertEquals("Offline Status", webRes.modelUsed)
+        assertTrue(webRes.text.contains("অফলাইন") || webRes.text.contains("API কী"))
 
-        // Test Android app code output
-        val appRes = com.ayra.ai.app.ai.AiAppAndCodeStudio.generateCodeOrApp("একটি অ্যান্ড্রয়েড অ্যাপ বানাও", isBengali = true, isGfMode = false)
-        assertTrue(appRes.text.contains("Room"))
-        assertTrue(appRes.text.contains("StateFlow"))
-        assertTrue(appRes.text.contains("ItemEntity"))
-        assertTrue(appRes.text.contains("Scaffold"))
-
-        // Test Game code output
-        val gameRes = com.ayra.ai.app.ai.AiAppAndCodeStudio.generateCodeOrApp("snake game banao", isBengali = false, isGfMode = false)
-        assertTrue(gameRes.text.contains("CYBERSNAKE"))
-        assertTrue(gameRes.text.contains("canvas"))
+        val appRes = com.ayra.ai.app.ai.AiAppAndCodeStudio.generateCodeOrApp("একটি অ্যান্ড্রয়েড অ্যাপ বানাও", isBengali = false, isGfMode = false)
+        assertEquals(null, appRes.craftType)
+        assertTrue(appRes.text.contains("Offline") || appRes.text.contains("Provider"))
     }
 
     @Test

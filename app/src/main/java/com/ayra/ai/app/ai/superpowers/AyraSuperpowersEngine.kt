@@ -163,50 +163,39 @@ object AyraSuperpowersEngine {
     }
 
     /**
-     * Offline autonomous fallback for Superpowers execution when external APIs are offline.
+     * Honest offline notice for Superpowers protocol when no live LLM provider is reachable.
      */
     fun generateOfflineSuperpowerResponse(
         superpower: SuperpowerType,
         query: String,
         isBengali: Boolean
     ): String {
+        val safeQuery = query.take(80).ifBlank { "(empty)" }
         return if (isBengali) {
             """
             # ⚡ আয়রা সুপারপাওয়ার ইঞ্জিন: ${superpower.displayName}
-            *Superpowers Protocol (obra/superpowers) দ্বারা চালিত*
-            
-            ## 1. 🔍 ডায়াগনোসিস ও রুট কজ বিশ্লেষণ
-            আপনার প্রদান করা রিকোয়েস্ট **"${query.take(80)}"** এর জন্য সুপারপাওয়ার ইঞ্জিন পদ্ধতিগত বিশ্লেষণ শুরু করেছে:
-            - **সমস্যার পরিধি:** আর্কিটেকচারাল লোড, ডেটা ফ্লো এবং কনকারেন্সি বাউন্ডারি শনাক্তকরণ।
-            - **কোর হাইপোথিসিস:** সিস্টেমের প্রতিটি স্টেট ট্রানজিশন ডেটারমিনিস্টিক ও টেস্টেবল হওয়া বাধ্যতামূলক।
-            
-            ## 2. 📋 সুপারপাওয়ার এক্সিকিউশন চেকলিস্ট
-            - [x] **ইনভেস্টিগেশন:** এরর লগ ও ইনপুট প্যারামিটার পূর্ণাঙ্গ যাচাই
-            - [x] **আইসোলেশন:** পার্শ্বপ্রতিক্রিয়া ছাড়া মূল লজিক পৃথকীকরণ
-            - [x] **ইমপ্লিমেন্টেশন:** প্রোডাকশন-গ্রেড নিরাপদ কোড ও আর্কিটেকচার
-            - [x] **ভেরিফিকেশন:** ইউনিট টেস্ট ও রিগ্রেশন প্রতিরোধ
-            
-            ## 3. 🛡️ প্রোডাকশন গাইডলাইন ও সমাধান
-            সুপারপাওয়ার স্ট্যান্ডার্ড অনুযায়ী সর্বদা Red-Green-Refactor সাইকেল এবং জিরো-ট্রাস্ট ডেটা ভ্যালিডেশন নিশ্চিত করুন।
+            *Superpowers Protocol (obra/superpowers) — অফলাইন স্ট্যাটাস*
+
+            ⚠️ **লাইভ এআই এক্সিকিউশন চলেনি (অফলাইন / API কী কনফিগার করা নেই):** আপনার অনুরোধ **"$safeQuery"**-এর ওপর রিয়েল এআই বিশ্লেষণ চালাতে ইন্টারনেট সংযোগ ও Gemini / Groq / Cerebras / SambaNova / GitHub Models / OpenRouter-এর মতো যেকোনো ফ্রি-টিয়ার প্রোভাইডার কী সেট করুন।
+
+            ## 📋 সুপারপাওয়ার এক্সিকিউশন চেকলিস্ট (অমীমাংসিত)
+            - [ ] **ইনভেস্টিগেশন:** এরর লগ ও ইনপুট প্যারামিটার লাইভ মডেলে যাচাই করা বাকি
+            - [ ] **আইসোলেশন:** পার্শ্বপ্রতিক্রিয়া ছাড়া মূল লজিক পৃথকীকরণ বাকি
+            - [ ] **ইমপ্লিমেন্টেশন:** প্রোডাকশন কোড/টেস্ট জেনারেশন বাকি
+            - [ ] **ভেরিফিকেশন:** ইউনিট টেস্ট ও বিল্ড যাচাইকরণ বাকি
             """.trimIndent()
         } else {
             """
             # ⚡ Ayra Superpower Engine: ${superpower.displayName}
-            *Powered by Superpowers Protocol (obra/superpowers)*
-            
-            ## 1. 🔍 Forensic Root Cause & Architecture Analysis
-            Investigating query: **"${query.take(80)}"** under the rigorous Superpowers Engineering Protocol:
-            - **Scope:** State invariants, concurrency boundaries, and data integrity verified.
-            - **Hypothesis:** Eliminates non-deterministic behavior and enforces atomic execution.
-            
-            ## 2. 📋 Superpowers Execution Checklist
-            - [x] **Phase 1 (Diagnosis):** Root cause isolated with symptom decoupling.
-            - [x] **Phase 2 (Specification):** Architecture contracts defined with strict boundaries.
-            - [x] **Phase 3 (Implementation):** Production-grade patterns with full error taxonomy.
-            - [x] **Phase 4 (Verification):** Pre-completion audit ensuring regression resistance.
-            
-            ## 3. 🛡️ Production Recommendations
-            Adhere strictly to automated unit test coverage and fail-closed security guarantees.
+            *Superpowers Protocol (obra/superpowers) — Offline Notice*
+
+            ⚠️ **Live Execution Did Not Run (Offline / No Provider Configured):** Real diagnostic synthesis for **"$safeQuery"** requires an active network connection and at least one configured provider (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, or OpenRouter) in Settings → AI Provider Keys.
+
+            ## 📋 Superpowers Execution Checklist (Pending)
+            - [ ] **Phase 1 (Diagnosis):** Root cause isolation not yet executed.
+            - [ ] **Phase 2 (Specification):** Architecture contracts pending live review.
+            - [ ] **Phase 3 (Implementation):** Production code generation awaiting LLM provider.
+            - [ ] **Phase 4 (Verification):** Pre-completion build and unit test verification pending.
             """.trimIndent()
         }
     }

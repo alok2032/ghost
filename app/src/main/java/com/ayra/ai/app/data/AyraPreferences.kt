@@ -15,6 +15,27 @@ object AyraPreferences {
     private const val KEY_SELECTED_PROVIDER = "selected_provider_type"
     private const val KEY_AUTO_ROUTER_ENABLED = "auto_router_enabled"
     private const val KEY_SEARCH_GROUNDING_ENABLED = "search_grounding_enabled"
+    private const val KEY_THEME_MODE = "ui_theme_mode"
+
+    private val _themeModeFlow = kotlinx.coroutines.flow.MutableStateFlow("dark")
+    val themeModeFlow: kotlinx.coroutines.flow.StateFlow<String> = _themeModeFlow
+
+    fun getThemeMode(context: Context): String {
+        val mode = getPrefs(context).getString(KEY_THEME_MODE, "dark") ?: "dark"
+        if (_themeModeFlow.value != mode) {
+            _themeModeFlow.value = mode
+        }
+        return mode
+    }
+
+    fun setThemeMode(context: Context, mode: String) {
+        val clean = when (mode.lowercase()) {
+            "light", "dark", "system" -> mode.lowercase()
+            else -> "dark"
+        }
+        getPrefs(context).edit().putString(KEY_THEME_MODE, clean).apply()
+        _themeModeFlow.value = clean
+    }
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -247,6 +268,34 @@ object AyraPreferences {
         )
     }
 
+    fun getCerebrasKey(context: Context): String =
+        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_CEREBRAS).ifBlank {
+            com.ayra.ai.app.security.EncryptedPreferences(context).getString(
+                com.ayra.ai.app.security.EncryptedPreferences.KEY_CEREBRAS
+            )
+        }
+
+    fun setCerebrasKey(context: Context, key: String) {
+        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_CEREBRAS, key)
+        com.ayra.ai.app.security.EncryptedPreferences(context).putString(
+            com.ayra.ai.app.security.EncryptedPreferences.KEY_CEREBRAS, key
+        )
+    }
+
+    fun getSambaNovaKey(context: Context): String =
+        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_SAMBANOVA).ifBlank {
+            com.ayra.ai.app.security.EncryptedPreferences(context).getString(
+                com.ayra.ai.app.security.EncryptedPreferences.KEY_SAMBANOVA
+            )
+        }
+
+    fun setSambaNovaKey(context: Context, key: String) {
+        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_SAMBANOVA, key)
+        com.ayra.ai.app.security.EncryptedPreferences(context).putString(
+            com.ayra.ai.app.security.EncryptedPreferences.KEY_SAMBANOVA, key
+        )
+    }
+
     fun getComfyUiUrl(context: Context): String =
         SecureKeyStore.getSecret(context, SecureKeyStore.KEY_COMFYUI_URL).ifBlank {
             com.ayra.ai.app.security.EncryptedPreferences(context).getString(
@@ -279,6 +328,8 @@ object AyraPreferences {
                 getGroqKey(context).isNotBlank() ||
                 getHuggingFaceKey(context).isNotBlank() ||
                 getGitHubModelsKey(context).isNotBlank() ||
+                getCerebrasKey(context).isNotBlank() ||
+                getSambaNovaKey(context).isNotBlank() ||
                 getTavilySearchKey(context).isNotBlank() ||
                 getElevenLabsKey(context).isNotBlank() ||
                 getCustomEndpointUrl(context).isNotBlank()

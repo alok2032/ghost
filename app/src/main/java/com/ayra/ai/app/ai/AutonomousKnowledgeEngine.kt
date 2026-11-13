@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai
 
+import com.ayra.ai.app.ai.plugins.GitHubPluginEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -82,7 +83,10 @@ object AutonomousKnowledgeEngine {
                 val ax = if (oa.isBlank() || cleanPrompt.lowercase().contains("arxiv") || cleanPrompt.lowercase().contains("paper")) {
                     fetchArxivPreprints(topic, httpClient, arxivBaseUrl)
                 } else ""
-                listOf(oa, ax).filter { it.isNotBlank() }.joinToString("\n\n")
+                val cr = if (oa.isBlank() || cleanPrompt.lowercase().contains("doi") || cleanPrompt.lowercase().contains("journal") || cleanPrompt.lowercase().contains("citation")) {
+                    fetchCrossRefResearch(topic, httpClient)
+                } else ""
+                listOf(oa, ax, cr).filter { it.isNotBlank() }.joinToString("\n\n")
             } ?: ""
         }
 
@@ -397,6 +401,125 @@ object AutonomousKnowledgeEngine {
         } catch (_: Exception) {
             ""
         }
+    }
+
+    internal fun fetchCrossRefResearch(
+        query: String,
+        httpClient: OkHttpClient,
+        baseUrlOverride: String? = null
+    ): String {
+        return try {
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
+                ?: "https://api.crossref.org/"
+            val url = "${base}works?query=$encoded&rows=2&select=title,published,DOI,author"
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return ""
+                val body = resp.body?.string() ?: return ""
+                val items = JSONObject(body).optJSONObject("message")?.optJSONArray("items") ?: JSONArray()
+                if (items.length() == 0) return ""
+                val sb = StringBuilder()
+                for (i in 0 until items.length()) {
+                    val item = items.optJSONObject(i) ?: continue
+                    val title = item.optJSONArray("title")?.optString(0)?.trim().orEmpty()
+                    if (title.isBlank()) continue
+                    val doi = item.optString("DOI", "").trim()
+                    val year = item.optJSONObject("published")
+                        ?.optJSONArray("date-parts")
+                        ?.optJSONArray(0)
+                        ?.optInt(0, 0) ?: 0
+                    val authorObj = item.optJSONArray("author")?.optJSONObject(0)
+                    val authorName = listOfNotNull(
+                        authorObj?.optString("given")?.takeIf { it.isNotBlank() },
+                        authorObj?.optString("family")?.takeIf { it.isNotBlank() }
+                    ).joinToString(" ")
+
+                    sb.append("• **CrossRef:** $title")
+                    if (year > 0) sb.append(" ($year)")
+                    if (authorName.isNotBlank()) sb.append(" — $authorName")
+                    if (doi.isNotBlank()) sb.append(" [DOI: $doi]")
+                    sb.append("\n")
+                }
+                sb.toString().trim()
+            }
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /**
+     * Fetches and cleans a public HTTPS webpage into readable text (SSRF-protected).
+     */
+    fun fetchReadableWebpage(
+        url: String,
+        httpClient: OkHttpClient = ExternalAiProviders.sharedFastWebClient
+    ): Result<Pair<String, String>> {
+        if (!GitHubPluginEngine.isSafePublicHttpsUrl(url)) {
+            return Result.failure(IllegalArgumentException("Blocked unsafe or non-HTTPS URL: $url"))
+        }
+        return fetchReadableWebpageInternal(url, httpClient)
+    }
+
+    internal fun fetchReadableWebpageInternal(
+        url: String,
+        httpClient: OkHttpClient
+    ): Result<Pair<String, String>> {
+        return try {
+            val req = Request.Builder()
+                .url(url.trim())
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html, text/plain, application/xhtml+xml")
+                .get()
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    return Result.failure(RuntimeException("HTTP ${resp.code}"))
+                }
+                val rawHtml = resp.body?.string().orEmpty()
+                if (rawHtml.isBlank()) {
+                    return Result.failure(RuntimeException("Empty response body"))
+                }
+                val titleMatch = Regex("<title[^>]*>([\\s\\S]*?)</title>", RegexOption.IGNORE_CASE).find(rawHtml)
+                val title = decodeHtmlEntities(titleMatch?.groupValues?.get(1)?.replace(WHITESPACE_REGEX, " ")?.trim().orEmpty())
+                    .ifBlank { url }
+                val stripped = rawHtml
+                    .replace(Regex("(?is)<script[^>]*>.*?</script>"), " ")
+                    .replace(Regex("(?is)<style[^>]*>.*?</style>"), " ")
+                    .replace(Regex("(?is)<noscript[^>]*>.*?</noscript>"), " ")
+                    .replace(Regex("(?is)<svg[^>]*>.*?</svg>"), " ")
+                    .replace(Regex("(?i)</?(p|div|li|h[1-6]|br|tr|section|article)[^>]*>"), "\n")
+                    .replace(Regex("<[^>]+>"), " ")
+                val cleanText = decodeHtmlEntities(stripped)
+                    .lines()
+                    .map { it.replace(Regex("[ \\t]+"), " ").trim() }
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+                    .take(12_000)
+
+                Result.success(title to cleanText)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun decodeHtmlEntities(raw: String): String {
+        return raw
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
     }
 
     fun formatKnowledgePoints(title: String, rawExtract: String, isBengali: Boolean): String {

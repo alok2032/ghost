@@ -76,6 +76,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.runtime.mutableStateListOf
+
 private enum class ResearchTab(val label: String) {
     DEEP_RESEARCH("Deep Research"),
     KNOWLEDGE_RAG("Knowledge Base (RAG)")
@@ -91,7 +95,7 @@ fun ResearchDocsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CosmicBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(rememberScrollState()),
@@ -101,12 +105,12 @@ fun ResearchDocsScreen(
             text = "Research & Document Knowledge Hub",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Multi-source web/academic research with PDF, Markdown (.md), & Word (.doc) export, plus persistent Room-indexed RAG.",
+            text = "Multi-source web/academic research, SSRF-safe HTTPS reader, CSV/Office/PDF parsing, and persistent Room RAG.",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -133,11 +137,31 @@ fun ResearchDocsScreen(
 private fun DeepResearchPanel(context: Context) {
     val scope = rememberCoroutineScope()
     val aiEngine = remember { UnifiedAiEngine(context) }
+    val pool = remember { ProviderPool(context) }
 
     var query by remember { mutableStateOf("") }
+    var webUrlInput by remember { mutableStateOf("") }
     var reportText by remember { mutableStateOf("") }
     var modelLabel by remember { mutableStateOf<String?>(null) }
     var isRunning by remember { mutableStateOf(false) }
+    var isReadingWeb by remember { mutableStateOf(false) }
+    val historyPrefs = remember { context.getSharedPreferences("ayra_research_history", Context.MODE_PRIVATE) }
+    val researchHistory = remember {
+        mutableStateListOf<String>().apply {
+            val saved = historyPrefs.getString("queries", "").orEmpty()
+                .split("\n")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            addAll(saved)
+        }
+    }
+
+    fun recordHistory(q: String) {
+        researchHistory.remove(q)
+        researchHistory.add(0, q)
+        if (researchHistory.size > 8) researchHistory.removeAt(researchHistory.lastIndex)
+        historyPrefs.edit().putString("queries", researchHistory.joinToString("\n")).apply()
+    }
 
     fun shareFile(file: File, mime: String, title: String) {
         runCatching {
@@ -170,10 +194,27 @@ private fun DeepResearchPanel(context: Context) {
             maxLines = 3
         )
 
+        if (researchHistory.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                researchHistory.forEach { item ->
+                    FilterChip(
+                        selected = query == item,
+                        onClick = { query = item },
+                        label = { Text(item.take(28), fontSize = 11.sp) },
+                        modifier = Modifier.testTag("research_history_chip")
+                    )
+                }
+            }
+        }
+
         Button(
             onClick = {
                 val clean = query.trim()
                 if (clean.isBlank() || isRunning) return@Button
+                recordHistory(clean)
                 isRunning = true
                 scope.launch {
                     val res = withContext(Dispatchers.IO) {
@@ -197,7 +238,64 @@ private fun DeepResearchPanel(context: Context) {
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
             }
             Spacer(Modifier.width(6.dp))
-            Text(if (isRunning) "Researching Sources..." else "Run Deep Research")
+            Text(if (isRunning) "Researching Sources..." else "Run Deep Research (Web + Wikipedia + CrossRef)")
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = webUrlInput,
+                onValueChange = { webUrlInput = it },
+                label = { Text("HTTPS Webpage Reader URL") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("research_url_input")
+            )
+            OutlinedButton(
+                onClick = {
+                    val url = webUrlInput.trim()
+                    if (url.isBlank() || isReadingWeb) return@OutlinedButton
+                    isReadingWeb = true
+                    scope.launch {
+                        val fetchRes = withContext(Dispatchers.IO) {
+                            AutonomousKnowledgeEngine.fetchReadableWebpage(url)
+                        }
+                        reportText = fetchRes.fold(
+                            onSuccess = { (pageTitle, pageBody) ->
+                                val summary = withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        pool.executeSync(
+                                            ChatRequest(
+                                                prompt = "Summarize key facts and citations from '$pageTitle':\n\n$pageBody",
+                                                persona = "PROFESSIONAL",
+                                                mode = ProviderPoolMode.FAST
+                                            )
+                                        ).text
+                                    }.getOrNull()
+                                }
+                                if (!summary.isNullOrBlank()) {
+                                    "# $pageTitle\n\n## AI Summary\n$summary\n\n---\n\n$pageBody"
+                                } else {
+                                    "# $pageTitle\n\n$pageBody"
+                                }
+                            },
+                            onFailure = { err ->
+                                "Webpage read blocked or failed: ${err.localizedMessage ?: "Unknown error"}"
+                            }
+                        )
+                        modelLabel = "SSRF-Safe HTTPS Reader"
+                        isReadingWeb = false
+                    }
+                },
+                enabled = webUrlInput.isNotBlank() && !isReadingWeb,
+                modifier = Modifier.testTag("research_fetch_url_button")
+            ) {
+                Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(if (isReadingWeb) "Reading" else "Read URL", fontSize = 11.5.sp)
+            }
         }
 
         if (reportText.isNotBlank()) {
@@ -284,6 +382,7 @@ private fun KnowledgeRagPanel(context: Context) {
     val pool = remember { ProviderPool(context) }
 
     var searchQuery by remember { mutableStateOf("") }
+    var lastExtractedPreview by remember { mutableStateOf<String?>(null) }
     var searchHits by remember { mutableStateOf<List<RagSearchHit>>(emptyList()) }
     var ragAnswer by remember { mutableStateOf<String?>(null) }
     var isWorking by remember { mutableStateOf(false) }
@@ -294,7 +393,7 @@ private fun KnowledgeRagPanel(context: Context) {
         if (uri != null) {
             isWorking = true
             scope.launch {
-                val indexedName = withContext(Dispatchers.IO) {
+                val indexedPair = withContext(Dispatchers.IO) {
                     val name = StorageHelper.getFileName(context, uri) ?: "Document"
                     val extracted = StorageHelper.extractTextFromDocument(context, uri, name)
                     if (extracted.isNotBlank()) {
@@ -304,12 +403,13 @@ private fun KnowledgeRagPanel(context: Context) {
                             rawText = extracted,
                             sourceUri = uri.toString()
                         )
-                        name
+                        name to extracted.take(700)
                     } else null
                 }
                 isWorking = false
-                if (indexedName != null) {
-                    Toast.makeText(context, "Indexed '$indexedName' into Knowledge Base", Toast.LENGTH_SHORT).show()
+                if (indexedPair != null) {
+                    lastExtractedPreview = "${indexedPair.first}:\n${indexedPair.second}"
+                    Toast.makeText(context, "Indexed '${indexedPair.first}' into Knowledge Base", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -337,19 +437,43 @@ private fun KnowledgeRagPanel(context: Context) {
                     color = NeonPurple
                 )
                 Text(
-                    text = "PDFs & text files stay indexed across restarts for cited Q&A.",
+                    text = "PDF, DOCX, XLSX, PPTX, CSV & text stay indexed across restarts.",
                     fontSize = 11.sp,
                     color = TextSecondary
                 )
             }
             Button(
-                onClick = { docPicker.launch(arrayOf("application/pdf", "text/*", "application/json")) },
+                onClick = {
+                    docPicker.launch(
+                        arrayOf(
+                            "application/pdf",
+                            "text/*",
+                            "application/json",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                    )
+                },
                 enabled = !isWorking,
                 modifier = Modifier.testTag("rag_upload_doc_button")
             ) {
                 Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Add File", fontSize = 12.sp)
+            }
+        }
+
+        lastExtractedPreview?.let { preview ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CosmicBackground)
+                    .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .padding(10.dp)
+            ) {
+                Text(text = preview, color = TextPrimary, fontSize = 11.5.sp)
             }
         }
 

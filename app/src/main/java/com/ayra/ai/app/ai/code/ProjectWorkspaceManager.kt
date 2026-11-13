@@ -11,6 +11,13 @@ data class GeneratedProjectFile(
     val content: String
 )
 
+data class SavedCodeProject(
+    val name: String,
+    val rootDir: File,
+    val fileCount: Int,
+    val lastModifiedMs: Long
+)
+
 /**
  * Manages multi-file generated software projects in isolated app storage and builds real ZIP archives.
  */
@@ -89,6 +96,58 @@ object ProjectWorkspaceManager {
             target.writeText(file.content, Charsets.UTF_8)
         }
 
+        val zipFile = createProjectZip(context, safeProj, rootDir)
+        return rootDir to zipFile
+    }
+
+    fun listSavedProjects(context: Context): List<SavedCodeProject> {
+        val baseDir = File(context.filesDir, "code_projects")
+        if (!baseDir.exists() || !baseDir.isDirectory) return emptyList()
+        return baseDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { dir ->
+                val files = dir.walkTopDown().filter { it.isFile }.toList()
+                val latest = files.maxOfOrNull { it.lastModified() } ?: dir.lastModified()
+                SavedCodeProject(
+                    name = dir.name,
+                    rootDir = dir,
+                    fileCount = files.size,
+                    lastModifiedMs = latest
+                )
+            }
+            ?.sortedByDescending { it.lastModifiedMs }
+            .orEmpty()
+    }
+
+    fun loadProjectFiles(rootDir: File): List<GeneratedProjectFile> {
+        if (!rootDir.exists() || !rootDir.isDirectory) return emptyList()
+        return rootDir.walkTopDown()
+            .filter { it.isFile }
+            .mapNotNull { file ->
+                runCatching {
+                    val rel = file.relativeTo(rootDir).path.replace("\\", "/")
+                    GeneratedProjectFile(rel, file.readText(Charsets.UTF_8))
+                }.getOrNull()
+            }
+            .sortedBy { it.relativePath }
+            .toList()
+    }
+
+    fun saveEditedProjectFile(rootDir: File, relativePath: String, content: String): Boolean {
+        return try {
+            val safePath = sanitizeRelativePath(relativePath)
+            val target = File(rootDir, safePath)
+            if (!target.canonicalPath.startsWith(rootDir.canonicalPath)) return false
+            target.parentFile?.mkdirs()
+            target.writeText(content, Charsets.UTF_8)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun createProjectZip(context: Context, projectName: String, rootDir: File): File {
+        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "ayra_project" }
         val exportsDir = File(context.filesDir, "project_zips").apply { if (!exists()) mkdirs() }
         val zipFile = File(exportsDir, "${safeProj}_${System.currentTimeMillis()}.zip")
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
@@ -99,7 +158,7 @@ object ProjectWorkspaceManager {
                 zos.closeEntry()
             }
         }
-        return rootDir to zipFile
+        return zipFile
     }
 
     private fun sanitizeRelativePath(raw: String): String {
