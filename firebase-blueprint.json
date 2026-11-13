@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "UserProfile": {
+      "description": "Authenticated user profile and Ayra preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "preferredPersona": { "type": "string" },
+        "preferredModelTier": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "email", "photoUrl", "preferredPersona", "preferredModelTier", "createdAt", "updatedAt"]
+    },
+    "CloudChatMessage": {
+      "description": "Cloud-synced AI conversation message",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "localMessageId": { "type": "integer" },
+        "role": { "type": "string" },
+        "content": { "type": "string" },
+        "modelUsed": { "type": "string" },
+        "craftType": { "type": "string" },
+        "craftPayload": { "type": "string" },
+        "timestampMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "localMessageId", "role", "content", "modelUsed", "craftType", "craftPayload", "timestampMs", "createdAt", "updatedAt"]
+    },
+    "CloudGitHubPlugin": {
+      "description": "Cloud-synced installed GitHub plugin, Claude skill pack, OpenAPI tool, or MCP integration",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "repoFullName": { "type": "string" },
+        "repoUrl": { "type": "string" },
+        "name": { "type": "string" },
+        "owner": { "type": "string" },
+        "description": { "type": "string" },
+        "defaultBranch": { "type": "string" },
+        "stars": { "type": "integer" },
+        "primaryLanguage": { "type": "string" },
+        "pluginType": { "type": "string" },
+        "capabilitiesSummary": { "type": "string" },
+        "skillPromptContext": { "type": "string" },
+        "openApiSpecJson": { "type": "string" },
+        "commandsJson": { "type": "string" },
+        "fileTreeJson": { "type": "string" },
+        "isEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "repoFullName", "repoUrl", "name", "owner", "description",
+        "defaultBranch", "stars", "primaryLanguage", "pluginType",
+        "capabilitiesSummary", "skillPromptContext", "openApiSpecJson",
+        "commandsJson", "fileTreeJson", "isEnabled", "createdAt", "updatedAt"
+      ]
+    },
+    "CloudCreation": {
+      "description": "Cloud-synced AI creative studio artifact metadata (images, songs, videos, 3D models, PDFs)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "creationType": { "type": "string" },
+        "title": { "type": "string" },
+        "prompt": { "type": "string" },
+        "summary": { "type": "string" },
+        "modelUsed": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "creationType", "title", "prompt", "summary", "modelUsed", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Per-user profile and preference settings"
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/CloudChatMessage" },
+      "description": "Per-user synced chat history"
+    },
+    "/users/{userId}/plugins/{pluginId}": {
+      "schema": { "$ref": "#/entities/CloudGitHubPlugin" },
+      "description": "Per-user synced installed GitHub repository plugins and skills"
+    },
+    "/users/{userId}/creations/{creationId}": {
+      "schema": { "$ref": "#/entities/CloudCreation" },
+      "description": "Per-user synced AI creations log"
+    }
+  }
+}

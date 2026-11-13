@@ -1,0 +1,187 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && !id.matches('.*[/\\\\].*');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId && isValidId(userId);
+    }
+
+    function hasValidTimestamps(data) {
+      return data.createdAt is timestamp
+        && data.createdAt <= request.time
+        && data.updatedAt is timestamp
+        && data.updatedAt <= request.time;
+    }
+
+    function isValidUserProfile(userId, data) {
+      return data.keys().hasAll([
+          'userId', 'displayName', 'email', 'photoUrl',
+          'preferredPersona', 'preferredModelTier', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'displayName', 'email', 'photoUrl',
+          'preferredPersona', 'preferredModelTier', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.email is string && data.email.size() <= 200
+        && data.photoUrl is string && data.photoUrl.size() <= 500
+        && data.preferredPersona is string && data.preferredPersona.size() <= 40
+        && data.preferredModelTier is string && data.preferredModelTier.size() <= 60
+        && hasValidTimestamps(data);
+    }
+
+    function isValidCloudMessage(userId, data) {
+      return data.keys().hasAll([
+          'userId', 'localMessageId', 'role', 'content',
+          'modelUsed', 'craftType', 'craftPayload', 'timestampMs',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'localMessageId', 'role', 'content',
+          'modelUsed', 'craftType', 'craftPayload', 'timestampMs',
+          'createdAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.localMessageId is int && data.localMessageId >= 0
+        && data.role in ['user', 'assistant']
+        && data.content is string && data.content.size() <= 100000
+        && data.modelUsed is string && data.modelUsed.size() <= 120
+        && data.craftType is string && data.craftType.size() <= 40
+        && data.craftPayload is string && data.craftPayload.size() <= 100000
+        && data.timestampMs is int && data.timestampMs >= 0
+        && hasValidTimestamps(data);
+    }
+
+    function isValidCloudPlugin(userId, data) {
+      return data.keys().hasAll([
+          'userId', 'repoFullName', 'repoUrl', 'name', 'owner', 'description',
+          'defaultBranch', 'stars', 'primaryLanguage', 'pluginType',
+          'capabilitiesSummary', 'skillPromptContext', 'openApiSpecJson',
+          'commandsJson', 'fileTreeJson', 'isEnabled', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'repoFullName', 'repoUrl', 'name', 'owner', 'description',
+          'defaultBranch', 'stars', 'primaryLanguage', 'pluginType',
+          'capabilitiesSummary', 'skillPromptContext', 'openApiSpecJson',
+          'commandsJson', 'fileTreeJson', 'isEnabled', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.repoFullName is string && data.repoFullName.size() >= 1 && data.repoFullName.size() <= 140
+        && data.repoUrl is string && data.repoUrl.size() >= 1 && data.repoUrl.size() <= 300
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.owner is string && data.owner.size() >= 1 && data.owner.size() <= 100
+        && data.description is string && data.description.size() <= 1000
+        && data.defaultBranch is string && data.defaultBranch.size() >= 1 && data.defaultBranch.size() <= 80
+        && data.stars is int && data.stars >= 0
+        && data.primaryLanguage is string && data.primaryLanguage.size() <= 60
+        && data.pluginType in ['SKILL_PACK', 'OPENAPI_PLUGIN', 'MCP_SERVER', 'WEB_TOOL', 'CODE_PLUGIN']
+        && data.capabilitiesSummary is string && data.capabilitiesSummary.size() <= 4000
+        && data.skillPromptContext is string && data.skillPromptContext.size() <= 20000
+        && data.openApiSpecJson is string && data.openApiSpecJson.size() <= 20000
+        && data.commandsJson is string && data.commandsJson.size() <= 10000
+        && data.fileTreeJson is string && data.fileTreeJson.size() <= 15000
+        && data.isEnabled is bool
+        && hasValidTimestamps(data);
+    }
+
+    function isValidCloudCreation(userId, data) {
+      return data.keys().hasAll([
+          'userId', 'creationType', 'title', 'prompt',
+          'summary', 'modelUsed', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'creationType', 'title', 'prompt',
+          'summary', 'modelUsed', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.creationType in ['IMAGE', 'VIDEO', 'SONG', '3D', 'PDF']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 2000
+        && data.summary is string && data.summary.size() <= 5000
+        && data.modelUsed is string && data.modelUsed.size() <= 120
+        && hasValidTimestamps(data);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(userId, incoming());
+      allow update: if isOwner(userId)
+        && isValidUserProfile(userId, incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'email', 'photoUrl',
+          'preferredPersona', 'preferredModelTier', 'updatedAt'
+        ]);
+      allow delete: if isOwner(userId);
+
+      match /messages/{messageId} {
+        allow get: if isOwner(userId) && isValidId(messageId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(messageId) && isValidCloudMessage(userId, incoming());
+        allow update: if isOwner(userId) && isValidId(messageId)
+          && isValidCloudMessage(userId, incoming())
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'content', 'modelUsed', 'craftType', 'craftPayload', 'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(messageId);
+      }
+
+      match /plugins/{pluginId} {
+        allow get: if isOwner(userId) && isValidId(pluginId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(pluginId) && isValidCloudPlugin(userId, incoming());
+        allow update: if isOwner(userId) && isValidId(pluginId)
+          && isValidCloudPlugin(userId, incoming())
+          && incoming().userId == existing().userId
+          && incoming().repoFullName == existing().repoFullName
+          && incoming().createdAt == existing().createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'repoUrl', 'name', 'owner', 'description', 'defaultBranch',
+            'stars', 'primaryLanguage', 'pluginType', 'capabilitiesSummary',
+            'skillPromptContext', 'openApiSpecJson', 'commandsJson',
+            'fileTreeJson', 'isEnabled', 'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(pluginId);
+      }
+
+      match /creations/{creationId} {
+        allow get: if isOwner(userId) && isValidId(creationId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(creationId) && isValidCloudCreation(userId, incoming());
+        allow update: if isOwner(userId) && isValidId(creationId)
+          && isValidCloudCreation(userId, incoming())
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'summary', 'modelUsed', 'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(creationId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
