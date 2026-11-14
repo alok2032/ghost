@@ -129,6 +129,7 @@ fun ControlCenterSheet(
     userDisplayName: String? = null,
     userEmail: String? = null,
     onSignOut: (() -> Unit)? = null,
+    onOpenSecurityCenter: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onClearHistory: () -> Unit,
     onExportHistory: () -> Unit = {},
@@ -557,7 +558,7 @@ fun ControlCenterSheet(
                         }
 
                         Text(
-                            text = "• Local Storage: Chat histories and tasks remain in on-device SQLite database.\n• ActionGate: Device calls, SMS, and alarms require your explicit tap.\n• Direct Network: AI queries travel directly to your configured provider over secure TLS.",
+                            text = "• Local Vault: SQLCipher database & AES-256-GCM encrypted file vault.\n• ActionGate: Calls, SMS & AI tool calls require explicit user policy checks.\n• E2EE & Zero-Trust: Keystore hardware keys, anti-SSRF, biometric lock & encrypted backups.",
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
@@ -567,6 +568,35 @@ fun ControlCenterSheet(
                                 .background(Color(0xFF0F172A))
                                 .padding(10.dp)
                         )
+
+                        if (onOpenSecurityCenter != null) {
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onOpenSecurityCenter()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("open_security_center_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Open Zero-Trust Security Center",
+                                    color = NeonCyan,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }

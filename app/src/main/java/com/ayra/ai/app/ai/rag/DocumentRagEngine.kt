@@ -23,7 +23,10 @@ data class RagSearchHit(
  * Splits uploaded PDFs/docs into overlapping chunks, persists them in SQLite,
  * and ranks relevant sections using BM25/TF-IDF lexical scoring with explicit source citations.
  */
-class DocumentRagEngine(private val dao: KnowledgeDocumentDao) {
+class DocumentRagEngine @JvmOverloads constructor(
+    private val dao: KnowledgeDocumentDao,
+    private val context: android.content.Context? = null
+) {
 
     fun observeDocuments(): Flow<List<KnowledgeDocumentEntity>> = dao.observeAllDocuments()
 
@@ -152,8 +155,13 @@ class DocumentRagEngine(private val dao: KnowledgeDocumentDao) {
         val formatted = buildString {
             append("[KNOWLEDGE BASE RAG CONTEXT — CITE USING TAGS BELOW]\n")
             hits.forEach { hit ->
+                val guarded = com.ayra.ai.app.security.AiToolSecurityGuard.inspectAndWrapUntrustedData(
+                    context = context,
+                    sourceLabel = hit.citationTag,
+                    rawContent = hit.excerpt
+                )
                 append(hit.citationTag).append("\n")
-                append(hit.excerpt).append("\n\n")
+                append(guarded.wrappedUntrustedContent).append("\n\n")
             }
         }
         return formatted to hits

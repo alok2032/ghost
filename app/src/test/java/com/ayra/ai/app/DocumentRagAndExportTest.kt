@@ -209,7 +209,18 @@ class DocumentRagAndExportTest {
             content = "## Key Findings\nQuantum error correction improves logical qubit stability."
         )
         assertTrue(mdFile.exists())
-        val mdText = mdFile.readText(Charsets.UTF_8)
+        assertTrue(
+            "Markdown export must be encrypted at rest in AYRAVLT vault",
+            com.ayra.ai.app.security.EncryptedVaultStorage.isVaultFile(mdFile)
+        )
+        val rawDiskMd = mdFile.readText(Charsets.UTF_8)
+        assertFalse(
+            "Raw disk file must not leak plaintext",
+            rawDiskMd.contains("Quantum error correction")
+        )
+        val mdText = com.ayra.ai.app.security.EncryptedVaultStorage
+            .decryptVaultFileBytes(context, mdFile)
+            .toString(Charsets.UTF_8)
         assertTrue(mdText.startsWith("# Quantum Research"))
         assertTrue(mdText.contains("Quantum error correction"))
 
@@ -219,7 +230,18 @@ class DocumentRagAndExportTest {
             content = "# Executive Summary\nAll checks verified cleanly."
         )
         assertTrue(docFile.exists())
-        val xmlText = docFile.readText(Charsets.UTF_8)
+        assertTrue(
+            "Word export must be encrypted at rest in AYRAVLT vault",
+            com.ayra.ai.app.security.EncryptedVaultStorage.isVaultFile(docFile)
+        )
+        val rawDiskDoc = docFile.readText(Charsets.UTF_8)
+        assertFalse(
+            "Raw disk file must not leak plaintext XML",
+            rawDiskDoc.contains("<w:wordDocument")
+        )
+        val xmlText = com.ayra.ai.app.security.EncryptedVaultStorage
+            .decryptVaultFileBytes(context, docFile)
+            .toString(Charsets.UTF_8)
         assertTrue(xmlText.contains("<w:wordDocument"))
         assertTrue("XML entities must be escaped", xmlText.contains("Quarterly &lt;Audit&gt; &amp; Notes"))
         assertTrue(xmlText.contains("Executive Summary"))

@@ -145,13 +145,26 @@ private fun DeepResearchPanel(context: Context) {
     var modelLabel by remember { mutableStateOf<String?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var isReadingWeb by remember { mutableStateOf(false) }
-    val historyPrefs = remember { context.getSharedPreferences("ayra_research_history", Context.MODE_PRIVATE) }
+    val historyPrefs = remember {
+        com.ayra.ai.app.security.EncryptedPreferences(
+            context = context,
+            prefsFileName = "ayra_research_history_enc",
+            keyAlias = com.ayra.ai.app.security.AyraKeyManager.ALIAS_PREFS_KEK
+        )
+    }
     val researchHistory = remember {
         mutableStateListOf<String>().apply {
-            val saved = historyPrefs.getString("queries", "").orEmpty()
-                .split("\n")
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
+            var raw = historyPrefs.getString("queries", "")
+            if (raw.isBlank()) {
+                val legacy = context.getSharedPreferences("ayra_research_history", Context.MODE_PRIVATE)
+                val legacyRaw = legacy.getString("queries", "").orEmpty()
+                if (legacyRaw.isNotBlank()) {
+                    raw = legacyRaw
+                    historyPrefs.putString("queries", legacyRaw)
+                }
+                legacy.edit().clear().apply()
+            }
+            val saved = raw.split("\n").map { it.trim() }.filter { it.isNotBlank() }
             addAll(saved)
         }
     }
@@ -160,12 +173,13 @@ private fun DeepResearchPanel(context: Context) {
         researchHistory.remove(q)
         researchHistory.add(0, q)
         if (researchHistory.size > 8) researchHistory.removeAt(researchHistory.lastIndex)
-        historyPrefs.edit().putString("queries", researchHistory.joinToString("\n")).apply()
+        historyPrefs.putString("queries", researchHistory.joinToString("\n"))
     }
 
     fun shareFile(file: File, mime: String, title: String) {
         runCatching {
-            val uri = FileProvider.getUriForFile(context, "com.ayra.ai.app.fileprovider", file)
+            val shareable = StorageHelper.prepareShareableFile(context, file)
+            val uri = FileProvider.getUriForFile(context, "com.ayra.ai.app.fileprovider", shareable)
             val share = Intent(Intent.ACTION_SEND).apply {
                 type = mime
                 putExtra(Intent.EXTRA_STREAM, uri)

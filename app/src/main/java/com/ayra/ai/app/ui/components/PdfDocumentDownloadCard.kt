@@ -189,10 +189,11 @@ private fun openPdfFile(context: Context, file: File) {
             Toast.makeText(context, "File does not exist: ${file.name}", Toast.LENGTH_SHORT).show()
             return
         }
+        val shareable = com.ayra.ai.app.data.StorageHelper.prepareShareableFile(context, file)
         val uri = FileProvider.getUriForFile(
             context,
             "com.ayra.ai.app.fileprovider",
-            file
+            shareable
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/pdf")
@@ -215,10 +216,11 @@ private fun sharePdfFile(context: Context, file: File) {
             Toast.makeText(context, "File does not exist: ${file.name}", Toast.LENGTH_SHORT).show()
             return
         }
+        val shareable = com.ayra.ai.app.data.StorageHelper.prepareShareableFile(context, file)
         val uri = FileProvider.getUriForFile(
             context,
             "com.ayra.ai.app.fileprovider",
-            file
+            shareable
         )
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"

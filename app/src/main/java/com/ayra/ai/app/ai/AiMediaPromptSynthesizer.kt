@@ -94,7 +94,13 @@ object AiMediaPromptSynthesizer {
                 } else {
                     "meta/muse-glimmer-30b"
                 }
-                val expanded = expandViaNvidia(cleanSubject, nvidiaKey, nvidiaModel, type)
+                val expanded = expandViaOpenAiEndpoint(
+                    subject = cleanSubject,
+                    endpointUrl = "${com.ayra.ai.app.ai.providers.AiProviderType.NVIDIA_NIM.defaultBaseUrl}chat/completions",
+                    apiKey = nvidiaKey,
+                    modelId = nvidiaModel,
+                    type = type
+                )
                 if (expanded.isNotBlank()) {
                     return cacheAndReturn(expanded)
                 }
@@ -233,21 +239,21 @@ object AiMediaPromptSynthesizer {
         if (museKey.isNotBlank()) {
             candidates.add(Triple("https://integrate.api.nvidia.com/v1/chat/completions", museKey, ExternalAiProviders.NVIDIA_MUSE_MODEL))
         }
-        val groqKey = com.ayra.ai.app.data.AyraPreferences.getGroqApiKey(context)
+        val groqKey = com.ayra.ai.app.data.AyraPreferences.getGroqKey(context)
         if (groqKey.isNotBlank()) {
-            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.GROQ.endpointUrl, groqKey, ExternalAiProviders.GROQ_LLAMA_MODEL))
+            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.GROQ.defaultBaseUrl}chat/completions", groqKey, ExternalAiProviders.GROQ_LLAMA_MODEL))
         }
-        val cerebrasKey = com.ayra.ai.app.data.AyraPreferences.getCerebrasApiKey(context)
+        val cerebrasKey = com.ayra.ai.app.data.AyraPreferences.getCerebrasKey(context)
         if (cerebrasKey.isNotBlank()) {
-            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS.endpointUrl, cerebrasKey, ExternalAiProviders.CEREBRAS_LLAMA_MODEL))
+            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS.defaultBaseUrl}chat/completions", cerebrasKey, ExternalAiProviders.CEREBRAS_LLAMA_MODEL))
         }
-        val openRouterKey = com.ayra.ai.app.data.AyraPreferences.getOpenRouterKey(context)
+        val openRouterKey = com.ayra.ai.app.data.AyraPreferences.getEffectiveOpenRouterKey(context)
         if (openRouterKey.isNotBlank()) {
-            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER.endpointUrl, openRouterKey, "meta-llama/llama-3.3-70b-instruct:free"))
+            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER.defaultBaseUrl}chat/completions", openRouterKey, "meta-llama/llama-3.3-70b-instruct:free"))
         }
         val githubKey = com.ayra.ai.app.data.AyraPreferences.getGitHubModelsKey(context)
         if (githubKey.isNotBlank()) {
-            candidates.add(Triple(com.ayra.ai.app.ai.providers.AiProviderType.GITHUB_MODELS.endpointUrl, githubKey, ExternalAiProviders.GITHUB_MODELS_DEFAULT))
+            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.GITHUB_MODELS.defaultBaseUrl}chat/completions", githubKey, ExternalAiProviders.GITHUB_GPT4O_MODEL))
         }
 
         for ((endpoint, key, modelId) in candidates) {
@@ -262,7 +268,8 @@ object AiMediaPromptSynthesizer {
         endpointUrl: String,
         apiKey: String,
         modelId: String,
-        type: String
+        type: String,
+        clientOverride: OkHttpClient? = null
     ): String {
         return try {
             val systemInstruction = if (type == "VIDEO") {
@@ -287,7 +294,7 @@ object AiMediaPromptSynthesizer {
                 .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
+            (clientOverride ?: httpClient).newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)

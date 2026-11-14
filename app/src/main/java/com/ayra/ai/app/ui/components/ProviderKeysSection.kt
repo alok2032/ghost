@@ -176,21 +176,18 @@ fun ProviderKeysSection(
             onSave = { AyraPreferences.setCustomEndpointUrl(context, it) },
             onClear = { AyraPreferences.setCustomEndpointUrl(context, "") },
             onTest = { endpoint ->
-                if (endpoint.isBlank() || (!endpoint.startsWith("http://") && !endpoint.startsWith("https://"))) {
-                    throw IllegalArgumentException("Endpoint must start with http:// or https://")
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                if (!urlCheck.allowed) {
+                    throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                 }
                 val start = System.currentTimeMillis()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    try {
-                        val client = okhttp3.OkHttpClient.Builder()
-                            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                            .build()
-                        val req = okhttp3.Request.Builder().url(endpoint).build()
-                        client.newCall(req).execute().close()
-                    } catch (e: Exception) {
-                        if (e is IllegalArgumentException) throw e
-                    }
+                    val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient.newBuilder()
+                        .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val req = okhttp3.Request.Builder().url(endpoint).build()
+                    client.newCall(req).execute().close()
                 }
                 (System.currentTimeMillis() - start).coerceAtLeast(1L)
             }
@@ -209,12 +206,13 @@ fun ProviderKeysSection(
             onSave = { AyraPreferences.setComfyUiUrl(context, it) },
             onClear = { AyraPreferences.setComfyUiUrl(context, "") },
             onTest = { endpoint ->
-                if (endpoint.isBlank() || (!endpoint.startsWith("http://") && !endpoint.startsWith("https://"))) {
-                    throw IllegalArgumentException("ComfyUI URL must start with http:// or https://")
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                if (!urlCheck.allowed) {
+                    throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe ComfyUI URL.")
                 }
                 val start = System.currentTimeMillis()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val client = okhttp3.OkHttpClient.Builder()
+                    val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient.newBuilder()
                         .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
                         .build()

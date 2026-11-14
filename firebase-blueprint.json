@@ -16,7 +16,7 @@
       "required": ["userId", "displayName", "email", "photoUrl", "preferredPersona", "preferredModelTier", "createdAt", "updatedAt"]
     },
     "CloudChatMessage": {
-      "description": "Cloud-synced AI conversation message",
+      "description": "Cloud-synced AI conversation message (ciphertext when E2EE is enabled)",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -26,6 +26,7 @@
         "modelUsed": { "type": "string" },
         "craftType": { "type": "string" },
         "craftPayload": { "type": "string" },
+        "e2ee": { "type": "boolean" },
         "timestampMs": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -72,10 +73,75 @@
         "prompt": { "type": "string" },
         "summary": { "type": "string" },
         "modelUsed": { "type": "string" },
+        "e2ee": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "creationType", "title", "prompt", "summary", "modelUsed", "createdAt", "updatedAt"]
+    },
+    "TrustedDevice": {
+      "description": "Registered E2EE trusted device public key bundle and revocation status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "identityPublicKeyB64": { "type": "string" },
+        "ecdhPublicKeyB64": { "type": "string" },
+        "fingerprintSha256": { "type": "string" },
+        "epochAdded": { "type": "integer" },
+        "isRevoked": { "type": "boolean" },
+        "platform": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "deviceId", "deviceName", "identityPublicKeyB64", "ecdhPublicKeyB64", "fingerprintSha256", "epochAdded", "isRevoked", "platform", "createdAt", "updatedAt"]
+    },
+    "CloudSession": {
+      "description": "Active or revoked user device session record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAtMs": { "type": "integer" },
+        "lastActiveMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "sessionId", "deviceId", "deviceName", "status", "createdAtMs", "lastActiveMs", "createdAt", "updatedAt"]
+    },
+    "EncryptedCloudBackup": {
+      "description": "Passphrase-encrypted Argon2/PBKDF2 + AES-GCM zero-knowledge vault backup",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "backupId": { "type": "string" },
+        "format": { "type": "string" },
+        "encryptedPayloadJson": { "type": "string" },
+        "payloadSha256": { "type": "string" },
+        "createdAtMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "backupId", "format", "encryptedPayloadJson", "payloadSha256", "createdAtMs", "createdAt", "updatedAt"]
+    },
+    "SecurityEvent": {
+      "description": "Append-only HMAC-chained security audit event synced for owner forensics",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "severity": { "type": "string" },
+        "message": { "type": "string" },
+        "hmacHex": { "type": "string" },
+        "timestampMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "severity", "message", "hmacHex", "timestampMs", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -94,6 +160,22 @@
     "/users/{userId}/creations/{creationId}": {
       "schema": { "$ref": "#/entities/CloudCreation" },
       "description": "Per-user synced AI creations log"
+    },
+    "/users/{userId}/devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/TrustedDevice" },
+      "description": "Per-user E2EE registered devices and revocation state"
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/CloudSession" },
+      "description": "Per-user device session registry"
+    },
+    "/users/{userId}/backups/{backupId}": {
+      "schema": { "$ref": "#/entities/EncryptedCloudBackup" },
+      "description": "Per-user encrypted backup snapshots"
+    },
+    "/users/{userId}/securityEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/SecurityEvent" },
+      "description": "Per-user HMAC-signed security audit log events"
     }
   }
 }

@@ -68,8 +68,12 @@ class Qwen38UncensoredEngine(private val context: Context? = null) {
         val targetUrl = endpoint.trim().ifBlank {
             context?.let { AyraPreferences.getCustomEndpointUrl(it) } ?: "http://10.0.2.2:11434"
         }
+        val check = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, targetUrl)
+        if (!check.allowed) {
+            throw SecurityException(check.reason ?: "Blocked unsafe endpoint URL.")
+        }
         val start = System.currentTimeMillis()
-        val client = OkHttpClient.Builder()
+        val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient.newBuilder()
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(4, TimeUnit.SECONDS)
             .build()
@@ -78,7 +82,7 @@ class Qwen38UncensoredEngine(private val context: Context? = null) {
         val req = Request.Builder().url(checkUrl).build()
         try {
             client.newCall(req).execute().close()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Still compute latency if host answered or timed out
         }
         (System.currentTimeMillis() - start).coerceAtLeast(1L)

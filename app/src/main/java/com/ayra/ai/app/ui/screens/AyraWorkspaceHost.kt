@@ -62,9 +62,26 @@ fun AyraWorkspaceHost(
     modifier: Modifier = Modifier
 ) {
     var activeTab by rememberSaveable { mutableStateOf(WorkspaceTab.CHAT) }
+    var showSecurityCenter by rememberSaveable { mutableStateOf(false) }
 
-    BackHandler(enabled = activeTab != WorkspaceTab.CHAT) {
-        activeTab = WorkspaceTab.CHAT
+    BackHandler(enabled = showSecurityCenter || activeTab != WorkspaceTab.CHAT) {
+        if (showSecurityCenter) {
+            showSecurityCenter = false
+        } else {
+            activeTab = WorkspaceTab.CHAT
+        }
+    }
+
+    if (showSecurityCenter) {
+        SecurityCenterScreen(
+            onBack = { showSecurityCenter = false },
+            onVaultWiped = {
+                showSecurityCenter = false
+                onSignOut()
+            },
+            modifier = modifier.fillMaxSize()
+        )
+        return
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -77,6 +94,7 @@ fun AyraWorkspaceHost(
                     viewModel = viewModel,
                     currentUser = currentUser,
                     onSignOut = onSignOut,
+                    onOpenSecurityCenter = { showSecurityCenter = true },
                     embeddedInWorkspace = true,
                     modifier = contentModifier
                 )
@@ -88,6 +106,7 @@ fun AyraWorkspaceHost(
                         viewModel.updateInputText(prompt)
                         activeTab = WorkspaceTab.CHAT
                     },
+                    onVaultWiped = onSignOut,
                     modifier = contentModifier
                 )
             }

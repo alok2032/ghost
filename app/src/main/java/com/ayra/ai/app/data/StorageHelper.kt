@@ -4,11 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Base64
 import com.ayra.ai.app.ai.DataAnalysisEngine
+import com.ayra.ai.app.security.AndroidHardeningHelper
+import com.ayra.ai.app.security.EncryptedVaultStorage
 import org.json.JSONArray
 import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
@@ -26,14 +27,14 @@ import java.util.zip.Inflater
 import java.util.zip.ZipInputStream
 
 /**
- * Robust device storage manager for saving attachments permanently in phone storage,
- * parsing PDF & documents, and exporting chat/search history.
+ * Encrypted & Hardened device storage manager for Ayra AI.
+ * - All saved attachments, chat exports, PDFs, Markdown, Word exports, and media artifacts
+ *   are stored via [EncryptedVaultStorage] (per-file 256-bit DEK AES-256-GCM + Keystore KEK).
+ * - Decryption for Share/Open actions materializes temporary cache copies solely inside
+ *   `cacheDir/exports` via [prepareShareableFile] and purges temporary files automatically.
  */
 object StorageHelper {
 
-    /**
-     * Sanitizes file names to prevent directory traversal and invalid path characters.
-     */
     fun sanitizeFileName(rawName: String): String {
         val base = rawName.substringAfterLast("/").substringAfterLast("\\")
         val sanitized = base.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(80)
@@ -41,24 +42,81 @@ object StorageHelper {
     }
 
     /**
-     * Copies a picked file from content Uri into internal persistent app storage (context.filesDir)
-     * so it never gets lost across app restarts or permission expirations.
+     * Encrypts and stores a picked file from [uri] inside the AYRA Encrypted File Vault.
      */
     fun saveMediaToInternalStorage(context: Context, uri: Uri, prefix: String = "media"): File? {
         return try {
-            val dir = File(context.filesDir, "saved_attachments").apply { if (!exists()) mkdirs() }
             val rawName = getFileName(context, uri) ?: "${prefix}_${System.currentTimeMillis()}.dat"
             val sanitized = sanitizeFileName(rawName)
-            val destFile = File(dir, "${System.currentTimeMillis()}_$sanitized")
-
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            destFile
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val vaultFile = EncryptedVaultStorage.storeEncryptedBytes(
+                context = context,
+                folder = "saved_attachments",
+                originalName = "${System.currentTimeMillis()}_$sanitized",
+                mimeType = mime,
+                plaintextBytes = bytes
+            )
+            bytes.fill(0)
+            vaultFile
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Resolves an attachment URI/path into a decrypted [InputStream] when stored as `.ayravlt`,
+     * or falls back safely to ContentResolver/File stream.
+     */
+    fun openReadableAttachmentStream(context: Context, uriOrPath: String): InputStream? {
+        return runCatching {
+            val uri = Uri.parse(uriOrPath)
+            val filePath = when (uri.scheme) {
+                "file", null -> uri.path ?: uriOrPath
+                else -> null
+            }
+            if (filePath != null) {
+                val f = File(filePath)
+                if (EncryptedVaultStorage.isVaultFile(f)) {
+                    return EncryptedVaultStorage.openDecryptedStream(context, f)
+                }
+                if (f.exists() && f.isFile) {
+                    return f.inputStream()
+                }
+            }
+            context.contentResolver.openInputStream(uri)
+        }.getOrNull()
+    }
+
+    /**
+     * Returns in-memory decrypted bytes for encrypted `.ayravlt` images so Coil renders
+     * them securely without writing plaintext copies to internal storage.
+     */
+    fun resolveCoilImageModel(context: Context, uriOrPath: String?): Any? {
+        if (uriOrPath.isNullOrBlank()) return null
+        val uri = Uri.parse(uriOrPath)
+        val path = when (uri.scheme) {
+            "file", null -> uri.path ?: uriOrPath
+            else -> null
+        }
+        if (path != null) {
+            val f = File(path)
+            if (EncryptedVaultStorage.isVaultFile(f)) {
+                return runCatching { EncryptedVaultStorage.decryptVaultFileBytes(context, f) }.getOrNull()
+            }
+        }
+        return uriOrPath
+    }
+
+    /**
+     * Materializes a decrypted temporary copy in `cacheDir/exports/` strictly for external Android
+     * `FileProvider` share/view intents, keeping persistent vault artifacts encrypted on disk.
+     */
+    fun prepareShareableFile(context: Context, file: File): File {
+        return if (EncryptedVaultStorage.isVaultFile(file)) {
+            EncryptedVaultStorage.materializeTempDecryptedFile(context, file)
+        } else {
+            file
         }
     }
 
@@ -76,11 +134,6 @@ object StorageHelper {
         return raw?.let { sanitizeFileName(it) }
     }
 
-    /**
-     * Extracts readable textual content from uploaded files
-     * (PDF, DOCX, XLSX, PPTX, CSV/TSV with statistical summary, TXT, MD, JSON, Code).
-     * Bounded to 50,000 characters with honest truncation notice.
-     */
     fun extractTextFromDocument(context: Context, uri: Uri, fileName: String?): String {
         val name = fileName ?: getFileName(context, uri) ?: "document"
         val lower = name.lowercase(Locale.ROOT)
@@ -282,15 +335,11 @@ object StorageHelper {
         return sb.toString().trim()
     }
 
-    /**
-     * Extracts text from uncompressed and FlateDecode-compressed PDF streams.
-     */
     internal fun extractPdfTextTokensFromBytes(bytes: ByteArray): String {
         val sources = mutableListOf<String>()
         val rawLatin = String(bytes, Charsets.ISO_8859_1)
         sources.add(rawLatin)
 
-        // Decompress /FlateDecode compressed PDF streams using zlib Inflater
         var searchIdx = 0
         while (true) {
             val streamTag = rawLatin.indexOf("stream", searchIdx)
@@ -353,10 +402,6 @@ object StorageHelper {
         return sb.toString().replace(Regex("\\s+"), " ").trim()
     }
 
-    /**
-     * Extracts text from PDF files via uncompressed + FlateDecode PDF token parsing.
-     * Enforces 50,000 character maximum with transparent truncation notice.
-     */
     private fun extractTextFromPdf(context: Context, uri: Uri): String {
         var tempFile: File? = null
         return try {
@@ -389,14 +434,10 @@ object StorageHelper {
         } catch (e: Exception) {
             "[PDF Document]\nError extracting PDF text: ${e.message}"
         } finally {
-            tempFile?.delete()
+            AndroidHardeningHelper.secureWipeFile(tempFile)
         }
     }
 
-    /**
-     * Renders the first page of a PDF document to a Base64-encoded JPEG image.
-     * This enables Gemini's multimodal vision engine to read scanned documents, receipts, formulas and charts.
-     */
     fun renderPdfFirstPageToBase64(context: Context, uri: Uri): String? {
         var tempFile: File? = null
         return try {
@@ -411,7 +452,6 @@ object StorageHelper {
                 val width = (page.width * 1.5).toInt().coerceAtMost(1600)
                 val height = (page.height * 1.5).toInt().coerceAtMost(2200)
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                // Fill with white background
                 val canvas = android.graphics.Canvas(bitmap)
                 canvas.drawColor(android.graphics.Color.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -432,16 +472,18 @@ object StorageHelper {
         } catch (_: Exception) {
             null
         } finally {
-            tempFile?.delete()
+            AndroidHardeningHelper.secureWipeFile(tempFile)
         }
     }
 
-    /**
-     * Converts a local image file into target format (PNG, JPEG, WEBP) and saves to phone storage.
-     */
     fun convertImageFormat(sourceFile: File, targetFormatName: String, context: Context): File? {
         return try {
-            val bitmap = android.graphics.BitmapFactory.decodeFile(sourceFile.absolutePath) ?: return null
+            val rawBytes = if (EncryptedVaultStorage.isVaultFile(sourceFile)) {
+                EncryptedVaultStorage.decryptVaultFileBytes(context, sourceFile)
+            } else {
+                sourceFile.readBytes()
+            }
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size) ?: return null
             val compressFormat = when (targetFormatName.uppercase()) {
                 "PNG" -> Bitmap.CompressFormat.PNG
                 "WEBP" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -453,76 +495,78 @@ object StorageHelper {
                 else -> Bitmap.CompressFormat.JPEG
             }
             val ext = targetFormatName.lowercase()
-            val destFile = File(context.filesDir, "converted_${System.currentTimeMillis()}.$ext")
-            FileOutputStream(destFile).use { out ->
-                bitmap.compress(compressFormat, 95, out)
-            }
-            destFile
+            val baos = ByteArrayOutputStream()
+            bitmap.compress(compressFormat, 95, baos)
+            bitmap.recycle()
+            val outBytes = baos.toByteArray()
+            val vaultFile = EncryptedVaultStorage.storeEncryptedBytes(
+                context = context,
+                folder = "generated_images",
+                originalName = "converted_${System.currentTimeMillis()}.$ext",
+                mimeType = "image/$ext",
+                plaintextBytes = outBytes
+            )
+            outBytes.fill(0)
+            vaultFile
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Exports chat messages to phone storage as a formatted text file.
-     */
     fun exportChatHistory(context: Context, messages: List<ChatMessage>): File {
-        val exportDir = File(context.filesDir, "chat_exports").apply { if (!exists()) mkdirs() }
         val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
-        val file = File(exportDir, "Ayra_Chat_History_${sdf.format(Date())}.txt")
-
         val timeFormatter = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-        file.bufferedWriter().use { writer ->
-            writer.write("=====================================================\n")
-            writer.write("Ayra AI • Chat & Prompt History Export\n")
-            writer.write("Exported on: ${timeFormatter.format(Date())}\n")
-            writer.write("Total Messages: ${messages.size}\n")
-            writer.write("=====================================================\n\n")
+        val text = buildString {
+            append("=====================================================\n")
+            append("Ayra AI • Chat & Prompt History Export\n")
+            append("Exported on: ${timeFormatter.format(Date())}\n")
+            append("Total Messages: ${messages.size}\n")
+            append("=====================================================\n\n")
 
             messages.forEach { msg ->
                 val sender = if (msg.role == "user") "YOU" else "AYRA AI"
                 val time = timeFormatter.format(Date(msg.timestamp))
-                writer.write("[$time] $sender:\n")
+                append("[$time] $sender:\n")
                 if (!msg.attachedImagePath.isNullOrBlank()) {
-                    writer.write("📎 Attachment: ${msg.attachedImagePath}\n")
+                    append("📎 Attachment: ${msg.attachedImagePath}\n")
                 }
-                writer.write("${msg.content}\n")
+                append("${msg.content}\n")
                 if (!msg.craftType.isNullOrBlank()) {
-                    writer.write("🎨 Generative Craft: ${msg.craftType}\n")
+                    append("🎨 Generative Craft: ${msg.craftType}\n")
                 }
-                writer.write("-----------------------------------------------------\n\n")
+                append("-----------------------------------------------------\n\n")
             }
         }
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val file = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "chat_exports",
+            originalName = "Ayra_Chat_History_${sdf.format(Date())}.txt",
+            mimeType = "text/plain",
+            plaintextBytes = bytes
+        )
+        bytes.fill(0)
         return file
     }
 
-    /**
-     * Creates a real, formatted, multi-page PDF document using Android's native PdfDocument engine.
-     * Generates styled pages with header, title, body paragraphs, and page numbers.
-     */
     fun createRealPdf(context: Context, title: String, content: String): File? {
         return try {
             val pdfDocument = android.graphics.pdf.PdfDocument()
-            val pageWidth = 595 // Standard A4 width in points
-            val pageHeight = 842 // Standard A4 height in points
+            val pageWidth = 595
+            val pageHeight = 842
 
-            val paint = android.graphics.Paint().apply {
-                isAntiAlias = true
-            }
-
+            val paint = android.graphics.Paint().apply { isAntiAlias = true }
             val textPaint = android.text.TextPaint().apply {
                 isAntiAlias = true
                 textSize = 11.5f
                 color = android.graphics.Color.DKGRAY
             }
-
             val titlePaint = android.text.TextPaint().apply {
                 isAntiAlias = true
                 textSize = 17f
                 isFakeBoldText = true
                 color = android.graphics.Color.BLACK
             }
-
             val headerPaint = android.text.TextPaint().apply {
                 isAntiAlias = true
                 textSize = 13f
@@ -549,14 +593,10 @@ object StorageHelper {
             for (paragraph in content.split("\n")) {
                 val trimmed = paragraph.trimEnd()
                 when {
-                    trimmed.isBlank() -> {
-                        blocks.add(LayoutBlock(buildLayout(" ", textPaint), 6f))
-                    }
+                    trimmed.isBlank() -> blocks.add(LayoutBlock(buildLayout(" ", textPaint), 6f))
                     trimmed.startsWith("#") -> {
                         val heading = trimmed.replace(Regex("^#+\\s*"), "")
-                        if (heading.isNotBlank()) {
-                            blocks.add(LayoutBlock(buildLayout(heading, headerPaint), 8f))
-                        }
+                        if (heading.isNotBlank()) blocks.add(LayoutBlock(buildLayout(heading, headerPaint), 8f))
                     }
                     else -> {
                         val cleanParagraph = trimmed.replace("**", "")
@@ -573,14 +613,13 @@ object StorageHelper {
                 val page = pdfDocument.startPage(pageInfo)
                 val canvas = page.canvas
 
-                // Header bar on each page
                 paint.color = android.graphics.Color.rgb(240, 244, 250)
                 canvas.drawRect(0f, 0f, pageWidth.toFloat(), 45f, paint)
 
                 paint.color = android.graphics.Color.rgb(0, 102, 204)
                 paint.textSize = 10f
                 paint.isFakeBoldText = true
-                canvas.drawText("AYRA AI • DOCUMENT STUDIO", margin, 28f, paint)
+                canvas.drawText("AYRA AI • ENCRYPTED DOCUMENT STUDIO", margin, 28f, paint)
 
                 val pageNumStr = "Page $pageNum"
                 canvas.drawText(pageNumStr, pageWidth - margin - paint.measureText(pageNumStr), 28f, paint)
@@ -601,9 +640,7 @@ object StorageHelper {
 
                 while (blockIdx < blocks.size) {
                     val block = blocks[blockIdx]
-                    if (y + block.layout.height > pageHeight - bottomMargin && y > 90f) {
-                        break
-                    }
+                    if (y + block.layout.height > pageHeight - bottomMargin && y > 90f) break
                     canvas.save()
                     canvas.translate(margin, y)
                     block.layout.draw(canvas)
@@ -617,25 +654,29 @@ object StorageHelper {
                 if (blockIdx >= blocks.size) break
             }
 
-            val dir = File(context.filesDir, "generated_pdfs").apply { if (!exists()) mkdirs() }
-            val sanitized = title.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(24).ifBlank { "doc" }
-            val pdfFile = File(dir, "Ayra_${sanitized}_${System.currentTimeMillis()}.pdf")
-            FileOutputStream(pdfFile).use { out ->
-                pdfDocument.writeTo(out)
-            }
+            val baos = ByteArrayOutputStream()
+            pdfDocument.writeTo(baos)
             pdfDocument.close()
-            pdfFile
+            val pdfBytes = baos.toByteArray()
+
+            val sanitized = title.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(24).ifBlank { "doc" }
+            val vaultFile = EncryptedVaultStorage.storeEncryptedBytes(
+                context = context,
+                folder = "generated_pdfs",
+                originalName = "Ayra_${sanitized}_${System.currentTimeMillis()}.pdf",
+                mimeType = "application/pdf",
+                plaintextBytes = pdfBytes
+            )
+            pdfBytes.fill(0)
+            vaultFile
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Embeds an image file into an A4 PDF document.
-     */
     fun convertImageToPdf(context: Context, imageUri: Uri, title: String = "Exported Image Document"): File? {
         return try {
-            val input = context.contentResolver.openInputStream(imageUri) ?: return null
+            val input = openReadableAttachmentStream(context, imageUri.toString()) ?: return null
             val bitmap = android.graphics.BitmapFactory.decodeStream(input)
             input.close()
             if (bitmap == null) return null
@@ -673,40 +714,46 @@ object StorageHelper {
             pdfDocument.finishPage(page)
             bitmap.recycle()
 
-            val dir = File(context.filesDir, "generated_pdfs").apply { if (!exists()) mkdirs() }
-            val pdfFile = File(dir, "Image_To_PDF_${System.currentTimeMillis()}.pdf")
-            FileOutputStream(pdfFile).use { out -> pdfDocument.writeTo(out) }
+            val baos = ByteArrayOutputStream()
+            pdfDocument.writeTo(baos)
             pdfDocument.close()
-            pdfFile
+            val pdfBytes = baos.toByteArray()
+
+            val vaultFile = EncryptedVaultStorage.storeEncryptedBytes(
+                context = context,
+                folder = "generated_pdfs",
+                originalName = "Image_To_PDF_${System.currentTimeMillis()}.pdf",
+                mimeType = "application/pdf",
+                plaintextBytes = pdfBytes
+            )
+            pdfBytes.fill(0)
+            vaultFile
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Exports structured text/research content to a Markdown (.md) file in filesDir/generated_docs/.
-     */
     fun exportMarkdownDocument(context: Context, title: String, content: String): File {
-        val dir = File(context.filesDir, "generated_docs").apply { if (!exists()) mkdirs() }
         val safe = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ayra_doc" }
-        val mdFile = File(dir, "${safe}_${System.currentTimeMillis()}.md")
         val body = buildString {
             append("# ").append(title.ifBlank { "Ayra AI Document" }).append("\n\n")
             append("_Generated by Ayra AI Research & Document Studio_\n\n---\n\n")
             append(content)
         }
-        mdFile.writeText(body, Charsets.UTF_8)
-        return mdFile
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        val file = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "generated_docs",
+            originalName = "${safe}_${System.currentTimeMillis()}.md",
+            mimeType = "text/markdown",
+            plaintextBytes = bytes
+        )
+        bytes.fill(0)
+        return file
     }
 
-    /**
-     * Exports structured content to a Word-compatible XML (.doc) document in filesDir/generated_docs/
-     * readable by Microsoft Word, Google Docs, and LibreOffice Writer.
-     */
     fun exportWordDocDocument(context: Context, title: String, content: String): File {
-        val dir = File(context.filesDir, "generated_docs").apply { if (!exists()) mkdirs() }
         val safe = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ayra_doc" }
-        val docFile = File(dir, "${safe}_${System.currentTimeMillis()}.doc")
 
         fun escapeXml(raw: String): String = raw
             .replace("&", "&amp;")
@@ -736,18 +783,27 @@ object StorageHelper {
             </w:wordDocument>
         """.trimIndent()
 
-        docFile.writeText(wordXml, Charsets.UTF_8)
-        return docFile
+        val bytes = wordXml.toByteArray(Charsets.UTF_8)
+        val file = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "generated_docs",
+            originalName = "${safe}_${System.currentTimeMillis()}.doc",
+            mimeType = "application/msword",
+            plaintextBytes = bytes
+        )
+        bytes.fill(0)
+        return file
     }
 
-    // --- Saved Files & Workspace Artifacts Explorer ---
+    // --- Saved Files & Encrypted Vault Artifacts Explorer ---
 
     data class WorkspaceArtifact(
         val name: String,
         val folder: String,
         val file: File,
         val sizeBytes: Long,
-        val lastModifiedMs: Long
+        val lastModifiedMs: Long,
+        val isEncrypted: Boolean = false
     )
 
     private val ARTIFACT_FOLDERS = listOf(
@@ -764,6 +820,22 @@ object StorageHelper {
 
     fun listWorkspaceArtifacts(context: Context): List<WorkspaceArtifact> {
         val result = mutableListOf<WorkspaceArtifact>()
+
+        // 1. Encrypted Vault Artifacts
+        EncryptedVaultStorage.listVaultArtifacts(context).forEach { entry ->
+            result.add(
+                WorkspaceArtifact(
+                    name = "${entry.originalName} 🔒",
+                    folder = "${entry.folder} (Vault)",
+                    file = entry.vaultFile,
+                    sizeBytes = entry.encryptedSizeBytes,
+                    lastModifiedMs = entry.createdMs,
+                    isEncrypted = true
+                )
+            )
+        }
+
+        // 2. Remaining internal workspace directories (e.g., code_projects)
         ARTIFACT_FOLDERS.forEach { folder ->
             val dir = File(context.filesDir, folder)
             if (dir.exists() && dir.isDirectory) {
@@ -775,7 +847,8 @@ object StorageHelper {
                                 folder = folder,
                                 file = f,
                                 sizeBytes = f.length(),
-                                lastModifiedMs = f.lastModified()
+                                lastModifiedMs = f.lastModified(),
+                                isEncrypted = EncryptedVaultStorage.isVaultFile(f)
                             )
                         )
                     } else if (f.isDirectory && folder == "code_projects") {
@@ -786,7 +859,8 @@ object StorageHelper {
                                 folder = folder,
                                 file = f,
                                 sizeBytes = size,
-                                lastModifiedMs = f.lastModified()
+                                lastModifiedMs = f.lastModified(),
+                                isEncrypted = false
                             )
                         )
                     }
@@ -797,11 +871,7 @@ object StorageHelper {
     }
 
     fun deleteWorkspaceArtifact(file: File): Boolean {
-        return try {
-            if (file.isDirectory) file.deleteRecursively() else file.delete()
-        } catch (_: Exception) {
-            false
-        }
+        return AndroidHardeningHelper.secureWipeFile(file)
     }
 
     // --- Key-Free Local Workspace JSON Backup & Restore ---
@@ -812,10 +882,6 @@ object StorageHelper {
         val plugins: List<InstalledGitHubPlugin>
     )
 
-    /**
-     * Serializes sessions, messages, installed GitHub plugins, and non-secret AyraPreferences into JSON.
-     * Strictly NEVER includes API keys, tokens, or secrets from SecureKeyStore / EncryptedPreferences.
-     */
     fun exportSafeWorkspaceBackupJson(
         context: Context,
         sessions: List<ChatSession>,
@@ -907,7 +973,7 @@ object StorageHelper {
             if (prefs.has("preferredLanguage")) AyraPreferences.setPreferredLanguage(context, prefs.optString("preferredLanguage", "Auto"))
             if (prefs.has("themeMode")) AyraPreferences.setThemeMode(context, prefs.optString("themeMode", "dark"))
             if (prefs.has("searchGroundingEnabled")) AyraPreferences.setSearchGroundingEnabled(context, prefs.optBoolean("searchGroundingEnabled", true))
-            if (prefs.has("freeAiPoolEnabled")) AyraPreferences.setFreeAiPoolEnabled(context, prefs.optBoolean("freeAiPoolEnabled", true))
+            if (prefs.has("freeAiPoolEnabled")) AyraPreferences.setFreeAiPoolEnabled(context, prefs.optBoolean("freeAiPoolEnabled", false))
             if (prefs.has("memoryEnabled")) AyraPreferences.setMemoryEnabled(context, prefs.optBoolean("memoryEnabled", true))
             if (prefs.has("customInstructions")) AyraPreferences.setUserCustomInstructions(context, prefs.optString("customInstructions", ""))
             val factsArr = prefs.optJSONArray("rememberedFacts")

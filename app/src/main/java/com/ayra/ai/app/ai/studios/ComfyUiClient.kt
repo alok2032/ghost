@@ -23,16 +23,18 @@ sealed class ComfyUiResult {
  * Genuine ComfyUI REST Client supporting user-configured ComfyUI endpoints (LAN / Cloud GPU).
  * Submits real graph JSON via POST /prompt, polls GET /history/{prompt_id}, and downloads generated PNG/MP4 files via GET /view.
  */
-class ComfyUiClient(
-    private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
+class ComfyUiClient @JvmOverloads constructor(
+    private val httpClient: OkHttpClient = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient,
+    private val context: android.content.Context? = null
 ) {
+
+    private fun validateEndpoint(cleanUrl: String): com.ayra.ai.app.security.UrlValidationResult {
+        return com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, cleanUrl)
+    }
 
     suspend fun isServerReachable(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
         val clean = baseUrl.trim().trimEnd('/')
-        if (!clean.startsWith("http://") && !clean.startsWith("https://")) return@withContext false
+        if (!validateEndpoint(clean).allowed) return@withContext false
         runCatching {
             val req = Request.Builder().url("$clean/system_stats").get().build()
             httpClient.newCall(req).execute().use { it.isSuccessful }
@@ -263,6 +265,8 @@ class ComfyUiClient(
     ): ComfyUiResult = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trim().trimEnd('/')
         if (cleanBase.isBlank()) return@withContext ComfyUiResult.Failure("ComfyUI server URL is not configured.")
+        val urlCheck = validateEndpoint(cleanBase)
+        if (!urlCheck.allowed) return@withContext ComfyUiResult.Failure(urlCheck.reason ?: "Unsafe ComfyUI URL.")
         val startMs = System.currentTimeMillis()
 
         try {
@@ -353,6 +357,8 @@ class ComfyUiClient(
     ): ComfyUiResult = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trim().trimEnd('/')
         if (cleanBase.isBlank()) return@withContext ComfyUiResult.Failure("ComfyUI server URL is not configured.")
+        val urlCheck = validateEndpoint(cleanBase)
+        if (!urlCheck.allowed) return@withContext ComfyUiResult.Failure(urlCheck.reason ?: "Unsafe ComfyUI URL.")
         val startMs = System.currentTimeMillis()
 
         try {
@@ -440,6 +446,7 @@ class ComfyUiClient(
     ): String? = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trim().trimEnd('/')
         if (cleanBase.isBlank() || imageBytes.isEmpty()) return@withContext null
+        if (!validateEndpoint(cleanBase).allowed) return@withContext null
 
         runCatching {
             val multipart = MultipartBody.Builder()
@@ -475,6 +482,8 @@ class ComfyUiClient(
     ): ComfyUiResult = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trim().trimEnd('/')
         if (cleanBase.isBlank()) return@withContext ComfyUiResult.Failure("ComfyUI server URL is not configured.")
+        val urlCheck = validateEndpoint(cleanBase)
+        if (!urlCheck.allowed) return@withContext ComfyUiResult.Failure(urlCheck.reason ?: "Unsafe ComfyUI URL.")
         val startMs = System.currentTimeMillis()
 
         val uploadedName = uploadImage(cleanBase, referenceImageBytes)

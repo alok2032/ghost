@@ -35,10 +35,8 @@ object CyberTerminalEngine {
     Type 'help' for real sandbox & network diagnostic commands, or 'labs' for ethical CTFs.
     """.trimIndent()
 
-    private val defaultHttpClient = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
+    private val defaultHttpClient: OkHttpClient
+        get() = NetworkSecurityHelper.hardenedPooledClient
 
     @JvmOverloads
     fun executeCommand(
@@ -350,6 +348,12 @@ object CyberTerminalEngine {
         if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
             urlStr = "https://$urlStr"
         }
+        if (client === defaultHttpClient) {
+            val check = NetworkSecurityHelper.validatePublicHttpsUrl(urlStr)
+            if (!check.allowed) {
+                return "Error: ${check.reason ?: "Blocked unsafe URL (SSRF defense)."}"
+            }
+        }
 
         return try {
             val req = Request.Builder()
@@ -392,6 +396,12 @@ object CyberTerminalEngine {
         var targetUrl = urlArg
         if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
             targetUrl = "https://$targetUrl"
+        }
+        if (client === defaultHttpClient) {
+            val check = NetworkSecurityHelper.validatePublicHttpsUrl(targetUrl)
+            if (!check.allowed) {
+                return "Error: ${check.reason ?: "Blocked unsafe URL (SSRF defense)."}"
+            }
         }
 
         return try {
@@ -469,6 +479,12 @@ object CyberTerminalEngine {
         }
 
         val endpoint = cveApiBaseUrl.trimEnd('/') + "/" + cveId
+        if (client === defaultHttpClient && cveApiBaseUrl == "https://cve.circl.lu/api/cve/") {
+            val check = NetworkSecurityHelper.validatePublicHttpsUrl(endpoint)
+            if (!check.allowed) {
+                return "Error: ${check.reason ?: "Blocked unsafe CVE endpoint."}"
+            }
+        }
         return try {
             val req = Request.Builder()
                 .url(endpoint)
@@ -620,13 +636,20 @@ object CyberTerminalEngine {
 
     private fun handleWhois(args: List<String>, client: OkHttpClient): String {
         val domain = if (args.isNotEmpty()) args[0].lowercase(Locale.ROOT).replace(Regex("^https?://"), "").substringBefore("/").trim() else "example.com"
+        val rdapUrl = "https://rdap.org/domain/$domain"
+        if (client === defaultHttpClient) {
+            val check = NetworkSecurityHelper.validatePublicHttpsUrl(rdapUrl)
+            if (!check.allowed) {
+                return "Error: ${check.reason ?: "Blocked invalid RDAP lookup target."}"
+            }
+        }
         return try {
             val quickClient = client.newBuilder()
                 .connectTimeout(3, TimeUnit.SECONDS)
                 .readTimeout(4, TimeUnit.SECONDS)
                 .build()
             val rdapReq = Request.Builder()
-                .url("https://rdap.org/domain/$domain")
+                .url(rdapUrl)
                 .header("Accept", "application/rdap+json")
                 .build()
             quickClient.newCall(rdapReq).execute().use { resp ->

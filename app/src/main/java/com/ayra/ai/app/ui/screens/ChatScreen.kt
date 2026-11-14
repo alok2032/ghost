@@ -152,6 +152,7 @@ fun ChatScreen(
     viewModel: ChatViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     currentUser: com.google.firebase.auth.FirebaseUser? = null,
     onSignOut: () -> Unit = {},
+    onOpenSecurityCenter: () -> Unit = {},
     embeddedInWorkspace: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -595,7 +596,7 @@ fun ChatScreen(
                 var base64Image: String? = null
                 if (!attachedUriStr.isNullOrBlank()) {
                     try {
-                        val stream = context.contentResolver.openInputStream(Uri.parse(attachedUriStr))
+                        val stream = com.ayra.ai.app.data.StorageHelper.openReadableAttachmentStream(context, attachedUriStr)
                         val bytes = stream?.readBytes()
                         stream?.close()
                         if (bytes != null) {
@@ -752,9 +753,14 @@ fun ChatScreen(
                                 message = msg,
                                 onImageClick = { expandedImageUri = it },
                                 onCopy = {
-                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    cm.setPrimaryClip(ClipData.newPlainText("Ayra Message", msg.content))
-                                    Toast.makeText(context, "Copied!", Toast.LENGTH_SHORT).show()
+                                    com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
+                                        context = context,
+                                        label = "Ayra Message",
+                                        text = msg.content,
+                                        isSensitive = true,
+                                        autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
+                                    )
+                                    Toast.makeText(context, "Copied (auto-clears securely)!", Toast.LENGTH_SHORT).show()
                                 },
                                 onSpeak = {
                                     val msgSentiment = SentimentDetector.detectSentiment(msg.content)
@@ -1092,8 +1098,11 @@ fun ChatScreen(
                         .clickable { expandedImageUri = null },
                     contentAlignment = Alignment.Center
                 ) {
+                    val resolvedExpandedModel = remember(expandedImageUri) {
+                        com.ayra.ai.app.data.StorageHelper.resolveCoilImageModel(context, expandedImageUri)
+                    }
                     AsyncImage(
-                        model = expandedImageUri,
+                        model = resolvedExpandedModel,
                         contentDescription = "Expanded View",
                         modifier = Modifier
                             .fillMaxWidth(0.95f)
@@ -1684,14 +1693,19 @@ fun ChatScreen(
                     inputText = selectedPrompt
                 },
                 onCopyPrompt = { promptToCopy ->
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    val clip = ClipData.newPlainText("Ayra Prompt", promptToCopy)
-                    clipboard?.setPrimaryClip(clip)
-                    Toast.makeText(context, "Prompt copied to clipboard / কপি করা হয়েছে", Toast.LENGTH_SHORT).show()
+                    com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
+                        context = context,
+                        label = "Ayra Prompt",
+                        text = promptToCopy,
+                        isSensitive = true,
+                        autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
+                    )
+                    Toast.makeText(context, "Prompt copied securely / কপি করা হয়েছে", Toast.LENGTH_SHORT).show()
                 },
                 userDisplayName = currentUser?.displayName,
                 userEmail = currentUser?.email,
                 onSignOut = if (currentUser != null) onSignOut else null,
+                onOpenSecurityCenter = onOpenSecurityCenter,
                 onDismiss = { showControlCenterSheet = false },
                 onClearHistory = {
                     showClearChatDialog = true
@@ -2051,8 +2065,11 @@ private fun GlassMessageBubble(
 
                 // Attached / Generated Image Preview
                 if (!message.attachedImagePath.isNullOrBlank()) {
+                    val resolvedImageModel = remember(message.attachedImagePath) {
+                        com.ayra.ai.app.data.StorageHelper.resolveCoilImageModel(context, message.attachedImagePath)
+                    }
                     AsyncImage(
-                        model = message.attachedImagePath,
+                        model = resolvedImageModel,
                         contentDescription = "Image preview",
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2205,10 +2222,14 @@ private fun GlassMessageBubble(
                 MarkdownCodeContentView(
                     content = message.content,
                     onCopyCode = { codeToCopy ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = ClipData.newPlainText("Ayra AI Code", codeToCopy)
-                        clipboard?.setPrimaryClip(clip)
-                        Toast.makeText(context, "Code copied to clipboard! / কোড কপি করা হয়েছে 📋", Toast.LENGTH_SHORT).show()
+                        com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
+                            context = context,
+                            label = "Ayra AI Code",
+                            text = codeToCopy,
+                            isSensitive = true,
+                            autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
+                        )
+                        Toast.makeText(context, "Code copied securely! / কোড কপি করা হয়েছে 📋", Toast.LENGTH_SHORT).show()
                     }
                 )
 

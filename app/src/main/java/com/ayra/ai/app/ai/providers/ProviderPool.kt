@@ -178,15 +178,24 @@ class ProviderPool @JvmOverloads constructor(
             }
         }
 
-        // 2. Domain Classification & Specialist Channel Ranking
+        // 2. Domain Classification & Specialist Channel Ranking (filtered by Zero-Trust route policy)
         val domain = AyraAgentOrchestrator.classifyIntent(request.prompt)
+        val isLocalOnlyMode = externalProviders.allowExternalWikiGrounding &&
+            context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } == true
         val channels = externalProviders.getActiveChannels(
             domainName = domain.name,
             hasImage = !request.imageBase64.isNullOrBlank()
-        )
-        val availableProviders = getAvailableProviders()
+        ).filter { ch ->
+            !externalProviders.allowExternalWikiGrounding ||
+                com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, ch.provider).allowed
+        }
+        val availableProviders = getAvailableProviders().filter { p ->
+            !externalProviders.allowExternalWikiGrounding ||
+                com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, p).allowed
+        }
 
-        val isFirebaseAiReady = externalProviders.allowExternalWikiGrounding &&
+        val isFirebaseAiReady = !isLocalOnlyMode &&
+            externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
 
         if (channels.isEmpty() && availableProviders.isEmpty() && !isFirebaseAiReady) {
@@ -274,10 +283,14 @@ class ProviderPool @JvmOverloads constructor(
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
+        val privacyRedactionOn = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } == true
+        val safePrompt = if (privacyRedactionOn) {
+            com.ayra.ai.app.security.SecureAiGatewayClient.redactSecretsForOutboundSafety(request.prompt)
+        } else request.prompt
         val turns = externalProviders.buildConversationTurns(
             systemPrompt = sysPrompt,
             history = request.history,
-            currentPrompt = request.prompt,
+            currentPrompt = safePrompt,
             currentImageBase64 = request.imageBase64
         )
         var lastError: AyraError? = null

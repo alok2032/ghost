@@ -1,6 +1,8 @@
 package com.ayra.ai.app.ai.providers
 
 import android.content.Context
+import com.ayra.ai.app.security.AyraKeyManager
+import com.ayra.ai.app.security.EncryptedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,11 +26,13 @@ data class ProviderUsageMetric(
 
 /**
  * Local persistent telemetry tracker recording real AI provider call counts,
- * successes, failures, and measured latencies without sending external analytics.
+ * successes, failures, and measured latencies encrypted via [AyraKeyManager.ALIAS_PREFS_KEK].
+ * Never sends external analytics; migrates & scrubs any legacy plaintext metrics file.
  */
 object AiUsageTracker {
 
-    private const val PREFS_NAME = "ayra_provider_usage_metrics"
+    private const val LEGACY_PREFS_NAME = "ayra_provider_usage_metrics"
+    private const val ENCRYPTED_PREFS_NAME = "ayra_provider_usage_metrics_enc"
     private const val KEY_METRICS_JSON = "metrics_v1"
 
     private val metricsMap = ConcurrentHashMap<String, ProviderUsageMetric>()
@@ -38,14 +42,31 @@ object AiUsageTracker {
     @Volatile
     private var loadedFromDisk = false
 
+    private fun encryptedPrefs(context: Context): EncryptedPreferences =
+        EncryptedPreferences(
+            context = context,
+            prefsFileName = ENCRYPTED_PREFS_NAME,
+            keyAlias = AyraKeyManager.ALIAS_PREFS_KEK
+        )
+
     fun loadIfNeeded(context: Context?) {
         if (context == null || loadedFromDisk) return
         synchronized(this) {
             if (loadedFromDisk) return
             try {
-                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val raw = prefs.getString(KEY_METRICS_JSON, null)
-                if (!raw.isNullOrBlank()) {
+                val enc = encryptedPrefs(context)
+                var raw = enc.getString(KEY_METRICS_JSON, "")
+                if (raw.isBlank()) {
+                    // Auto-migrate legacy plaintext metrics and delete plaintext file
+                    val legacy = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+                    val legacyRaw = legacy.getString(KEY_METRICS_JSON, null)
+                    if (!legacyRaw.isNullOrBlank()) {
+                        raw = legacyRaw
+                        enc.putString(KEY_METRICS_JSON, legacyRaw)
+                    }
+                    legacy.edit().clear().apply()
+                }
+                if (raw.isNotBlank()) {
                     val arr = JSONArray(raw)
                     for (i in 0 until arr.length()) {
                         val o = arr.optJSONObject(i) ?: continue
@@ -122,10 +143,9 @@ object AiUsageTracker {
             publishSorted()
             if (context != null) {
                 runCatching {
-                    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        .edit()
-                        .remove(KEY_METRICS_JSON)
-                        .apply()
+                    encryptedPrefs(context).clear()
+                    context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit().clear().commit()
                 }
             }
         }
@@ -152,10 +172,7 @@ object AiUsageTracker {
                     put("lastUsedMs", m.lastUsedMs)
                 })
             }
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(KEY_METRICS_JSON, arr.toString())
-                .apply()
+            encryptedPrefs(context).putString(KEY_METRICS_JSON, arr.toString())
         }
     }
 }

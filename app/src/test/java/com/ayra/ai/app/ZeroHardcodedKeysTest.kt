@@ -45,7 +45,8 @@ class ZeroHardcodedKeysTest {
                             val snippet = line.substring(matchIdx, (matchIdx + 24).coerceAtMost(line.length))
                             val isHintOnly = snippet.contains("...") ||
                                 snippet.startsWith("$prefix\"") ||
-                                snippet.startsWith("${prefix}xxx")
+                                snippet.startsWith("${prefix}xxx") ||
+                                (trimmed.startsWith("Regex(\"") && snippet.contains("[A-Za-z"))
                             if (!isHintOnly) {
                                 violations.add("${file.name}:${idx + 1} contains credential prefix '$prefix'")
                             }

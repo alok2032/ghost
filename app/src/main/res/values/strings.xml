@@ -4,4 +4,13 @@
     <string name="action_clear">Clear</string>
     <string name="action_speak">Voice Input</string>
     <string name="action_copy">Copy</string>
+    <string name="vault_locked_title">AYRA Vault Locked</string>
+    <string name="vault_unlock_button">Unlock with Biometrics / PIN</string>
+    <string name="vault_reset_biometric_key">Reset Invalidated Biometric Key</string>
+    <string name="security_center_title">Enterprise Security Center</string>
+    <string name="security_center_subtitle">Zero-Trust Keystore, SQLCipher DB, E2EE &amp; Hybrid AI Controls</string>
+    <string name="security_posture_heading">Overall Vault Security Posture</string>
+    <string name="security_erasure_button">Erase All Vault &amp; Cloud Data</string>
+    <string name="security_erasure_confirm_title">Confirm Cryptographic Erasure</string>
+    <string name="security_erasure_confirm_hint">Type ERASE to permanently destroy all Keystore keys, encrypted database, vault files, secrets, and cloud data.</string>
 </resources>

@@ -1,0 +1,54 @@
+name: AYRA Enterprise Security CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  secret-scan:
+    name: Secret & Hardcoded Credential Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan source tree for leaked API keys or private keys
+        run: |
+          if grep -rnE "(AIza[0-9A-Za-z\-_]{28,}|sk-proj-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{25,}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)" \
+            --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle \
+            --exclude="*Test.kt" --exclude="*.test.mjs" .; then
+            echo "ERROR: Potential secret detected in repository!"
+            exit 1
+          fi
+
+  android-security-tests:
+    name: Android Build & Security Regression Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run Android Debug Unit & Security Regression Tests
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Assemble Debug APK
+        run: ./gradlew :app:assembleDebug
+
+  backend-zero-trust-tests:
+    name: Zero-Trust Node/TS Backend Build & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+      - name: Install, Typecheck & Run Security Tests
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+          npm test

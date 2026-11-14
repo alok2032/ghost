@@ -412,8 +412,15 @@ class GitHubPluginEngine @JvmOverloads constructor(
         val base = endpoint.serverUrl.trimEnd('/')
         val path = if (endpoint.path.startsWith("/")) endpoint.path else "/${endpoint.path}"
         val fullBase = "$base$path"
-        if (!isSafePublicHttpsUrl(fullBase)) {
-            return@withContext Result.failure(IllegalArgumentException("Blocked non-HTTPS or private network endpoint: $fullBase"))
+        val authCheck = com.ayra.ai.app.security.AiToolSecurityGuard.authorizeExternalToolCall(
+            context = context,
+            toolName = "${endpoint.method} ${endpoint.path}",
+            targetUrl = fullBase
+        )
+        if (!authCheck.allowed || !isSafePublicHttpsUrl(fullBase)) {
+            return@withContext Result.failure(
+                IllegalArgumentException(authCheck.reason ?: "Blocked non-HTTPS or private network endpoint: $fullBase")
+            )
         }
 
         val url = if (queryParams.isNotEmpty()) {
@@ -505,13 +512,23 @@ class GitHubPluginEngine @JvmOverloads constructor(
             var remainingBudget = 6500
             for (plugin in selectedPlugins) {
                 if (remainingBudget <= 300) break
-                val chunk = plugin.skillPromptContext.take(minOf(2400, remainingBudget))
-                append(chunk)
+                val rawChunk = plugin.skillPromptContext.take(minOf(2400, remainingBudget))
+                val guarded = com.ayra.ai.app.security.AiToolSecurityGuard.inspectAndWrapUntrustedData(
+                    context = context,
+                    sourceLabel = "plugin:${plugin.repoFullName}",
+                    rawContent = rawChunk
+                )
+                append(guarded.wrappedUntrustedContent)
                 append("\n---\n")
-                remainingBudget -= chunk.length
+                remainingBudget -= rawChunk.length
             }
             if (liveToolResults.isNotBlank()) {
-                append("\n").append(liveToolResults.toString().take(3500))
+                val guardedLive = com.ayra.ai.app.security.AiToolSecurityGuard.inspectAndWrapUntrustedData(
+                    context = context,
+                    sourceLabel = "plugin_live_output",
+                    rawContent = liveToolResults.toString().take(3500)
+                )
+                append("\n").append(guardedLive.wrappedUntrustedContent)
             }
         }
 

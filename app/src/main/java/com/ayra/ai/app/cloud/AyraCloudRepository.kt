@@ -1,13 +1,20 @@
 package com.ayra.ai.app.cloud
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.ayra.ai.app.R
+import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.data.InstalledGitHubPlugin
+import com.ayra.ai.app.security.AyraE2eeEngine
+import com.ayra.ai.app.security.SecurityAuditCategory
+import com.ayra.ai.app.security.SecurityAuditLogger
+import com.ayra.ai.app.security.SecurityAuditSeverity
+import com.ayra.ai.app.security.TrustedE2eeDevice
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
-import com.google.firebase.Firebase
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -17,20 +24,64 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 
+data class CloudSessionInfo(
+    val sessionId: String,
+    val deviceId: String,
+    val deviceName: String,
+    val status: String,
+    val createdAtMs: Long,
+    val lastActiveMs: Long
+)
+
+data class CloudBackupRecord(
+    val backupId: String,
+    val format: String,
+    val encryptedPayloadJson: String,
+    val payloadSha256: String,
+    val createdAtMs: Long
+)
+
 /**
- * Cloud Firestore repository for Ayra AI.
- * Strictly uses the custom provisioned Firestore database ID from R.string.firestore_database_id,
- * gates all queries/writes behind FirebaseAuth.currentUser, and enforces FieldValue.serverTimestamp().
+ * Zero-Trust Cloud Firestore repository for Ayra AI.
+ *
+ * Security Guarantees:
+ * - Gated behind Firebase Authentication (`uid`).
+ * - Honors Local-Only Privacy Mode (`AyraPreferences.isLocalOnlyAiModeEnabled`): refuses cloud writes when active.
+ * - End-to-End Encrypts synced messages and creations via [AyraE2eeEngine] when `appContext != null`
+ *   and `AyraPreferences.isCloudE2eeSyncEnabled(appContext)` is enabled, so Firestore stores ciphertext only.
+ * - Manages `/devices`, `/sessions`, `/backups`, and `/securityEvents` with explicit ownership & revocation.
  */
 class AyraCloudRepository(
     private val firestore: FirebaseFirestore,
-    private val auth: FirebaseAuth
+    private val auth: FirebaseAuth,
+    private val appContext: Context? = null
 ) {
 
     fun requireUserId(): String =
         auth.currentUser?.uid ?: throw IllegalStateException("User must be signed in before accessing cloud data.")
 
     fun currentUserIdOrNull(): String? = auth.currentUser?.uid
+
+    private fun isCloudSyncSuppressed(): Boolean {
+        val ctx = appContext ?: return false
+        return AyraPreferences.isLocalOnlyAiModeEnabled(ctx)
+    }
+
+    private fun encryptFieldIfEnabled(uid: String, aadSuffix: String, value: String): String {
+        val ctx = appContext ?: return value
+        if (value.isBlank() || !AyraPreferences.isCloudE2eeSyncEnabled(ctx)) return value
+        return AyraE2eeEngine.encryptEnvelope(ctx, value, "$uid|$aadSuffix")
+    }
+
+    private fun decryptFieldIfEnvelope(uid: String, aadSuffix: String, storedValue: String): String {
+        if (!storedValue.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)) return storedValue
+        val ctx = appContext ?: return "[Encrypted E2EE Content — Unlock on Trusted Device]"
+        return runCatching {
+            AyraE2eeEngine.decryptEnvelope(ctx, storedValue, "$uid|$aadSuffix", enforceReplayProtection = false)
+        }.getOrElse {
+            "[E2EE Decryption Blocked: ${it.message ?: "Key or device verification failed"}]"
+        }
+    }
 
     suspend fun upsertUserProfile(
         displayName: String,
@@ -39,6 +90,7 @@ class AyraCloudRepository(
         preferredPersona: String,
         preferredModelTier: String
     ) {
+        if (isCloudSyncSuppressed()) return
         val uid = requireUserId()
         val docRef = firestore.collection("users").document(uid)
         try {
@@ -66,26 +118,110 @@ class AyraCloudRepository(
                 )
                 docRef.set(payload).awaitResult()
             }
+            registerCurrentDeviceAndSession(uid)
         } catch (e: Exception) {
             handleFirestoreError(e, "upsertUserProfile")
             throw e
         }
     }
 
+    /**
+     * Registers current Android device E2EE public key bundle under `/users/{uid}/devices/{deviceId}`
+     * and records active login session under `/users/{uid}/sessions/{sessionId}`.
+     */
+    suspend fun registerCurrentDeviceAndSession(uid: String? = currentUserIdOrNull()) {
+        val resolvedUid = uid ?: return
+        val ctx = appContext ?: return
+        if (isCloudSyncSuppressed()) return
+        val bundle = AyraE2eeEngine.getOrCreateLocalDeviceBundle(ctx)
+        val deviceRef = firestore.collection("users").document(resolvedUid)
+            .collection("devices").document(bundle.deviceId)
+
+        runCatching {
+            val existing = deviceRef.get().awaitResult()
+            if (existing.exists()) {
+                deviceRef.update(
+                    mapOf(
+                        "deviceName" to bundle.deviceName.take(120),
+                        "identityPublicKeyB64" to bundle.identityPublicKeyB64,
+                        "ecdhPublicKeyB64" to bundle.ecdhPublicKeyB64,
+                        "fingerprintSha256" to bundle.fingerprintSha256,
+                        "epochAdded" to bundle.currentEpoch,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+            } else {
+                deviceRef.set(
+                    mapOf(
+                        "userId" to resolvedUid,
+                        "deviceId" to bundle.deviceId,
+                        "deviceName" to bundle.deviceName.take(120),
+                        "identityPublicKeyB64" to bundle.identityPublicKeyB64,
+                        "ecdhPublicKeyB64" to bundle.ecdhPublicKeyB64,
+                        "fingerprintSha256" to bundle.fingerprintSha256,
+                        "epochAdded" to bundle.currentEpoch,
+                        "isRevoked" to false,
+                        "platform" to "Android ${Build.VERSION.RELEASE}",
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+            }
+
+            val sessionDocId = sanitizeDocId("sess_${bundle.deviceId}")
+            val sessionRef = firestore.collection("users").document(resolvedUid)
+                .collection("sessions").document(sessionDocId)
+            val sessExists = sessionRef.get().awaitResult().exists()
+            if (sessExists) {
+                sessionRef.update(
+                    mapOf(
+                        "deviceName" to bundle.deviceName.take(120),
+                        "status" to "ACTIVE",
+                        "lastActiveMs" to System.currentTimeMillis(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+            } else {
+                sessionRef.set(
+                    mapOf(
+                        "userId" to resolvedUid,
+                        "sessionId" to sessionDocId,
+                        "deviceId" to bundle.deviceId,
+                        "deviceName" to bundle.deviceName.take(120),
+                        "status" to "ACTIVE",
+                        "createdAtMs" to System.currentTimeMillis(),
+                        "lastActiveMs" to System.currentTimeMillis(),
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+            }
+        }
+    }
+
     suspend fun syncMessageToCloud(message: ChatMessage, messageKey: String? = null) {
+        if (isCloudSyncSuppressed()) return
         val uid = currentUserIdOrNull() ?: return
         val docId = sanitizeDocId(messageKey ?: "msg_${message.timestamp}_${message.id}")
         val docRef = firestore.collection("users").document(uid)
             .collection("messages").document(docId)
         val normalizedRole = if (message.role == "user") "user" else "assistant"
+
+        val encryptedContent = encryptFieldIfEnabled(uid, "$docId|content", message.content)
+        val encryptedCraftPayload = if (!message.craftPayload.isNullOrBlank()) {
+            encryptFieldIfEnabled(uid, "$docId|craftPayload", message.craftPayload)
+        } else ""
+        val isE2ee = encryptedContent.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)
+
         try {
             val existingSnap = docRef.get().awaitResult()
             if (existingSnap.exists()) {
                 val updates = mapOf(
-                    "content" to message.content.take(90_000),
+                    "content" to encryptedContent.take(90_000),
                     "modelUsed" to (message.actionCommand ?: "").take(120),
                     "craftType" to (message.craftType ?: "").take(40),
-                    "craftPayload" to (message.craftPayload ?: "").take(90_000),
+                    "craftPayload" to encryptedCraftPayload.take(90_000),
+                    "e2ee" to isE2ee,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
                 docRef.update(updates).awaitResult()
@@ -94,10 +230,11 @@ class AyraCloudRepository(
                     "userId" to uid,
                     "localMessageId" to message.id.coerceAtLeast(0L),
                     "role" to normalizedRole,
-                    "content" to message.content.take(90_000),
+                    "content" to encryptedContent.take(90_000),
                     "modelUsed" to (message.actionCommand ?: "").take(120),
                     "craftType" to (message.craftType ?: "").take(40),
-                    "craftPayload" to (message.craftPayload ?: "").take(90_000),
+                    "craftPayload" to encryptedCraftPayload.take(90_000),
+                    "e2ee" to isE2ee,
                     "timestampMs" to message.timestamp.coerceAtLeast(0L),
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
@@ -119,11 +256,13 @@ class AyraCloudRepository(
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    val content = doc.getString("content") ?: return@mapNotNull null
+                    val rawContent = doc.getString("content") ?: return@mapNotNull null
+                    val content = decryptFieldIfEnvelope(uid, "${doc.id}|content", rawContent)
                     val role = doc.getString("role") ?: "assistant"
                     val timestampMs = doc.getLong("timestampMs") ?: System.currentTimeMillis()
                     val craftType = doc.getString("craftType")?.takeIf { it.isNotBlank() }
-                    val craftPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() }
+                    val rawPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() }
+                    val craftPayload = rawPayload?.let { decryptFieldIfEnvelope(uid, "${doc.id}|craftPayload", it) }
                     val modelUsed = doc.getString("modelUsed")?.takeIf { it.isNotBlank() }
                     ChatMessage(
                         role = role,
@@ -147,13 +286,15 @@ class AyraCloudRepository(
                 .get()
                 .awaitResult()
             snap.documents.mapNotNull { doc ->
-                val content = doc.getString("content") ?: return@mapNotNull null
+                val rawContent = doc.getString("content") ?: return@mapNotNull null
+                val content = decryptFieldIfEnvelope(uid, "${doc.id}|content", rawContent)
+                val rawPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() }
                 ChatMessage(
                     role = doc.getString("role") ?: "assistant",
                     content = content,
                     timestamp = doc.getLong("timestampMs") ?: System.currentTimeMillis(),
                     craftType = doc.getString("craftType")?.takeIf { it.isNotBlank() },
-                    craftPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() },
+                    craftPayload = rawPayload?.let { decryptFieldIfEnvelope(uid, "${doc.id}|craftPayload", it) },
                     actionCommand = doc.getString("modelUsed")?.takeIf { it.isNotBlank() }
                 )
             }
@@ -166,16 +307,7 @@ class AyraCloudRepository(
     suspend fun clearCloudMessages() {
         val uid = currentUserIdOrNull() ?: return
         try {
-            val snap = firestore.collection("users").document(uid)
-                .collection("messages")
-                .get()
-                .awaitResult()
-            val docs = snap.documents
-            for (chunk in docs.chunked(400)) {
-                val batch = firestore.batch()
-                chunk.forEach { batch.delete(it.reference) }
-                batch.commit().awaitResult()
-            }
+            deleteCollectionDocuments(firestore.collection("users").document(uid).collection("messages"))
         } catch (e: Exception) {
             handleFirestoreError(e, "clearCloudMessages")
             throw e
@@ -183,6 +315,7 @@ class AyraCloudRepository(
     }
 
     suspend fun syncPluginToCloud(plugin: InstalledGitHubPlugin) {
+        if (isCloudSyncSuppressed()) return
         val uid = currentUserIdOrNull() ?: return
         val docId = pluginDocId(plugin.repoFullName)
         val docRef = firestore.collection("users").document(uid)
@@ -292,18 +425,22 @@ class AyraCloudRepository(
         summary: String,
         modelUsed: String
     ) {
+        if (isCloudSyncSuppressed()) return
         val uid = currentUserIdOrNull() ?: return
         val safeType = if (creationType in ALLOWED_CREATION_TYPES) creationType else "IMAGE"
         val docRef = firestore.collection("users").document(uid)
             .collection("creations").document()
+        val encPrompt = encryptFieldIfEnabled(uid, "${docRef.id}|prompt", prompt)
+        val encSummary = encryptFieldIfEnabled(uid, "${docRef.id}|summary", summary)
         try {
             val payload = mapOf(
                 "userId" to uid,
                 "creationType" to safeType,
                 "title" to title.ifBlank { "Ayra Creation" }.take(200),
-                "prompt" to prompt.ifBlank { "Creation prompt" }.take(2000),
-                "summary" to summary.take(5000),
+                "prompt" to encPrompt.ifBlank { "Creation prompt" }.take(20000),
+                "summary" to encSummary.take(50000),
                 "modelUsed" to modelUsed.take(120),
+                "e2ee" to encPrompt.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -312,6 +449,191 @@ class AyraCloudRepository(
             handleFirestoreError(e, "logCreation")
             throw e
         }
+    }
+
+    // --- Cloud Trusted Devices, Active Sessions, Backups & Security Events (Phases 4, 8, 9, 10, 12) ---
+
+    suspend fun fetchCloudDevices(): List<TrustedE2eeDevice> {
+        val uid = currentUserIdOrNull() ?: return emptyList()
+        return runCatching {
+            val snap = firestore.collection("users").document(uid)
+                .collection("devices").get().awaitResult()
+            snap.documents.mapNotNull { doc ->
+                val deviceId = doc.getString("deviceId") ?: return@mapNotNull null
+                TrustedE2eeDevice(
+                    deviceId = deviceId,
+                    deviceName = doc.getString("deviceName") ?: "Android Device",
+                    identityPublicKeyB64 = doc.getString("identityPublicKeyB64") ?: "",
+                    ecdhPublicKeyB64 = doc.getString("ecdhPublicKeyB64") ?: "",
+                    fingerprintSha256 = doc.getString("fingerprintSha256") ?: "",
+                    epochAdded = (doc.getLong("epochAdded") ?: 1L).toInt(),
+                    isRevoked = doc.getBoolean("isRevoked") ?: false
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun fetchCloudSessions(): List<CloudSessionInfo> {
+        val uid = currentUserIdOrNull() ?: return emptyList()
+        return runCatching {
+            val snap = firestore.collection("users").document(uid)
+                .collection("sessions").get().awaitResult()
+            snap.documents.mapNotNull { doc ->
+                val sid = doc.getString("sessionId") ?: return@mapNotNull null
+                CloudSessionInfo(
+                    sessionId = sid,
+                    deviceId = doc.getString("deviceId") ?: "",
+                    deviceName = doc.getString("deviceName") ?: "Device",
+                    status = doc.getString("status") ?: "ACTIVE",
+                    createdAtMs = doc.getLong("createdAtMs") ?: 0L,
+                    lastActiveMs = doc.getLong("lastActiveMs") ?: 0L
+                )
+            }.sortedByDescending { it.lastActiveMs }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun revokeDeviceAndSessionInCloud(deviceId: String) {
+        val uid = currentUserIdOrNull() ?: return
+        appContext?.let { AyraE2eeEngine.revokeDeviceAndRotateEpoch(it, deviceId) }
+        runCatching {
+            firestore.collection("users").document(uid)
+                .collection("devices").document(deviceId)
+                .update(
+                    mapOf(
+                        "isRevoked" to true,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+        }
+        runCatching {
+            val sessId = sanitizeDocId("sess_$deviceId")
+            firestore.collection("users").document(uid)
+                .collection("sessions").document(sessId)
+                .update(
+                    mapOf(
+                        "status" to "REVOKED",
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
+        }
+    }
+
+    suspend fun uploadEncryptedBackup(
+        backupId: String,
+        format: String,
+        encryptedJson: String,
+        payloadSha256: String,
+        createdAtMs: Long
+    ) {
+        val uid = requireUserId()
+        val safeId = sanitizeDocId(backupId)
+        val payload = mapOf(
+            "userId" to uid,
+            "backupId" to safeId,
+            "format" to format.take(60),
+            "encryptedPayloadJson" to encryptedJson.take(800_000),
+            "payloadSha256" to payloadSha256.take(128),
+            "createdAtMs" to createdAtMs,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        firestore.collection("users").document(uid)
+            .collection("backups").document(safeId)
+            .set(payload)
+            .awaitResult()
+    }
+
+    suspend fun listCloudBackups(): List<CloudBackupRecord> {
+        val uid = currentUserIdOrNull() ?: return emptyList()
+        return runCatching {
+            val snap = firestore.collection("users").document(uid)
+                .collection("backups").get().awaitResult()
+            snap.documents.mapNotNull { d ->
+                val id = d.getString("backupId") ?: return@mapNotNull null
+                CloudBackupRecord(
+                    backupId = id,
+                    format = d.getString("format") ?: "",
+                    encryptedPayloadJson = d.getString("encryptedPayloadJson") ?: "",
+                    payloadSha256 = d.getString("payloadSha256") ?: "",
+                    createdAtMs = d.getLong("createdAtMs") ?: 0L
+                )
+            }.sortedByDescending { it.createdAtMs }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun deleteCloudBackup(backupId: String) {
+        val uid = currentUserIdOrNull() ?: return
+        firestore.collection("users").document(uid)
+            .collection("backups").document(sanitizeDocId(backupId))
+            .delete()
+            .awaitResult()
+    }
+
+    suspend fun uploadSecurityEvent(
+        category: String,
+        severity: String,
+        message: String,
+        timestampMs: Long,
+        hmacHex: String
+    ) {
+        if (isCloudSyncSuppressed()) return
+        val uid = currentUserIdOrNull() ?: return
+        val docRef = firestore.collection("users").document(uid)
+            .collection("securityEvents").document()
+        runCatching {
+            docRef.set(
+                mapOf(
+                    "userId" to uid,
+                    "category" to category.take(40),
+                    "severity" to severity.take(20),
+                    "message" to SecurityAuditLogger.redactSensitiveText(message).take(500),
+                    "hmacHex" to hmacHex.take(128),
+                    "timestampMs" to timestampMs,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).awaitResult()
+        }
+    }
+
+    /**
+     * Permanently deletes ALL cloud Firestore documents owned by the user across
+     * messages, creations, plugins, devices, sessions, backups, securityEvents, and root profile.
+     */
+    suspend fun purgeAllUserCloudData(): Int {
+        val uid = currentUserIdOrNull() ?: return 0
+        val userDoc = firestore.collection("users").document(uid)
+        var totalDeleted = 0
+        val subCollections = listOf(
+            "messages",
+            "creations",
+            "plugins",
+            "devices",
+            "sessions",
+            "backups",
+            "securityEvents"
+        )
+        subCollections.forEach { sub ->
+            totalDeleted += deleteCollectionDocuments(userDoc.collection(sub))
+        }
+        runCatching {
+            userDoc.delete().awaitResult()
+            totalDeleted += 1
+        }
+        return totalDeleted
+    }
+
+    private suspend fun deleteCollectionDocuments(col: com.google.firebase.firestore.CollectionReference): Int {
+        val snap = col.get().awaitResult()
+        val docs = snap.documents
+        var count = 0
+        for (chunk in docs.chunked(400)) {
+            val batch = firestore.batch()
+            chunk.forEach { batch.delete(it.reference) }
+            batch.commit().awaitResult()
+            count += chunk.size
+        }
+        return count
     }
 
     private fun handleFirestoreError(e: Exception, operation: String) {
@@ -335,9 +657,10 @@ class AyraCloudRepository(
         private val ALLOWED_CREATION_TYPES = setOf("IMAGE", "VIDEO", "SONG", "3D", "PDF")
 
         fun create(context: Context): AyraCloudRepository {
-            val dbId = context.applicationContext.getString(R.string.firestore_database_id)
+            val appCtx = context.applicationContext
+            val dbId = appCtx.getString(R.string.firestore_database_id)
             val firestore = FirebaseFirestore.getInstance(dbId)
-            return AyraCloudRepository(firestore = firestore, auth = Firebase.auth)
+            return AyraCloudRepository(firestore = firestore, auth = Firebase.auth, appContext = appCtx)
         }
 
         fun pluginDocId(repoFullName: String): String =

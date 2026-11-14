@@ -9,6 +9,7 @@ import com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine
 import com.ayra.ai.app.ai.higgsfield.OpenHiggsfieldEngine
 import com.ayra.ai.app.ai.omniroute.OmniRouteEngine
 import com.ayra.ai.app.ai.providers.AiProviderType
+import com.ayra.ai.app.ai.providers.AiRoutingMode
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.studios.ComfyUiClient
@@ -52,49 +53,50 @@ class AiMasterAuditAndUpgradeTest {
 
     @Test
     fun testFirebaseModelFallbackChainCascadesCorrectly() {
-        val argonChain = FirebaseAiEngine.modelFallbackChain(FirebaseAiEngine.MODEL_ARGON)
+        val fb = FirebaseAiEngine(context)
+        val argonChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_PRO_REASONING)
         assertEquals(
             listOf(
-                FirebaseAiEngine.MODEL_ARGON,
+                FirebaseAiEngine.MODEL_PRO_REASONING,
                 FirebaseAiEngine.MODEL_FLASH,
-                FirebaseAiEngine.MODEL_FLASH_LITE
+                FirebaseAiEngine.MODEL_FAST_LITE
             ),
             argonChain
         )
 
-        val flashChain = FirebaseAiEngine.modelFallbackChain(FirebaseAiEngine.MODEL_FLASH)
+        val flashChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_FLASH)
         assertEquals(
-            listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_FLASH_LITE),
+            listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_FAST_LITE),
             flashChain
         )
 
-        val liteChain = FirebaseAiEngine.modelFallbackChain(FirebaseAiEngine.MODEL_FLASH_LITE)
-        assertEquals(listOf(FirebaseAiEngine.MODEL_FLASH_LITE), liteChain)
+        val liteChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_FAST_LITE)
+        assertEquals(listOf(FirebaseAiEngine.MODEL_FAST_LITE, FirebaseAiEngine.MODEL_FLASH), liteChain)
     }
 
     @Test
     fun testOptimalRoutingSelectsGroqCerebrasSambaNovaHuggingFace() {
         val providers = ExternalAiProviders(context)
 
-        AyraPreferences.saveGroqApiKey(context, "gsk_test_routing_key")
-        val fastRoute = providers.getOptimalModelForRoutingMode(ExternalAiProviders.RoutingMode.FAST)
+        AyraPreferences.setGroqKey(context, "gsk_test_routing_key")
+        val fastRoute = providers.getOptimalModelForRoutingMode(AiRoutingMode.FAST)
         assertEquals(AiProviderType.GROQ, fastRoute.first)
 
-        AyraPreferences.saveGroqApiKey(context, "")
-        AyraPreferences.saveCerebrasApiKey(context, "csk_test_routing_key")
-        val cerebrasFast = providers.getOptimalModelForRoutingMode(ExternalAiProviders.RoutingMode.FAST)
+        AyraPreferences.setGroqKey(context, "")
+        AyraPreferences.setCerebrasKey(context, "csk_test_routing_key")
+        val cerebrasFast = providers.getOptimalModelForRoutingMode(AiRoutingMode.FAST)
         assertEquals(AiProviderType.CEREBRAS, cerebrasFast.first)
-        AyraPreferences.saveCerebrasApiKey(context, "")
+        AyraPreferences.setCerebrasKey(context, "")
 
-        AyraPreferences.saveSambaNovaApiKey(context, "sambanova_test_key")
-        val bestRoute = providers.getOptimalModelForRoutingMode(ExternalAiProviders.RoutingMode.BEST_QUALITY)
+        AyraPreferences.setSambaNovaKey(context, "sambanova_test_key")
+        val bestRoute = providers.getOptimalModelForRoutingMode(AiRoutingMode.BEST_QUALITY)
         assertEquals(AiProviderType.SAMBANOVA, bestRoute.first)
-        AyraPreferences.saveSambaNovaApiKey(context, "")
+        AyraPreferences.setSambaNovaKey(context, "")
 
-        AyraPreferences.saveHuggingFaceKey(context, "hf_test_routing_key")
-        val uncensoredRoute = providers.getOptimalModelForRoutingMode(ExternalAiProviders.RoutingMode.QWEN_UNCENSORED)
+        AyraPreferences.setHuggingFaceKey(context, "hf_test_routing_key")
+        val uncensoredRoute = providers.getOptimalModelForRoutingMode(AiRoutingMode.QWEN_UNCENSORED)
         assertEquals(AiProviderType.HUGGINGFACE, uncensoredRoute.first)
-        AyraPreferences.saveHuggingFaceKey(context, "")
+        AyraPreferences.setHuggingFaceKey(context, "")
     }
 
     @Test
@@ -176,7 +178,8 @@ class AiMasterAuditAndUpgradeTest {
             endpointUrl = server.url("/v1/chat/completions").toString(),
             apiKey = "test-key",
             modelId = "llama-3.3-70b-versatile",
-            type = "IMAGE"
+            type = "IMAGE",
+            clientOverride = OkHttpClient()
         )
         assertTrue(expanded.contains("Photorealistic bengal tiger"))
         assertFalse(expanded.contains("<think>"))

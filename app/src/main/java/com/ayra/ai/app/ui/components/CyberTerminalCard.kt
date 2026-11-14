@@ -176,9 +176,14 @@ fun CyberTerminalCard(
                 IconButton(
                     onClick = {
                         val allText = history.joinToString("\n\n") { "$ ${it.command}\n${it.output}" }
-                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("Terminal Log", allText))
-                        Toast.makeText(context, "Terminal log copied!", Toast.LENGTH_SHORT).show()
+                        com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
+                            context = context,
+                            label = "Terminal Log",
+                            text = allText,
+                            isSensitive = true,
+                            autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
+                        )
+                        Toast.makeText(context, "Terminal log copied securely!", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.size(48.dp)
                 ) {

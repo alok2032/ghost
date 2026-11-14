@@ -36,10 +36,11 @@ function validMessage(uid) {
     userId: uid,
     localMessageId: 1,
     role: "user",
-    content: "Hello Ayra",
+    content: "AYRA_E2EE_V1:encryptedCipherEnvelopePayload",
     modelUsed: "gemini-3.8-flash",
     craftType: "",
     craftPayload: "",
+    e2ee: true,
     timestampMs: 1700000000000,
     createdAt: tsNow(),
     updatedAt: tsNow(),
@@ -74,9 +75,66 @@ function validCreation(uid) {
     userId: uid,
     creationType: "IMAGE",
     title: "Cyberpunk Sunset",
-    prompt: "Draw a futuristic neon sunset city",
-    summary: "Generated via Nano Banana 2.1",
+    prompt: "AYRA_E2EE_V1:encryptedPromptEnvelope",
+    summary: "AYRA_E2EE_V1:encryptedSummaryEnvelope",
     modelUsed: "gemini-nano-banana-2.1",
+    e2ee: true,
+    createdAt: tsNow(),
+    updatedAt: tsNow(),
+  };
+}
+
+function validDevice(uid, deviceId = "dev_pixel_01") {
+  return {
+    userId: uid,
+    deviceId,
+    deviceName: "Pixel 9 Pro",
+    identityPublicKeyB64: "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1234567890",
+    ecdhPublicKeyB64: "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0987654321",
+    fingerprintSha256: "a1b2c3d4e5f60708090a0b0c0d0e0f10",
+    epochAdded: 1,
+    isRevoked: false,
+    platform: "Android 15",
+    createdAt: tsNow(),
+    updatedAt: tsNow(),
+  };
+}
+
+function validSession(uid, sessionId = "sess_dev_pixel_01", deviceId = "dev_pixel_01") {
+  return {
+    userId: uid,
+    sessionId,
+    deviceId,
+    deviceName: "Pixel 9 Pro",
+    status: "ACTIVE",
+    createdAtMs: 1700000000000,
+    lastActiveMs: 1700000001000,
+    createdAt: tsNow(),
+    updatedAt: tsNow(),
+  };
+}
+
+function validBackup(uid, backupId = "bak_001") {
+  return {
+    userId: uid,
+    backupId,
+    format: "AYRA_ENCRYPTED_BACKUP_V1",
+    encryptedPayloadJson: "{\"v\":1,\"ciphertext\":\"abcdef123456\"}",
+    payloadSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    createdAtMs: 1700000000000,
+    createdAt: tsNow(),
+    updatedAt: tsNow(),
+  };
+}
+
+function validSecurityEvent(uid) {
+  return {
+    userId: uid,
+    category: "BIOMETRIC",
+    severity: "INFO",
+    message: "Vault unlocked with cryptographic proof",
+    hmacHex: "0123456789abcdef0123456789abcdef",
+    timestampMs: 1700000000000,
     createdAt: tsNow(),
     updatedAt: tsNow(),
   };
@@ -111,6 +169,8 @@ test("Unauthenticated caller cannot read or write any collection", async () => {
   await assertFails(unauthDb.collection("users").doc(ALICE_UID).get());
   await assertFails(unauthDb.collection("users").doc(ALICE_UID).set(validProfile(ALICE_UID)));
   await assertFails(unauthDb.collection("users").doc(ALICE_UID).collection("messages").get());
+  await assertFails(unauthDb.collection("users").doc(ALICE_UID).collection("devices").get());
+  await assertFails(unauthDb.collection("users").doc(ALICE_UID).collection("backups").get());
   await assertFails(unauthDb.collection("other_root").doc("doc1").set({ hello: "world" }));
 });
 
@@ -145,28 +205,64 @@ test("Profile rejects forged userId, extra fields, and immutable field mutation"
   );
 });
 
-test("Cross-user access to profiles, messages, plugins, and creations is denied", async () => {
+test("Cross-user access to profiles, messages, plugins, creations, devices, sessions, backups, and securityEvents is denied", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
   const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const aliceRoot = aliceDb.collection("users").doc(ALICE_UID);
+  const bobViewOfAlice = bobDb.collection("users").doc(ALICE_UID);
 
-  await assertSucceeds(aliceDb.collection("users").doc(ALICE_UID).set(validProfile(ALICE_UID)));
-  await assertSucceeds(
-    aliceDb.collection("users").doc(ALICE_UID).collection("messages").doc("m1").set(validMessage(ALICE_UID))
-  );
-  await assertSucceeds(
-    aliceDb.collection("users").doc(ALICE_UID).collection("plugins").doc("p1").set(validPlugin(ALICE_UID))
-  );
-  await assertSucceeds(
-    aliceDb.collection("users").doc(ALICE_UID).collection("creations").doc("c1").set(validCreation(ALICE_UID))
-  );
+  await assertSucceeds(aliceRoot.set(validProfile(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("messages").doc("m1").set(validMessage(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("plugins").doc("p1").set(validPlugin(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("creations").doc("c1").set(validCreation(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("devices").doc("dev_pixel_01").set(validDevice(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("sessions").doc("sess_dev_pixel_01").set(validSession(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("backups").doc("bak_001").set(validBackup(ALICE_UID)));
+  await assertSucceeds(aliceRoot.collection("securityEvents").doc("ev_1").set(validSecurityEvent(ALICE_UID)));
 
-  await assertFails(bobDb.collection("users").doc(ALICE_UID).get());
-  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("messages").doc("m1").get());
-  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("messages").get());
-  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("plugins").doc("p1").delete());
+  await assertFails(bobViewOfAlice.get());
+  await assertFails(bobViewOfAlice.collection("messages").doc("m1").get());
+  await assertFails(bobViewOfAlice.collection("devices").get());
+  await assertFails(bobViewOfAlice.collection("sessions").get());
+  await assertFails(bobViewOfAlice.collection("backups").doc("bak_001").get());
+  await assertFails(bobViewOfAlice.collection("securityEvents").get());
+  await assertFails(bobViewOfAlice.collection("plugins").doc("p1").delete());
   await assertFails(
-    bobDb.collection("users").doc(ALICE_UID).collection("creations").doc("c2").set(validCreation(BOB_UID))
+    bobViewOfAlice.collection("creations").doc("c2").set(validCreation(BOB_UID))
   );
+});
+
+test("Devices, sessions, backups, and securityEvents enforce immutability, status enums, and hash lengths", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const aliceRoot = aliceDb.collection("users").doc(ALICE_UID);
+
+  // Device create & revocation update succeed; changing deviceId fails
+  const devRef = aliceRoot.collection("devices").doc("dev_pixel_01");
+  await assertSucceeds(devRef.set(validDevice(ALICE_UID)));
+  await assertSucceeds(devRef.update({ isRevoked: true, updatedAt: tsNow() }));
+  await assertFails(devRef.update({ deviceId: "dev_other", updatedAt: tsNow() }));
+
+  // Session rejects unknown status enum
+  const sessRef = aliceRoot.collection("sessions").doc("sess_dev_pixel_01");
+  await assertFails(
+    sessRef.set({ ...validSession(ALICE_UID), status: "ROOT_OVERRIDE" })
+  );
+  await assertSucceeds(sessRef.set(validSession(ALICE_UID)));
+  await assertSucceeds(sessRef.update({ status: "REVOKED", updatedAt: tsNow() }));
+
+  // Backups enforce 64-char sha256 & prohibit mutation (create/delete only)
+  const bakRef = aliceRoot.collection("backups").doc("bak_001");
+  await assertFails(bakRef.set({ ...validBackup(ALICE_UID), payloadSha256: "short" }));
+  await assertSucceeds(bakRef.set(validBackup(ALICE_UID)));
+  await assertFails(bakRef.update({ format: "TAMPERED", updatedAt: tsNow() }));
+  await assertSucceeds(bakRef.delete());
+
+  // SecurityEvents are append-only (no update), owner can delete on erasure
+  const evRef = aliceRoot.collection("securityEvents").doc("ev_1");
+  await assertFails(evRef.set({ ...validSecurityEvent(ALICE_UID), severity: "DEBUG" }));
+  await assertSucceeds(evRef.set(validSecurityEvent(ALICE_UID)));
+  await assertFails(evRef.update({ message: "Rewritten history", updatedAt: tsNow() }));
+  await assertSucceeds(evRef.delete());
 });
 
 test("Messages, plugins, and creations validate schema enums and reject invalid payloads", async () => {

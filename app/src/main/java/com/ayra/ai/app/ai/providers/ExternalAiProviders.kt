@@ -123,31 +123,37 @@ class ExternalAiProviders @JvmOverloads constructor(
     private val channelKeyOverrides: Map<String, String> = emptyMap()
 ) {
 
-    private val httpClient: OkHttpClient = customHttpClient ?: sharedPooledHttpClient
+    private fun resolveClientForProvider(provider: AiProviderType?): OkHttpClient {
+        if (customHttpClient != null) return customHttpClient
+        return if (provider == AiProviderType.LOCAL_OLLAMA) {
+            com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient
+        } else {
+            com.ayra.ai.app.security.NetworkSecurityHelper.hardenedPooledClient
+        }
+    }
+
+    private val httpClient: OkHttpClient
+        get() = customHttpClient ?: com.ayra.ai.app.security.NetworkSecurityHelper.hardenedPooledClient
 
     val circuitBreaker = ProviderCircuitBreaker()
 
     val allowExternalWikiGrounding: Boolean
-        get() = baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null
-
-    companion object {
-        val sharedPooledHttpClient: OkHttpClient by lazy {
-            val dispatcher = Dispatcher().apply {
-                maxRequests = 64
-                maxRequestsPerHost = 16
-            }
-            OkHttpClient.Builder()
-                .dispatcher(dispatcher)
-                .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(35, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
+        get() {
+            val isLocalOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
+            val hasExternalConsent = context?.let { AyraPreferences.hasExternalAiConsent(it) } ?: true
+            return baseUrlOverrides.isEmpty() &&
+                channelKeyOverrides.isEmpty() &&
+                customHttpClient == null &&
+                !isLocalOnly &&
+                hasExternalConsent
         }
 
+    companion object {
+        val sharedPooledHttpClient: OkHttpClient
+            get() = com.ayra.ai.app.security.NetworkSecurityHelper.hardenedPooledClient
+
         val sharedFastWebClient: OkHttpClient by lazy {
-            sharedPooledHttpClient.newBuilder()
+            com.ayra.ai.app.security.NetworkSecurityHelper.hardenedPooledClient.newBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(8, TimeUnit.SECONDS)
@@ -170,6 +176,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val CEREBRAS_LLAMA_MODEL = "llama-3.3-70b"
         const val CEREBRAS_QWEN_MODEL = "qwen-3-32b"
         const val SAMBANOVA_DEEPSEEK_MODEL = "DeepSeek-V3.1-Terminus"
+        const val SAMBANOVA_LLAMA_MODEL = "Meta-Llama-3.3-70B-Instruct"
         const val SAMBANOVA_QWEN_MODEL = "Qwen3-32B"
         const val SAMBANOVA_WHISPER_MODEL = "Whisper-Large-v3"
         const val HF_QWEN_MODEL = "Qwen/Qwen2.5-72B-Instruct"
@@ -751,6 +758,12 @@ class ExternalAiProviders @JvmOverloads constructor(
                 }
             } catch (_: Exception) {}
         } else if (preferredProvider != null) {
+            if (allowExternalWikiGrounding) {
+                val gate = com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, preferredProvider)
+                if (!gate.allowed) {
+                    throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ayra Zero-Trust policy.")
+                }
+            }
             val model = preferredModelId ?: getDefaultModelForProvider(preferredProvider)
             val key = getKeyForProviderAndModel(preferredProvider, model)
             if ((key.isNotBlank() || preferredProvider == AiProviderType.LOCAL_OLLAMA || preferredProvider == AiProviderType.POLLINATIONS_FREE) &&
@@ -810,9 +823,13 @@ class ExternalAiProviders @JvmOverloads constructor(
             }
         }
 
-        // 3. Final Free Keyless Fallback if Free AI Pool enabled
-        val freeEnabled = context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
-        if (freeEnabled) {
+        // 3. Final Free Keyless Fallback if Free AI Pool & External Cloud Consent are enabled
+        val freeGate = if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+            com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.POLLINATIONS_FREE).allowed
+        } else {
+            context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+        }
+        if (freeGate) {
             try {
                 val fallbackText = queryPollinationsFallback(prompt, systemPrompt)
                 if (fallbackText.isNotBlank()) {
@@ -909,6 +926,12 @@ class ExternalAiProviders @JvmOverloads constructor(
     ): Flow<String> = flow {
         val turns = buildConversationTurns(systemPrompt, history, prompt, imageBase64)
         val provider = preferredProvider ?: getBestAvailableProvider()
+        if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+            val gate = com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, provider)
+            if (!gate.allowed) {
+                throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Zero-Trust policy.")
+            }
+        }
         val model = preferredModelId ?: getDefaultModelForProvider(provider)
         val key = getKeyForProviderAndModel(provider, model)
 
@@ -1296,6 +1319,12 @@ class ExternalAiProviders @JvmOverloads constructor(
         preserveReasoning: Boolean = false
     ): String {
         val baseUrl = getBaseUrlForProvider(provider)
+        if (provider == AiProviderType.LOCAL_OLLAMA && customHttpClient == null && baseUrlOverrides.isEmpty()) {
+            val check = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, baseUrl)
+            if (!check.allowed) {
+                throw ProviderError.NetworkFailure(check.reason ?: "Blocked unsafe local endpoint URL.")
+            }
+        }
         val endpoint = "${baseUrl}chat/completions"
 
         val messagesArray = buildOpenAiMessages(provider, model, turns)
@@ -1325,7 +1354,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
-        return httpClient.newCall(reqBuilder.build()).execute().use { response ->
+        return resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (!response.isSuccessful) {
@@ -1369,6 +1398,12 @@ class ExternalAiProviders @JvmOverloads constructor(
         collector: kotlinx.coroutines.flow.FlowCollector<String>
     ) {
         val baseUrl = getBaseUrlForProvider(provider)
+        if (provider == AiProviderType.LOCAL_OLLAMA && customHttpClient == null && baseUrlOverrides.isEmpty()) {
+            val check = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, baseUrl)
+            if (!check.allowed) {
+                throw ProviderError.NetworkFailure(check.reason ?: "Blocked unsafe local endpoint URL.")
+            }
+        }
         val endpoint = "${baseUrl}chat/completions"
 
         val messagesArray = buildOpenAiMessages(provider, model, turns)
@@ -1391,7 +1426,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
-        httpClient.newCall(reqBuilder.build()).execute().use { response ->
+        resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (!response.isSuccessful) {
@@ -1715,16 +1750,26 @@ class ExternalAiProviders @JvmOverloads constructor(
     }
 
     fun isProviderConfigured(provider: AiProviderType): Boolean {
-        if (provider == AiProviderType.OMNI_ROUTE) return true
+        if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+            if (!com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed) {
+                return false
+            }
+        }
+        if (provider == AiProviderType.OMNI_ROUTE) {
+            return !(context != null && AyraPreferences.isLocalOnlyAiModeEnabled(context))
+        }
         if (provider == AiProviderType.LOCAL_OLLAMA) {
             return (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
-                (context?.let { AyraPreferences.getCustomEndpointUrl(it).isNotBlank() } ?: false)
+                (context?.let {
+                    AyraPreferences.getCustomEndpointUrl(it).isNotBlank() ||
+                        AyraPreferences.hasExplicitOllamaHost(it)
+                } ?: false)
         }
         if (provider == AiProviderType.POLLINATIONS_FREE) {
             if (channelKeyOverrides.isNotEmpty()) {
                 return channelKeyOverrides.any { (k, v) -> k.startsWith("pollinations_free") && v.isNotBlank() }
             }
-            return context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+            return context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
         }
         return getProviderKey(provider).isNotBlank()
     }
@@ -2034,6 +2079,9 @@ class ExternalAiProviders @JvmOverloads constructor(
         ).filter { it.third.isNotBlank() }
 
         for ((provider, model, key) in candidates) {
+            if (customHttpClient == null && !com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed) {
+                continue
+            }
             val start = System.currentTimeMillis()
             try {
                 val baseUrl = getBaseUrlForProvider(provider)

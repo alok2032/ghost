@@ -2,32 +2,34 @@ package com.ayra.ai.app.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
+import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * EncryptedPreferences manager class using Android Keystore AES-256-GCM
- * to securely store and retrieve user-provided AI service API keys and endpoints.
+ * EncryptedPreferences manager using [AyraKeyManager] AES-256-GCM with AAD binding
+ * to securely store AI service credentials, sensitive preferences, and usage metrics.
  *
  * Security guarantees:
- * 1. Hardware-backed AndroidKeyStore master key with randomized IVs.
- * 2. 128-bit authentication tag (AES/GCM/NoPadding) providing confidentiality and integrity.
- * 3. Fails closed: refuses to write or read plaintext data if Keystore encryption cannot be verified.
- * 4. Separate isolation for AI service providers (Gemini, NVIDIA, OpenAI, Claude, DeepSeek, OpenRouter, etc.).
+ * 1. Purpose-separated Keystore key ([AyraKeyManager.ALIAS_PREFS_KEK] or [AyraKeyManager.ALIAS_MASTER_SECRETS]).
+ * 2. 128-bit GCM authentication tag + AAD binding key name and schema version.
+ * 3. Fails closed on Android devices — never writes or reads unencrypted fallbacks.
+ * 4. Transparently migrates legacy ciphertexts encrypted under `ayra_encrypted_prefs_master_key`.
  */
-class EncryptedPreferences(private val context: Context) {
+class EncryptedPreferences(
+    private val context: Context,
+    private val prefsFileName: String = PREFS_FILE_NAME,
+    private val keyAlias: String = AyraKeyManager.ALIAS_MASTER_SECRETS
+) {
 
     companion object {
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val LEGACY_ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val PREFS_FILE_NAME = "ayra_encrypted_preferences"
-        private const val MASTER_KEY_ALIAS = "ayra_encrypted_prefs_master_key"
+        private const val LEGACY_MASTER_KEY_ALIAS = "ayra_encrypted_prefs_master_key"
         private const val GCM_TAG_LENGTH = 128
 
         // Canonical Key Constants for all AI Providers
@@ -55,133 +57,126 @@ class EncryptedPreferences(private val context: Context) {
         const val KEY_CEREBRAS = "cerebras_api_key"
         const val KEY_SAMBANOVA = "sambanova_api_key"
         const val KEY_COMFYUI_URL = "comfyui_server_url"
-
-        private var jvmTestKey: SecretKey? = null
-
-        @Synchronized
-        fun getOrCreateSecretKey(): SecretKey? {
-            return try {
-                val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-                if (!keyStore.containsAlias(MASTER_KEY_ALIAS)) {
-                    val keyGen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-                    val spec = KeyGenParameterSpec.Builder(
-                        MASTER_KEY_ALIAS,
-                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                    )
-                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                        .setKeySize(256)
-                        .setRandomizedEncryptionRequired(true)
-                        .build()
-                    keyGen.init(spec)
-                    keyGen.generateKey()
-                } else {
-                    keyStore.getKey(MASTER_KEY_ALIAS, null) as? SecretKey
-                }
-            } catch (e: Exception) {
-                // In standard JVM unit tests without Android Keystore provider, generate fallback AES key
-                try {
-                    if (jvmTestKey == null) {
-                        val kg = KeyGenerator.getInstance("AES")
-                        kg.init(256)
-                        jvmTestKey = kg.generateKey()
-                    }
-                    jvmTestKey
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
     }
 
     private val sharedPreferences: SharedPreferences by lazy {
-        context.getSharedPreferences(PREFS_FILE_NAME, Context.MODE_PRIVATE)
+        context.getSharedPreferences(prefsFileName, Context.MODE_PRIVATE)
     }
 
-    /**
-     * Encrypts and securely persists an AI provider API key.
-     * Returns true if successfully encrypted and saved; false otherwise.
-     */
+    private fun aadFor(key: String): String = "$prefsFileName|$keyAlias|$key|v2"
+
     fun putString(key: String, value: String): Boolean {
         val cleanValue = value.trim()
         if (cleanValue.isEmpty()) {
             remove(key)
             return true
         }
-
-        val secretKey = getOrCreateSecretKey() ?: return false
-
         return try {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv
-            val cipherText = cipher.doFinal(cleanValue.toByteArray(StandardCharsets.UTF_8))
-
-            val encodedIv = Base64.encodeToString(iv, Base64.NO_WRAP)
-            val encodedData = Base64.encodeToString(cipherText, Base64.NO_WRAP)
-
+            val env = AyraKeyManager.encryptStringWithAad(
+                context = context,
+                baseAlias = keyAlias,
+                plaintext = cleanValue,
+                aadContext = aadFor(key)
+            )
             sharedPreferences.edit()
-                .putString("${key}_iv", encodedIv)
-                .putString("${key}_data", encodedData)
+                .putString("${key}_env_v2", env)
+                .remove("${key}_iv")
+                .remove("${key}_data")
                 .apply()
             true
         } catch (e: Exception) {
-            android.util.Log.e("EncryptedPreferences", "Encryption failed for key: $key", e)
+            SecurityAuditLogger.log(
+                context = context,
+                category = SecurityAuditCategory.KEYSTORE,
+                severity = SecurityAuditSeverity.CRITICAL,
+                message = "EncryptedPreferences write failed for '$key': ${e.javaClass.simpleName}"
+            )
             false
         }
     }
 
-    /**
-     * Decrypts and retrieves a stored AI provider API key.
-     * Returns defaultValue if key is missing or decryption fails.
-     */
     fun getString(key: String, defaultValue: String = ""): String {
-        val encodedIv = sharedPreferences.getString("${key}_iv", null)
-        val encodedData = sharedPreferences.getString("${key}_data", null)
+        val envV2 = sharedPreferences.getString("${key}_env_v2", null)
+        if (!envV2.isNullOrBlank()) {
+            return try {
+                val decrypted = AyraKeyManager.decryptStringWithAad(
+                    context = context,
+                    baseAlias = keyAlias,
+                    serializedEnvelope = envV2,
+                    aadContext = aadFor(key)
+                ).trim()
 
-        if (encodedIv.isNullOrBlank() || encodedData.isNullOrBlank()) {
-            return defaultValue
+                val activeGen = AyraKeyManager.getKeyGeneration(context, keyAlias)
+                val envelopeGen = runCatching { JSONObject(envV2).optInt("gen", 1) }.getOrDefault(1)
+                if (envelopeGen < activeGen && decrypted.isNotEmpty()) {
+                    putString(key, decrypted)
+                }
+                decrypted
+            } catch (_: Exception) {
+                defaultValue
+            }
         }
 
-        val secretKey = getOrCreateSecretKey() ?: return defaultValue
+        // Migrate legacy format if present
+        val encodedIv = sharedPreferences.getString("${key}_iv", null)
+        val encodedData = sharedPreferences.getString("${key}_data", null)
+        if (!encodedIv.isNullOrBlank() && !encodedData.isNullOrBlank()) {
+            val migrated = decryptLegacy(encodedIv, encodedData)?.trim()
+            if (!migrated.isNullOrEmpty()) {
+                putString(key, migrated)
+                return migrated
+            }
+        }
+        return defaultValue
+    }
 
-        return try {
-            val iv = Base64.decode(encodedIv, Base64.NO_WRAP)
-            val cipherText = Base64.decode(encodedData, Base64.NO_WRAP)
+    fun putBoolean(key: String, value: Boolean): Boolean =
+        putString(key, if (value) "1" else "0")
 
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
-
-            val decryptedBytes = cipher.doFinal(cipherText)
-            String(decryptedBytes, StandardCharsets.UTF_8).trim()
-        } catch (e: Exception) {
-            android.util.Log.e("EncryptedPreferences", "Decryption failed for key: $key", e)
-            defaultValue
+    fun getBoolean(key: String, defaultValue: Boolean): Boolean {
+        val v = getString(key, "")
+        return when (v) {
+            "1", "true" -> true
+            "0", "false" -> false
+            else -> defaultValue
         }
     }
 
-    /**
-     * Checks if a non-blank secret exists for the given key.
-     */
+    fun putLong(key: String, value: Long): Boolean =
+        putString(key, value.toString())
+
+    fun getLong(key: String, defaultValue: Long): Long =
+        getString(key, "").toLongOrNull() ?: defaultValue
+
     fun contains(key: String): Boolean {
         return getString(key).isNotBlank()
     }
 
-    /**
-     * Removes the stored secret and IV for a key.
-     */
     fun remove(key: String) {
         sharedPreferences.edit()
+            .remove("${key}_env_v2")
             .remove("${key}_iv")
             .remove("${key}_data")
             .apply()
     }
 
-    /**
-     * Securely clears all stored secrets.
-     */
     fun clear() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit().clear().commit()
+    }
+
+    private fun decryptLegacy(encodedIv: String, encodedData: String): String? {
+        if (!AyraKeyManager.isAndroidKeyStoreAvailable()) return null
+        return try {
+            val ks = KeyStore.getInstance(LEGACY_ANDROID_KEYSTORE).apply { load(null) }
+            if (!ks.containsAlias(LEGACY_MASTER_KEY_ALIAS)) return null
+            val key = ks.getKey(LEGACY_MASTER_KEY_ALIAS, null) as? SecretKey ?: return null
+            val iv = Base64.decode(encodedIv, Base64.NO_WRAP)
+            val ct = Base64.decode(encodedData, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            String(cipher.doFinal(ct), StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
     }
 }

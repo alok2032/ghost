@@ -2,27 +2,28 @@ package com.ayra.ai.app.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
+import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Hardware-backed encrypted key vault for Ayra AI.
- * Stores sensitive credentials (Gemini, OpenRouter, etc.)
- * using Android Keystore AES-256-GCM encryption.
+ * Delegates all cryptographic operations to [AyraKeyManager] ([AyraKeyManager.ALIAS_MASTER_SECRETS])
+ * with AES-256-GCM + per-key AAD authentication, purpose separation, and key rotation support.
  *
- * Adheres to F09: Fails closed. Never stores plaintext or base64 fallbacks.
+ * Adheres strictly to Fail-Closed policy:
+ * - Never stores plaintext or unencrypted Base64 fallbacks.
+ * - Automatically migrates legacy v1 ciphertexts encrypted under `ayra_ai_master_aes_key` (no AAD)
+ *   to v2 AAD-bound envelopes under [AyraKeyManager.ALIAS_MASTER_SECRETS] and deletes legacy entries.
  */
 object SecureKeyStore {
 
-    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-    private const val MASTER_KEY_ALIAS = "ayra_ai_master_aes_key"
+    private const val LEGACY_ANDROID_KEYSTORE = "AndroidKeyStore"
+    private const val LEGACY_MASTER_KEY_ALIAS = "ayra_ai_master_aes_key"
     private const val PREFS_FILE = "ayra_secure_vault"
     private const val GCM_TAG_LENGTH = 128
 
@@ -56,47 +57,8 @@ object SecureKeyStore {
         return context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     }
 
-    private var jvmTestKey: SecretKey? = null
+    private fun aadForKey(keyName: String): String = "secure_vault_v2|$keyName"
 
-    private fun getOrCreateSecretKey(): SecretKey? {
-        return try {
-            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-            if (!keyStore.containsAlias(MASTER_KEY_ALIAS)) {
-                val keyGen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-                val spec = KeyGenParameterSpec.Builder(
-                    MASTER_KEY_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .setRandomizedEncryptionRequired(true)
-                    .build()
-                keyGen.init(spec)
-                keyGen.generateKey()
-            } else {
-                keyStore.getKey(MASTER_KEY_ALIAS, null) as? SecretKey
-            }
-        } catch (e: Exception) {
-            // In standard JVM unit test execution (where AndroidKeyStore is not registered),
-            // provide a test-only SecretKey so cryptographic round-trip unit tests can run.
-            try {
-                if (jvmTestKey == null) {
-                    val kg = KeyGenerator.getInstance("AES")
-                    kg.init(256)
-                    jvmTestKey = kg.generateKey()
-                }
-                jvmTestKey
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
-
-    /**
-     * Encrypts and persists a secret securely using AES-GCM.
-     * Fails closed: returns false and refuses to store if Keystore encryption fails.
-     */
     fun putSecret(context: Context, keyName: String, value: String): Boolean {
         val cleanValue = value.trim()
         if (cleanValue.isEmpty()) {
@@ -104,61 +66,96 @@ object SecureKeyStore {
             return true
         }
 
-        val secretKey = getOrCreateSecretKey() ?: run {
-            android.util.Log.e("SecureKeyStore", "Keystore secret key unavailable; refusing to store secret in plaintext.")
-            return false
-        }
         val prefs = getPrefs(context)
-
         return try {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv
-            val cipherText = cipher.doFinal(cleanValue.toByteArray(StandardCharsets.UTF_8))
-
-            val encodedIv = Base64.encodeToString(iv, Base64.NO_WRAP)
-            val encodedCipher = Base64.encodeToString(cipherText, Base64.NO_WRAP)
-
+            val serializedEnvelope = AyraKeyManager.encryptStringWithAad(
+                context = context,
+                baseAlias = AyraKeyManager.ALIAS_MASTER_SECRETS,
+                plaintext = cleanValue,
+                aadContext = aadForKey(keyName)
+            )
             prefs.edit()
-                .putString("${keyName}_iv", encodedIv)
-                .putString("${keyName}_data", encodedCipher)
+                .putString("${keyName}_env_v2", serializedEnvelope)
+                .remove("${keyName}_iv")
+                .remove("${keyName}_data")
                 .remove("${keyName}_raw")
                 .apply()
             true
         } catch (e: Exception) {
-            android.util.Log.e("SecureKeyStore", "Encryption failed for $keyName", e)
+            SecurityAuditLogger.log(
+                context = context,
+                category = SecurityAuditCategory.KEYSTORE,
+                severity = SecurityAuditSeverity.CRITICAL,
+                message = "Failed encrypting secret '$keyName': ${e.javaClass.simpleName}"
+            )
             false
         }
     }
 
-    /**
-     * Retrieves and decrypts a stored secret.
-     */
     fun getSecret(context: Context, keyName: String): String {
         val prefs = getPrefs(context)
 
-        val encodedIv = prefs.getString("${keyName}_iv", null)
-        val encodedCipher = prefs.getString("${keyName}_data", null)
-
-        if (!encodedIv.isNullOrBlank() && !encodedCipher.isNullOrBlank()) {
-            val secretKey = getOrCreateSecretKey() ?: return ""
+        // 1. Preferred v2 AAD-bound envelope format
+        val envV2 = prefs.getString("${keyName}_env_v2", null)
+        if (!envV2.isNullOrBlank()) {
             return try {
-                val iv = Base64.decode(encodedIv, Base64.NO_WRAP)
-                val cipherText = Base64.decode(encodedCipher, Base64.NO_WRAP)
+                val decrypted = AyraKeyManager.decryptStringWithAad(
+                    context = context,
+                    baseAlias = AyraKeyManager.ALIAS_MASTER_SECRETS,
+                    serializedEnvelope = envV2,
+                    aadContext = aadForKey(keyName)
+                ).trim()
 
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-                cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
-
-                val plainBytes = cipher.doFinal(cipherText)
-                String(plainBytes, StandardCharsets.UTF_8).trim()
+                // Re-encrypt cleanly if key generation rotated
+                val activeGen = AyraKeyManager.getKeyGeneration(context, AyraKeyManager.ALIAS_MASTER_SECRETS)
+                val envelopeGen = runCatching { JSONObject(envV2).optInt("gen", 1) }.getOrDefault(1)
+                if (envelopeGen < activeGen && decrypted.isNotEmpty()) {
+                    putSecret(context, keyName, decrypted)
+                }
+                decrypted
             } catch (e: Exception) {
-                android.util.Log.e("SecureKeyStore", "Decryption failed for $keyName", e)
+                SecurityAuditLogger.log(
+                    context = context,
+                    category = SecurityAuditCategory.KEYSTORE,
+                    severity = SecurityAuditSeverity.CRITICAL,
+                    message = "Decryption failed for '$keyName': ${e.javaClass.simpleName}"
+                )
                 ""
             }
         }
 
+        // 2. Legacy v1 migration path (only decrypts if legacy AndroidKeyStore alias exists)
+        val encodedIv = prefs.getString("${keyName}_iv", null)
+        val encodedCipher = prefs.getString("${keyName}_data", null)
+        if (!encodedIv.isNullOrBlank() && !encodedCipher.isNullOrBlank()) {
+            val migrated = decryptLegacySecret(encodedIv, encodedCipher)?.trim().orEmpty()
+            if (migrated.isNotEmpty()) {
+                putSecret(context, keyName, migrated)
+                return migrated
+            }
+        }
+
+        // Ensure no stray plaintext raw entry ever persists
+        if (prefs.contains("${keyName}_raw")) {
+            prefs.edit().remove("${keyName}_raw").apply()
+        }
         return ""
+    }
+
+    private fun decryptLegacySecret(encodedIv: String, encodedCipher: String): String? {
+        if (!AyraKeyManager.isAndroidKeyStoreAvailable()) return null
+        return try {
+            val ks = KeyStore.getInstance(LEGACY_ANDROID_KEYSTORE).apply { load(null) }
+            if (!ks.containsAlias(LEGACY_MASTER_KEY_ALIAS)) return null
+            val legacyKey = ks.getKey(LEGACY_MASTER_KEY_ALIAS, null) as? SecretKey ?: return null
+            val iv = Base64.decode(encodedIv, Base64.NO_WRAP)
+            val cipherText = Base64.decode(encodedCipher, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, legacyKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            String(cipher.doFinal(cipherText), StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun hasSecret(context: Context, keyName: String): Boolean {
@@ -167,6 +164,7 @@ object SecureKeyStore {
 
     fun removeSecret(context: Context, keyName: String) {
         getPrefs(context).edit()
+            .remove("${keyName}_env_v2")
             .remove("${keyName}_iv")
             .remove("${keyName}_data")
             .remove("${keyName}_raw")
@@ -174,44 +172,27 @@ object SecureKeyStore {
     }
 
     fun clearAllSecrets(context: Context) {
-        getPrefs(context).edit().clear().apply()
+        getPrefs(context).edit().clear().commit()
     }
 
     /**
-     * In-memory AES-GCM helper for testing key round-trips.
+     * In-memory/AAD-bound AES-GCM helper for unit tests and ephemeral envelopes.
      */
     fun encrypt(alias: String, plainText: String): String {
-        val secretKey = getOrCreateSecretKey() ?: return ""
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-        val iv = cipher.iv
-        val cipherText = cipher.doFinal(plainText.toByteArray(StandardCharsets.UTF_8))
-        val combined = ByteArray(iv.size + cipherText.size)
-        System.arraycopy(iv, 0, combined, 0, iv.size)
-        System.arraycopy(cipherText, 0, combined, iv.size, cipherText.size)
-        return try {
-            Base64.encodeToString(combined, Base64.NO_WRAP) ?: java.util.Base64.getEncoder().encodeToString(combined)
-        } catch (_: Exception) {
-            java.util.Base64.getEncoder().encodeToString(combined)
-        }
+        return AyraKeyManager.encryptStringWithAad(
+            context = null,
+            baseAlias = AyraKeyManager.ALIAS_MASTER_SECRETS,
+            plaintext = plainText,
+            aadContext = "direct|$alias"
+        )
     }
 
-    fun decrypt(alias: String, cipherBase64: String): String {
-        val secretKey = getOrCreateSecretKey() ?: return ""
-        val combined = try {
-            Base64.decode(cipherBase64, Base64.NO_WRAP) ?: java.util.Base64.getDecoder().decode(cipherBase64)
-        } catch (_: Exception) {
-            java.util.Base64.getDecoder().decode(cipherBase64)
-        }
-        if (combined.size < 12) return ""
-        val iv = ByteArray(12)
-        val cipherText = ByteArray(combined.size - 12)
-        System.arraycopy(combined, 0, iv, 0, 12)
-        System.arraycopy(combined, 12, cipherText, 0, cipherText.size)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
-        val plain = cipher.doFinal(cipherText)
-        return String(plain, StandardCharsets.UTF_8)
+    fun decrypt(alias: String, cipherPayload: String): String {
+        return AyraKeyManager.decryptStringWithAad(
+            context = null,
+            baseAlias = AyraKeyManager.ALIAS_MASTER_SECRETS,
+            serializedEnvelope = cipherPayload,
+            aadContext = "direct|$alias"
+        )
     }
 }

@@ -137,6 +137,7 @@ abstract class ChatDatabase : RoomDatabase() {
             override fun onOpen(db: SupportSQLiteDatabase) {
                 super.onOpen(db)
                 db.execSQL("PRAGMA foreign_keys=ON;")
+                runCatching { db.execSQL("PRAGMA secure_delete=ON;") }
                 ensureDefaultSessionRow(db)
             }
         }
@@ -155,18 +156,34 @@ abstract class ChatDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): ChatDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
+                INSTANCE?.let { return@synchronized it }
+                val appCtx = context.applicationContext
+                val factory = com.ayra.ai.app.security.VaultDatabaseKeyManager
+                    .createOpenHelperFactory(appCtx, "ayra_chat_database")
+
+                val builder = Room.databaseBuilder(
+                    appCtx,
                     ChatDatabase::class.java,
                     "ayra_chat_database"
                 )
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                     .addCallback(seedDefaultSessionCallback)
                     .fallbackToDestructiveMigration(false)
-                    .build()
+
+                if (factory != null) {
+                    builder.openHelperFactory(factory)
+                }
+
+                val instance = builder.build()
                 INSTANCE = instance
                 instance
             }
+        }
+
+        @Synchronized
+        fun closeDatabaseForMaintenance() {
+            INSTANCE?.close()
+            INSTANCE = null
         }
     }
 }

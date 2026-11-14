@@ -394,7 +394,8 @@ class AlokUpgradeVerificationTest {
         AyraPreferences.setGroqKey(context, "gsk_test_whisper_key_123456")
         val providers = ExternalAiProviders(
             context = context,
-            baseUrlOverrides = mapOf(AiProviderType.GROQ to base)
+            baseUrlOverrides = mapOf(AiProviderType.GROQ to base),
+            customHttpClient = OkHttpClient()
         )
         assertTrue(providers.getBaseUrlForProvider(AiProviderType.CEREBRAS).contains("api.cerebras.ai"))
         assertTrue(providers.getBaseUrlForProvider(AiProviderType.SAMBANOVA).contains("api.sambanova.ai"))

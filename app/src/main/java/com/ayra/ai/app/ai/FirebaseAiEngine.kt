@@ -60,6 +60,8 @@ class FirebaseAiEngine(private val context: Context?) {
 
         fun isAvailable(context: Context?): Boolean {
             if (context == null) return false
+            if (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)) return false
+            if (!com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)) return false
             return runCatching {
                 FirebaseApp.getApps(context.applicationContext).isNotEmpty()
             }.getOrDefault(false)

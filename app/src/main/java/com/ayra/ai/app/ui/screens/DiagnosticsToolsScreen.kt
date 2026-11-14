@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
@@ -78,6 +79,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class ToolsSubTab(val label: String) {
+    SECURITY("Security Vault"),
     KEYS("API Keys Vault"),
     WORKSPACE("Files & Backup"),
     TERMINAL("Cyber Terminal"),
@@ -87,19 +89,19 @@ private enum class ToolsSubTab(val label: String) {
 @Composable
 fun DiagnosticsToolsScreen(
     onRunPromptInChat: (String) -> Unit,
+    onVaultWiped: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var activeTab by remember { mutableStateOf(ToolsSubTab.KEYS) }
+    var activeTab by remember { mutableStateOf(ToolsSubTab.SECURITY) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             text = "Tools, Security Vault & Workspace",
@@ -108,7 +110,7 @@ fun DiagnosticsToolsScreen(
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Manage encrypted Android Keystore keys, M3 appearance, workspace artifacts, safe JSON backups, terminal probes & GitHub plugins.",
+            text = "Enterprise Zero-Trust Security Center, Keystore keys, workspace artifacts, safe backups, cyber terminal & plugins.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -119,6 +121,13 @@ fun DiagnosticsToolsScreen(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            FilterChip(
+                selected = activeTab == ToolsSubTab.SECURITY,
+                onClick = { activeTab = ToolsSubTab.SECURITY },
+                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Security Vault", fontSize = 12.sp) },
+                modifier = Modifier.testTag("tools_subtab_security")
+            )
             FilterChip(
                 selected = activeTab == ToolsSubTab.KEYS,
                 onClick = { activeTab = ToolsSubTab.KEYS },
@@ -150,31 +159,60 @@ fun DiagnosticsToolsScreen(
         }
 
         when (activeTab) {
+            ToolsSubTab.SECURITY -> {
+                SecurityCenterScreen(
+                    onBack = null,
+                    onVaultWiped = onVaultWiped,
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+            }
             ToolsSubTab.KEYS -> {
-                ProviderKeysSection(context = context)
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ProviderKeysSection(context = context)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
             ToolsSubTab.WORKSPACE -> {
-                WorkspaceAndBackupPanel(context = context)
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    WorkspaceAndBackupPanel(context = context)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
             ToolsSubTab.TERMINAL -> {
-                CyberTerminalCard(
-                    onClose = { activeTab = ToolsSubTab.KEYS }
-                )
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CyberTerminalCard(
+                        onClose = { activeTab = ToolsSubTab.KEYS }
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
             ToolsSubTab.PLUGINS -> {
-                GitHubPluginHubSection(
-                    context = context,
-                    onUsePluginPrompt = { pluginPrompt ->
-                        onRunPromptInChat(pluginPrompt)
-                    },
-                    onQuickFeedback = { msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    }
-                )
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    GitHubPluginHubSection(
+                        context = context,
+                        onUsePluginPrompt = { pluginPrompt ->
+                            onRunPromptInChat(pluginPrompt)
+                        },
+                        onQuickFeedback = { msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -456,7 +494,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                             IconButton(
                                 onClick = {
                                     runCatching {
-                                        val uri = FileProvider.getUriForFile(context, "com.ayra.ai.app.fileprovider", item.file)
+                                        val shareFile = StorageHelper.prepareShareableFile(context, item.file)
+                                        val uri = FileProvider.getUriForFile(context, "com.ayra.ai.app.fileprovider", shareFile)
                                         val share = Intent(Intent.ACTION_SEND).apply {
                                             type = "*/*"
                                             putExtra(Intent.EXTRA_STREAM, uri)
