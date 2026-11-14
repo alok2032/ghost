@@ -31,47 +31,63 @@ object AyraVoiceAnnouncer {
 
         var ttsInstance: TextToSpeech? = null
         val handler = Handler(Looper.getMainLooper())
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finishOnce(engine: TextToSpeech?) {
+            if (completed.compareAndSet(false, true)) {
+                onComplete?.invoke()
+            }
+            if (engine != null) {
+                handler.postDelayed({
+                    try {
+                        engine.shutdown()
+                    } catch (_: Exception) {}
+                }, 1000)
+            }
+        }
 
         handler.post {
             ttsInstance = TextToSpeech(appContext) { status ->
                 if (status == TextToSpeech.SUCCESS) {
-                    ttsInstance?.let { engine ->
-                        engine.language = targetLocale
-                        engine.setPitch(1.05f)
-                        engine.setSpeechRate(0.95f)
-
-                        // Route through stream notification or alarm
-                        val audioAttributes = AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                        engine.setAudioAttributes(audioAttributes)
-
-                        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                            override fun onStart(utteranceId: String?) {}
-
-                            override fun onDone(utteranceId: String?) {
-                                onComplete?.invoke()
-                                handler.postDelayed({
-                                    try {
-                                        engine.shutdown()
-                                    } catch (_: Exception) {}
-                                }, 1000)
-                            }
-
-                            @Deprecated("Deprecated in Java")
-                            override fun onError(utteranceId: String?) {
-                                onComplete?.invoke()
-                                handler.postDelayed({
-                                    try {
-                                        engine.shutdown()
-                                    } catch (_: Exception) {}
-                                }, 1000)
-                            }
-                        })
-
-                        engine.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "ayra_scheduled_announcement")
+                    val engine = ttsInstance
+                    if (engine == null) {
+                        finishOnce(null)
+                        return@TextToSpeech
                     }
+                    engine.language = targetLocale
+                    engine.setPitch(1.05f)
+                    engine.setSpeechRate(0.95f)
+
+                    // Route through stream notification or alarm
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    engine.setAudioAttributes(audioAttributes)
+
+                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+
+                        override fun onDone(utteranceId: String?) {
+                            finishOnce(engine)
+                        }
+
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            finishOnce(engine)
+                        }
+                    })
+
+                    val speakStatus = engine.speak(
+                        textToSpeak,
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "ayra_scheduled_announcement"
+                    )
+                    if (speakStatus == TextToSpeech.ERROR) {
+                        finishOnce(engine)
+                    }
+                } else {
+                    finishOnce(ttsInstance)
                 }
             }
         }

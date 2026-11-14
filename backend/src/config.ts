@@ -31,7 +31,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
   return {
     port: Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 8443,
     nodeEnv,
-    firebaseProjectId: env.FIREBASE_PROJECT_ID ?? "gen-lang-client-0153630349",
+    firebaseProjectId: env.FIREBASE_PROJECT_ID ?? "gen-lang-client-0643978985",
     requireAppCheck: (env.REQUIRE_APP_CHECK ?? "true").toLowerCase() === "true",
     corsAllowedOrigins: allowedOrigins,
     rateLimitWindowMs: Number.isFinite(parsedWindow) && parsedWindow > 0 ? parsedWindow : 60_000,

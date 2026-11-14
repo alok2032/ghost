@@ -74,8 +74,10 @@ import com.ayra.ai.app.ui.theme.NeonPurple
 import com.ayra.ai.app.ui.theme.NeonRose
 import com.ayra.ai.app.ui.theme.TextPrimary
 import com.ayra.ai.app.ui.theme.TextSecondary
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -132,11 +134,12 @@ fun ThreeDModelCard(
         }.getOrNull()
     }
 
+    var useCustomMesh by remember(craftPayload) { mutableStateOf(customMesh != null) }
     var rotX by remember { mutableFloatStateOf(20f) }
     var rotY by remember { mutableFloatStateOf(35f) }
     var userScale by remember { mutableFloatStateOf(1.0f) }
     var isAutoSpin by remember { mutableStateOf(true) }
-    var useWebGlPbr by remember(craftPayload) { mutableStateOf(customMesh == null) }
+    var useWebGlPbr by remember(craftPayload) { mutableStateOf(true) }
     var exportedObjPath by remember { mutableStateOf<String?>(null) }
 
     // Auto-spin transition
@@ -155,8 +158,9 @@ fun ThreeDModelCard(
 
     data class ModelFace(val indices: List<Int>, val tint: Color)
 
-    val activeMesh = remember(selectedKind, customMesh) {
-        customMesh ?: Model3dMeshCatalog.getMesh(selectedKind.name)
+    val activeCustomMesh = if (useCustomMesh) customMesh else null
+    val activeMesh = remember(selectedKind, activeCustomMesh) {
+        activeCustomMesh ?: Model3dMeshCatalog.getMesh(selectedKind.name)
     }
 
     val (vertices, edges, faces) = remember(activeMesh) {
@@ -322,6 +326,7 @@ fun ThreeDModelCard(
             if (useWebGlPbr) {
                 WebGl2PbrViewport(
                     kind = selectedKind,
+                    customMesh = activeCustomMesh,
                     autoSpin = isAutoSpin,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -529,6 +534,7 @@ fun ThreeDModelCard(
                         .background(if (isSelected) NeonCyan.copy(alpha = 0.25f) else Color(0xFF131B2E))
                         .border(1.dp, if (isSelected) NeonCyan else Color(0x2200FFFF), RoundedCornerShape(8.dp))
                         .clickable {
+                            useCustomMesh = false
                             selectedKind = kind
                             parsedTitle = "3D ${kind.label} Hologram"
                         }
@@ -537,9 +543,9 @@ fun ThreeDModelCard(
                 ) {
                     Text(
                         text = kind.label,
-                        color = if (isSelected) NeonCyan else TextSecondary,
+                        color = if (!useCustomMesh && isSelected) NeonCyan else TextSecondary,
                         fontSize = 10.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (!useCustomMesh && isSelected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }
@@ -547,14 +553,45 @@ fun ThreeDModelCard(
     }
 }
 
+private fun serializeCustomMeshForWebGl(mesh: Model3dMeshCatalog.MeshData?): String {
+    if (mesh == null || mesh.vertices.isEmpty() || mesh.faces.isEmpty()) return "null"
+    val verts = JSONArray()
+    mesh.vertices.forEach { (x, y, z) ->
+        verts.put(x.toDouble())
+        verts.put(y.toDouble())
+        verts.put(z.toDouble())
+    }
+    val tris = JSONArray()
+    mesh.faces.forEach { face ->
+        if (face.size >= 3) {
+            for (i in 1 until face.size - 1) {
+                val i0 = face[0]
+                val i1 = face[i]
+                val i2 = face[i + 1]
+                if (i0 in mesh.vertices.indices && i1 in mesh.vertices.indices && i2 in mesh.vertices.indices) {
+                    tris.put(i0)
+                    tris.put(i1)
+                    tris.put(i2)
+                }
+            }
+        }
+    }
+    return JSONObject().apply {
+        put("v", verts)
+        put("t", tris)
+    }.toString()
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun WebGl2PbrViewport(
     kind: Model3dKind,
+    customMesh: Model3dMeshCatalog.MeshData?,
     autoSpin: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val html = remember(kind) { buildSelfContainedWebGlHtml(kind) }
+    val customJson = remember(customMesh) { serializeCustomMeshForWebGl(customMesh) }
+    val html = remember(kind, customJson) { buildSelfContainedWebGlHtml(kind, customJson) }
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -566,7 +603,7 @@ private fun WebGl2PbrViewport(
         },
         update = { webView ->
             webView.evaluateJavascript(
-                "window.setAyraModel && window.setAyraModel('${kind.name}', $autoSpin);",
+                "window.setAyraScene && window.setAyraScene('${kind.name}', $customJson, $autoSpin);",
                 null
             )
         },
@@ -574,7 +611,7 @@ private fun WebGl2PbrViewport(
     )
 }
 
-private fun buildSelfContainedWebGlHtml(initialKind: Model3dKind): String = """
+private fun buildSelfContainedWebGlHtml(initialKind: Model3dKind, initialCustomJson: String): String = """
 <!doctype html>
 <html>
 <head>
@@ -590,8 +627,9 @@ html,body,canvas{margin:0;padding:0;width:100%;height:100%;background:#050811;ov
 <script>
 const c = document.getElementById('c');
 const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-let kind = '${initialKind.name}', autoSpin = true, rotY = 0.5, rotX = 0.35, dragging = false, lx = 0, ly = 0;
-window.setAyraModel = (k, spin) => { kind = k; autoSpin = !!spin; buildMesh(k); };
+let kind = '${initialKind.name}', customData = $initialCustomJson, autoSpin = true, rotY = 0.5, rotX = 0.35, dragging = false, lx = 0, ly = 0;
+window.setAyraScene = (k, cust, spin) => { kind = k; customData = cust || null; autoSpin = !!spin; buildMesh(k, customData); };
+window.setAyraModel = (k, spin) => { kind = k; customData = null; autoSpin = !!spin; buildMesh(k, null); };
 c.addEventListener('pointerdown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
 window.addEventListener('pointerup', () => dragging = false);
 c.addEventListener('pointermove', e => {
@@ -623,9 +661,16 @@ function addBox(pos,nor,cx,cy,cz,sx,sy,sz){
   q([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1]);
   q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]);
 }
-function buildMesh(k){
+function buildMesh(k,cust){
   const pos=[], nor=[];
-  if(k==='SPHERE'){
+  if(cust && Array.isArray(cust.v) && Array.isArray(cust.t) && cust.t.length >= 3){
+    curColor=[0.15,0.9,0.95];
+    const v=cust.v, t=cust.t;
+    for(let i=0;i+2<t.length;i+=3){
+      const a=t[i]*3, b=t[i+1]*3, cc=t[i+2]*3;
+      addTri(pos,nor,[v[a],v[a+1],v[a+2]],[v[b],v[b+1],v[b+2]],[v[cc],v[cc+1],v[cc+2]]);
+    }
+  } else if(k==='SPHERE'){
     curColor=[0.1,0.85,0.95];
     const st=16,sl=24,r=0.95;
     for(let i=0;i<st;i++){
@@ -667,7 +712,7 @@ function buildMesh(k){
   gl.bindBuffer(gl.ARRAY_BUFFER,vbo); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pos),gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER,nbo); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(nor),gl.STATIC_DRAW);
 }
-buildMesh(kind);
+buildMesh(kind, customData);
 function loop(){
   const dpr=window.devicePixelRatio||1, w=c.clientWidth*dpr, h=c.clientHeight*dpr;
   if(c.width!==w||c.height!==h){c.width=w;c.height=h;}

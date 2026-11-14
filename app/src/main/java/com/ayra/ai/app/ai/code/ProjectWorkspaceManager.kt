@@ -87,11 +87,12 @@ object ProjectWorkspaceManager {
             mkdirs()
         }
 
+        val rootCanonicalPrefix = rootDir.canonicalPath.trimEnd(File.separatorChar) + File.separator
         for (file in files) {
             val safePath = sanitizeRelativePath(file.relativePath)
             val target = File(rootDir, safePath)
-            // Canonical path traversal guard
-            if (!target.canonicalPath.startsWith(rootDir.canonicalPath)) continue
+            // Canonical path traversal guard (prevents sibling prefix bypass)
+            if (!target.canonicalPath.startsWith(rootCanonicalPrefix)) continue
             target.parentFile?.mkdirs()
             target.writeText(file.content, Charsets.UTF_8)
         }
@@ -137,13 +138,27 @@ object ProjectWorkspaceManager {
         return try {
             val safePath = sanitizeRelativePath(relativePath)
             val target = File(rootDir, safePath)
-            if (!target.canonicalPath.startsWith(rootDir.canonicalPath)) return false
+            val rootCanonicalPrefix = rootDir.canonicalPath.trimEnd(File.separatorChar) + File.separator
+            if (!target.canonicalPath.startsWith(rootCanonicalPrefix)) return false
             target.parentFile?.mkdirs()
             target.writeText(content, Charsets.UTF_8)
             true
         } catch (_: Exception) {
             false
         }
+    }
+
+    fun createProjectFile(rootDir: File, relativePath: String, initialContent: String = ""): Boolean {
+        return saveEditedProjectFile(rootDir, relativePath, initialContent)
+    }
+
+    fun deleteProject(context: Context, projectName: String): Boolean {
+        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { return false }
+        val baseDir = File(context.filesDir, "code_projects")
+        val targetDir = File(baseDir, safeProj)
+        val basePrefix = baseDir.canonicalPath.trimEnd(File.separatorChar) + File.separator
+        if (!targetDir.canonicalPath.startsWith(basePrefix)) return false
+        return if (targetDir.exists()) targetDir.deleteRecursively() else false
     }
 
     fun createProjectZip(context: Context, projectName: String, rootDir: File): File {

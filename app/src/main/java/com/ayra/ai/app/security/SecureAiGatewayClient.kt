@@ -90,12 +90,15 @@ object SecureAiGatewayClient {
         context: Context,
         backendBaseUrl: String,
         prompt: String,
-        model: String = "gemini-2.5-flash",
+        model: String = "gemini-3.8-flash",
         provider: String = "gemini",
         appCheckToken: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         if (AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
             return@withContext Result.failure(SecurityException("Blocked backend call: Local-Only Privacy Mode is active."))
+        }
+        if (!AyraPreferences.hasExternalAiConsent(context)) {
+            return@withContext Result.failure(SecurityException("Blocked backend call: External Cloud AI consent is disabled in Security Center."))
         }
 
         val urlCheck = NetworkSecurityHelper.validatePublicHttpsUrl(backendBaseUrl)

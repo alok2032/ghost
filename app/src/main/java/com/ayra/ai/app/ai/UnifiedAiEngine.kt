@@ -1,8 +1,10 @@
 package com.ayra.ai.app.ai
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import com.ayra.ai.app.BuildConfig
 import com.ayra.ai.app.data.AyraPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -11,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -234,8 +237,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
             cleanPrompt
         }
 
-        // Sub-millisecond response cache for high concurrency repeat queries
-        val cacheKey = "${currentPersona}_${selectedModelTier}_${cleanPrompt.lowercase()}"
+        // Sub-millisecond response cache for high concurrency repeat queries (keyed by settings state)
+        val langPref = context?.let { AyraPreferences.getPreferredLanguage(it) } ?: "Auto"
+        val localOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
+        val privacyMode = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } ?: false
+        val cacheKey = "${currentPersona}_${selectedModelTier}_${langPref}_${localOnly}_${privacyMode}_${cleanPrompt.lowercase()}"
         if (attachedImageBase64 == null && attachedDocumentText == null && cleanPrompt.isNotBlank()) {
             val cached = memoryResponseCache[cacheKey]
             if (cached != null) {
@@ -327,9 +333,20 @@ class UnifiedAiEngine(private val context: Context? = null) {
                             modelUsed = "BuildYourOwnX Multi-AI (${aiRes.modelUsed})"
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {}
             }
-            return@withContext BuildYourOwnXKnowledgeEngine.synthesizeBuildYourOwnX(cleanPrompt, isBengali, isGfMode)
+            val byoxFallback = BuildYourOwnXKnowledgeEngine.synthesizeBuildYourOwnX(cleanPrompt, isBengali, isGfMode)
+            val byoxNotice = if (isBengali) {
+                "⚠️ *লাইভ এআই সংযোগ পাওয়া যায়নি — নিচে কিউরেটেড রেফারেন্স ইমপ্লিমেন্টেশন দেখানো হলো:*\n\n"
+            } else {
+                "⚠️ *AI service offline — showing curated reference implementation:*\n\n"
+            }
+            return@withContext byoxFallback.copy(
+                text = byoxNotice + byoxFallback.text,
+                modelUsed = "${byoxFallback.modelUsed} (Offline Reference)"
+            )
         }
 
         // 6d. Detect Website, Web App, Game or Android App Code Intent (Multi-AI Ensemble first)
@@ -355,6 +372,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                             modelUsed = "Code Architect (${aiRes.modelUsed}) 🚀"
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {}
             }
             if (geminiApiKey.isNotBlank()) {
@@ -364,7 +383,16 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     return@withContext AiResponse(text = res, craftType = "CODE_PROJECT", craftPayload = cleanPrompt, modelUsed = "Gemini 4 Argon Code Architect 🚀")
                 }
             }
-            return@withContext AiAppAndCodeStudio.generateCodeOrApp(cleanPrompt, isBengali, isGfMode)
+            val codeFallback = AiAppAndCodeStudio.generateCodeOrApp(cleanPrompt, isBengali, isGfMode)
+            val codeNotice = if (isBengali) {
+                "⚠️ *লাইভ এআই সংযোগ পাওয়া যায়নি — নিচে অফলাইন টেমপ্লেট দেখানো হলো:*\n\n"
+            } else {
+                "⚠️ *AI service offline — showing offline starter implementation:*\n\n"
+            }
+            return@withContext codeFallback.copy(
+                text = codeNotice + codeFallback.text,
+                modelUsed = "${codeFallback.modelUsed} (Offline Template)"
+            )
         }
 
         // 7. Multi-Model Intelligent Text & Reasoning Engine with Full Auto-Selection
@@ -515,109 +543,119 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     )
                     return@withContext emitResponse(AiResponse(text = refinedText, modelUsed = poolResp.modelUsed))
                 }
-            } catch (_: Exception) {}
-        }
-
-        // 7b. Legacy direct Gemini & OpenRouter execution
-        when (targetTier) {
-            AiModelTier.GEMINI_FLASH -> {
-                if (geminiApiKey.isNotBlank()) {
-                    val res = queryGeminiFlash(effectivePrompt, attachedImageBase64)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
-                }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
             }
 
-            AiModelTier.GEMINI_PRO -> {
-                if (geminiApiKey.isNotBlank()) {
-                    val res = queryGeminiPro(effectivePrompt, attachedImageBase64)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
-                }
-            }
-
-            AiModelTier.OPENROUTER_DEEPSEEK -> {
-                if (openRouterApiKey.isNotBlank()) {
-                    val res = queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
-                }
-                if (geminiApiKey.isNotBlank()) {
-                    val res = queryGeminiPro(effectivePrompt, attachedImageBase64)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 4 Argon Reasoning 🧠"))
-                }
-            }
-
-            AiModelTier.OPENROUTER_LLAMA -> {
-                if (openRouterApiKey.isNotBlank()) {
-                    val res = queryOpenRouterModel("meta-llama/llama-3.3-70b-instruct:free", effectivePrompt)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
-                }
-                if (geminiApiKey.isNotBlank()) {
-                    val res = queryGeminiFlash(effectivePrompt, attachedImageBase64)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.8 Flash Live ⚡"))
-                }
-            }
-
-            AiModelTier.QWEN_UNCENSORED -> {
-                if (context != null) {
-                    val qwenResp = com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine(context).queryQwen(effectivePrompt)
-                    if (qwenResp.text.isNotBlank()) {
-                        return@withContext emitResponse(AiResponse(text = qwenResp.text, modelUsed = qwenResp.modelUsed))
+            // 7b. Legacy direct Gemini & OpenRouter execution
+            when (targetTier) {
+                AiModelTier.GEMINI_FLASH -> {
+                    if (geminiApiKey.isNotBlank()) {
+                        val res = queryGeminiFlash(effectivePrompt, attachedImageBase64)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                     }
                 }
-            }
 
-            AiModelTier.DEEPSEEK_HARNESS -> {
-                if (context != null) {
-                    runCatching {
-                        val dsResp = com.ayra.ai.app.ai.deepseek.DeepSeekHarnessEngine(context).executeHarness(effectivePrompt)
-                        if (dsResp.text.isNotBlank()) return@withContext emitResponse(dsResp)
+                AiModelTier.GEMINI_PRO -> {
+                    if (geminiApiKey.isNotBlank()) {
+                        val res = queryGeminiPro(effectivePrompt, attachedImageBase64)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                     }
                 }
-            }
 
-            AiModelTier.G0DM0D3 -> {
-                if (context != null) {
-                    runCatching {
-                        val gmResp = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).analyzeSecurityQuery(effectivePrompt)
-                        if (gmResp.text.isNotBlank()) return@withContext emitResponse(gmResp)
+                AiModelTier.OPENROUTER_DEEPSEEK -> {
+                    if (openRouterApiKey.isNotBlank()) {
+                        val res = queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
+                    }
+                    if (geminiApiKey.isNotBlank()) {
+                        val res = queryGeminiPro(effectivePrompt, attachedImageBase64)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 4 Argon Reasoning 🧠"))
                     }
                 }
-            }
 
-            AiModelTier.ECC_COGNITIVE -> {
-                if (context != null) {
-                    runCatching {
-                        val eccResp = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).disambiguateAndExecute(effectivePrompt)
-                        if (eccResp.text.isNotBlank()) return@withContext emitResponse(eccResp)
+                AiModelTier.OPENROUTER_LLAMA -> {
+                    if (openRouterApiKey.isNotBlank()) {
+                        val res = queryOpenRouterModel("meta-llama/llama-3.3-70b-instruct:free", effectivePrompt)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
+                    }
+                    if (geminiApiKey.isNotBlank()) {
+                        val res = queryGeminiFlash(effectivePrompt, attachedImageBase64)
+                        if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.8 Flash Live ⚡"))
                     }
                 }
+
+                AiModelTier.QWEN_UNCENSORED -> {
+                    if (context != null) {
+                        val qwenResp = com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine(context).queryQwen(effectivePrompt)
+                        if (qwenResp.text.isNotBlank()) {
+                            return@withContext emitResponse(AiResponse(text = qwenResp.text, modelUsed = qwenResp.modelUsed))
+                        }
+                    }
+                }
+
+                AiModelTier.DEEPSEEK_HARNESS -> {
+                    if (context != null) {
+                        try {
+                            val dsResp = com.ayra.ai.app.ai.deepseek.DeepSeekHarnessEngine(context).executeHarness(effectivePrompt)
+                            if (dsResp.text.isNotBlank()) return@withContext emitResponse(dsResp)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                AiModelTier.G0DM0D3 -> {
+                    if (context != null) {
+                        try {
+                            val gmResp = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).analyzeSecurityQuery(effectivePrompt)
+                            if (gmResp.text.isNotBlank()) return@withContext emitResponse(gmResp)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                AiModelTier.ECC_COGNITIVE -> {
+                    if (context != null) {
+                        try {
+                            val eccResp = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).disambiguateAndExecute(effectivePrompt)
+                            if (eccResp.text.isNotBlank()) return@withContext emitResponse(eccResp)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                AiModelTier.OPEN_HIGGSFIELD -> {
+                    return@withContext generateVideoCraft(effectivePrompt, attachedImageBase64)
+                }
+
+                AiModelTier.SUPERPOWERS -> {
+                    val sp = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(cleanPrompt)
+                        ?: com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.SuperpowerType.SYSTEMATIC_DEBUGGING
+                    return@withContext emitResponse(executeSuperpowerAction(sp, cleanPrompt, effectivePrompt, attachedImageBase64))
+                }
+
+                AiModelTier.AUTO,
+                AiModelTier.OMNI_ROUTE -> {}
             }
 
-            AiModelTier.OPEN_HIGGSFIELD -> {
-                return@withContext generateVideoCraft(effectivePrompt, attachedImageBase64)
+            // Fallback chain if primary choice failed or lacked specific key
+            if (geminiApiKey.isNotBlank()) {
+                val fastRes = queryGeminiFlash(effectivePrompt, attachedImageBase64)
+                if (fastRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = fastRes, modelUsed = "Gemini 3.8 Flash Live ⚡"))
             }
 
-            AiModelTier.SUPERPOWERS -> {
-                val sp = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(cleanPrompt)
-                    ?: com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.SuperpowerType.SYSTEMATIC_DEBUGGING
-                return@withContext emitResponse(executeSuperpowerAction(sp, cleanPrompt, effectivePrompt, attachedImageBase64))
+            if (openRouterApiKey.isNotBlank()) {
+                try {
+                    val orRes = queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt)
+                    if (orRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = orRes, modelUsed = "OpenRouter Multi-AI"))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
             }
-
-            AiModelTier.AUTO,
-            AiModelTier.OMNI_ROUTE -> {}
-        }
-
-        // Fallback chain if primary choice failed or lacked specific key
-        if (geminiApiKey.isNotBlank()) {
-            val fastRes = queryGeminiFlash(effectivePrompt, attachedImageBase64)
-            if (fastRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = fastRes, modelUsed = "Gemini 3.8 Flash Live ⚡"))
-        }
-
-        if (openRouterApiKey.isNotBlank()) {
-            try {
-                val orRes = queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt)
-                if (orRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = orRes, modelUsed = "OpenRouter Multi-AI"))
-            } catch (_: Exception) {}
-        }
 
         // Honest status reporting when no API key is available or all network calls fail
         val honestMessage = if (isBengali) {
@@ -674,23 +712,6 @@ class UnifiedAiEngine(private val context: Context? = null) {
         return Pair(AiModelTier.GEMINI_FLASH, "Gemini 3.8 Flash Live ⚡ (Auto: Ultra-Fast)")
     }
 
-    private fun isDeepReasoningTask(text: String): Boolean {
-        val lower = text.lowercase()
-        return lower.contains("prove") || lower.contains("theorem") || lower.contains("calculus") ||
-                lower.contains("integral") || lower.contains("algorithm") || lower.contains("architecture") ||
-                lower.contains("solve") || lower.contains("derivation") || lower.contains("সমীকরণ") ||
-                lower.contains("প্রমাণ") || lower.contains("গবেষণা") || lower.contains("physics") ||
-                lower.contains("chemistry") || lower.contains("quantum") || lower.length > 250
-    }
-
-    private fun isDeepResearchIntent(text: String): Boolean {
-        val lower = text.lowercase().trim()
-        return lower.contains("deep research") || lower.contains("ডিপ রিসার্চ") ||
-                lower.contains("গভীর গবেষণা") || lower.contains("in-depth research") ||
-                lower.contains("detailed research on") || lower.startsWith("research:") ||
-                lower.startsWith("গবেষণা:") || lower.contains("গবেষণা করো")
-    }
-
     private suspend fun executeDeepResearch(cleanPrompt: String, effectivePrompt: String, imageBase64: String?): AiResponse {
         val topic = cleanPrompt.replace(Regex("(?i)^(deep research|ডিপ রিসার্চ|গভীর গবেষণা|research on|গবেষণা করো|research:)\\s*"), "").trim()
         val isBengali = cleanPrompt.any { it in '\u0980'..'\u09FF' }
@@ -719,6 +740,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     citationsBlock = searchResult.formattedSummary.substringAfter("### 📚 Grounded Web Sources", "")
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {}
 
         if (liveGroundingText.isBlank()) {
@@ -750,6 +773,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     }
                     return AiResponse(text = fullText, modelUsed = "Ayra Deep Research (${poolResp.modelUsed}) 🔬")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         } else if (geminiApiKey.isNotBlank()) {
             try {
@@ -760,6 +785,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     } else res
                     return AiResponse(text = fullText, modelUsed = "Ayra Deep Research (Gemini 3.8 Flash) 🔬")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
@@ -816,7 +843,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         modelUsed = "${superpower.displayName} (${poolResp.modelUsed})"
                     )
                 }
-            } catch (_: Exception) {}
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
         } else if (geminiApiKey.isNotBlank()) {
             try {
                 val res = queryGeminiModel("gemini-4-argon", "$systemPrompt\n\nUser Task:\n$effectivePrompt", imageBase64)
@@ -826,6 +855,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         modelUsed = "${superpower.displayName} (Gemini 4 Argon 🔬)"
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
@@ -854,39 +885,6 @@ class UnifiedAiEngine(private val context: Context? = null) {
             lower.contains("lab") || lower.contains("ctf") -> "labs"
             else -> "help"
         }
-    }
-
-    // --- Strict Intent Checkers: Avoid False Positives on Questions ---
-    private fun isEducationalQuestion(text: String): Boolean {
-        val lower = text.lowercase().trim()
-        val isExplicitCreation = lower.contains("বানাও") || lower.contains("বানিয়ে") || lower.contains("আঁকো") ||
-                lower.contains("এঁকে") || lower.contains("create") || lower.contains("generate") ||
-                lower.contains("make a") || lower.contains("draw a") || lower.contains("toiri") || lower.contains("banao")
-
-        if (isExplicitCreation) return false
-
-        return lower.startsWith("what is ") || lower.startsWith("what's ") || lower.startsWith("how does ") ||
-                lower.startsWith("why is ") || lower.startsWith("why do ") || lower.contains("কাকে বলে") ||
-                lower.contains("সংজ্ঞা") || lower.contains("explain ") || lower.contains("difference between") ||
-                lower.contains("পার্থক্য") || lower.contains("formula of") || lower.contains("meaning of")
-    }
-
-    // --- 0b. PDF & Document Studio Intent ---
-    private fun isPdfStudioIntent(text: String, docText: String?, imageBase64: String?): Boolean {
-        val lower = text.lowercase().trim()
-        val hasPdfTerm = lower.contains("pdf") || lower.contains("পিডিএফ") || lower.contains("document") || lower.contains("ডকুমেন্ট")
-        val hasAction = lower.contains("banao") || lower.contains("বানাও") || lower.contains("create") ||
-                lower.contains("make") || lower.contains("generate") || lower.contains("new pdf") ||
-                lower.contains("নতুন পিডিএফ") || lower.contains("edit") || lower.contains("এডিট") ||
-                lower.contains("convert") || lower.contains("রূপান্তর") || lower.contains("format") ||
-                lower.contains("ফরম্যাট") || lower.contains("download") || lower.contains("save") ||
-                lower.contains("banano") || lower.contains("বানানো")
-
-        if (hasPdfTerm && hasAction) return true
-        if (hasPdfTerm && (lower.startsWith("pdf ") || lower.startsWith("পিডিএফ "))) return true
-        if (docText != null && (lower.contains("edit") || lower.contains("এডিট") || lower.contains("change") || lower.contains("convert") || lower.contains("format"))) return true
-        if (imageBase64 != null && hasPdfTerm) return true
-        return false
     }
 
     private suspend fun executePdfStudioAction(
@@ -921,6 +919,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     )
                 )
                 aiGeneratedBody = poolRes.text.trim()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
@@ -968,73 +968,6 @@ class UnifiedAiEngine(private val context: Context? = null) {
         )
     }
 
-    // --- 1. Video Generation Intent ---
-    private fun isVideoGenerationIntent(text: String): Boolean {
-        if (isEducationalQuestion(text)) return false
-        val lower = text.lowercase().trim()
-
-        if (lower.startsWith("video:") || lower.startsWith("ভিডিও:")) return true
-
-        val hasVideoTerm = lower.contains("video") || lower.contains("ভিডিও") ||
-                lower.contains("animation") || lower.contains("motion clip") ||
-                lower.contains("reels") || lower.contains("shorts") || lower.contains("cinematic clip")
-        if (!hasVideoTerm) return false
-
-        val hasCreationSignal = lower.contains("make") || lower.contains("create") || lower.contains("generate") ||
-                lower.contains("banao") || lower.contains("বানাও") || lower.contains("তৈরি") || lower.contains("বানিয়ে") ||
-                lower.contains("banai") || lower.contains("banie") || lower.contains("chai") || lower.contains("চাই") ||
-                lower.contains("dao") || lower.contains("দাও") || lower.contains("of ") || lower.contains("dekhao") ||
-                lower.contains("দেখা") || lower.startsWith("video") || lower.contains("clip") || lower.contains("ai video") ||
-                lower.contains("motion") || lower.contains("edit") || lower.contains("এডিট") || lower.contains("banano") ||
-                lower.contains("বানানো") || lower.contains("render") || lower.contains("রেন্ডার")
-
-        return hasCreationSignal
-    }
-
-    // --- 2. Image / Photo Generation Intent ---
-    private fun isImageGenerationIntent(text: String): Boolean {
-        if (isEducationalQuestion(text)) return false
-        val lower = text.lowercase().trim()
-
-        if (lower.contains("photosynthesis") || lower.contains("সালোকসংশ্লেষণ") || lower.contains("photodiode") || lower.contains("photon")) {
-            return false
-        }
-
-        if (lower.startsWith("image:") || lower.startsWith("photo:") || lower.startsWith("pic:") ||
-            lower.startsWith("ছবি:") || lower.startsWith("ফটো:") || lower.startsWith("পিক:") ||
-            lower.startsWith("draw:") || lower.startsWith("paint:")) {
-            return true
-        }
-
-        // Direct drawing / painting triggers even without explicit word "photo"
-        if (lower.startsWith("draw ") || lower.startsWith("paint ") || lower.startsWith("sketch ") ||
-            lower.contains("আঁকো") || lower.contains("এঁকে দাও") || lower.contains("আঁক") ||
-            lower.contains("ছবি আঁক") || lower.contains("chobi akho") || lower.contains("akho")) {
-            return true
-        }
-
-        val hasImageTerm = lower.contains("photo") || lower.contains("image") || lower.contains("picture") ||
-                lower.contains("pic") || lower.contains("wallpaper") || lower.contains("portrait") ||
-                lower.contains("sketch") || lower.contains("drawing") || lower.contains("artwork") ||
-                lower.contains("illustration") || lower.contains("chobi") || lower.contains("ছবি") ||
-                lower.contains("ফটো") || lower.contains("পিক") || lower.contains("পিকচার") ||
-                lower.contains("চিত্র") || lower.contains("দৃশ্য")
-        if (!hasImageTerm) return false
-
-        val hasCreationSignal = lower.contains("make") || lower.contains("create") || lower.contains("generate") ||
-                lower.contains("draw") || lower.contains("paint") || lower.contains("render") ||
-                lower.contains("banao") || lower.contains("বানাও") || lower.contains("আঁকো") || lower.contains("এঁকে") ||
-                lower.contains("akho") || lower.contains("enke") || lower.contains("toiri") || lower.contains("তৈরি") ||
-                lower.contains("chai") || lower.contains("চাই") || lower.contains("dao") || lower.contains("দাও") ||
-                lower.contains("dekhao") || lower.contains("দেখাও") || lower.contains("of ") || lower.startsWith("photo") ||
-                lower.startsWith("image") || lower.startsWith("picture") || lower.startsWith("pic") ||
-                lower.startsWith("wallpaper") || lower.startsWith("chobi") || lower.startsWith("ছবি") ||
-                lower.startsWith("ফটো") || lower.startsWith("পিক") || lower.contains("ai pic") ||
-                lower.contains("ai photo") || lower.contains("ai image")
-
-        return hasCreationSignal
-    }
-
     private fun extractSubject(prompt: String, type: String): String {
         var clean = prompt
             .replace(Regex("(?i)^(please\\s+)?(can\\s+you\\s+)?(make|create|generate|draw|paint|render|show\\s+me|give\\s+me)\\s*(a|an|the)?\\s*"), "")
@@ -1050,45 +983,73 @@ class UnifiedAiEngine(private val context: Context? = null) {
         return clean
     }
 
+    private fun readVideoDurationText(file: File): String? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val ms = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return null
+            val totalSecs = (ms / 1000L).coerceAtLeast(1L)
+            val mins = totalSecs / 60L
+            val secs = totalSecs % 60L
+            String.format(java.util.Locale.US, "%d:%02d", mins, secs)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
     private suspend fun generateVideoCraft(prompt: String, attachedImageBase64: String? = null): AiResponse {
         val higgsfieldPayload = higgsfieldEngine.synthesizeVideoCraftWithAi(prompt)
         val cleanSubject = extractSubject(prompt, "VIDEO")
         var finalJsonPayload = higgsfieldPayload.jsonPayload
         var modelLabel = "Open-Higgsfield-AI Cinematic Motion Storyboard 🎬"
+        var hasRenderedVideo = false
+        var hasStoryKeyframes = false
 
         val comfyUrl = context?.let { AyraPreferences.getComfyUiUrl(it) }.orEmpty()
         if (context != null && comfyUrl.isNotBlank()) {
-            val outDir = java.io.File(context.filesDir, "generated_images")
+            val outDir = File(context.filesDir, "generated_images")
             val comfyVid = com.ayra.ai.app.ai.studios.ComfyUiClient().generateVideo(
                 baseUrl = comfyUrl,
                 prompt = cleanSubject,
                 outputDir = outDir
             )
             if (comfyVid is com.ayra.ai.app.ai.studios.ComfyUiResult.VideoSuccess) {
+                val measuredDuration = readVideoDurationText(comfyVid.file)
                 finalJsonPayload = runCatching {
                     JSONObject(higgsfieldPayload.jsonPayload).apply {
                         put("localVideoPath", comfyVid.file.absolutePath)
+                        put("isStoryboardOnly", false)
+                        if (measuredDuration != null) put("duration", measuredDuration) else remove("duration")
                         put("cameraMotion", "Wan 2.1 ComfyUI MP4")
                     }.toString()
                 }.getOrDefault(higgsfieldPayload.jsonPayload)
                 modelLabel = "ComfyUI Wan 2.1 Neural Video MP4 🎬"
+                hasRenderedVideo = true
             }
         }
 
-        if (modelLabel.startsWith("Open-Higgsfield") && context != null && FirebaseAiEngine.isAvailable(context) && externalAiProviders.allowExternalWikiGrounding) {
+        val canUseFirebaseImage = context != null &&
+            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+            AyraPreferences.hasExternalAiConsent(context) &&
+            FirebaseAiEngine.isAvailable(context)
+
+        if (!hasRenderedVideo && canUseFirebaseImage) {
             val framePrompt = if (!attachedImageBase64.isNullOrBlank()) {
                 "Transform this attached image into an ultra-cinematic 16:9 movie keyframe depicting motion for: $cleanSubject"
             } else {
                 "Ultra-cinematic 16:9 widescreen 4K movie film keyframe of: $cleanSubject, ${higgsfieldPayload.lighting}, ${higgsfieldPayload.lensType}"
             }
-            val kf1 = firebaseAiEngine.generateOrEditImage(framePrompt, attachedImageBase64)
+            val kf1 = firebaseAiEngine.generateOrEditImage(framePrompt, attachedImageBase64, "16:9")
             if (kf1 is FirebaseImageResult.Success) {
                 val frameUri = android.net.Uri.fromFile(kf1.file).toString()
                 val kf2 = firebaseAiEngine.generateOrEditImage(
                     "Cinematic next-moment continuation shot (${higgsfieldPayload.cameraMotion}): $cleanSubject",
-                    null
+                    null,
+                    "16:9"
                 )
-                val framesArray = org.json.JSONArray().apply {
+                val framesArray = JSONArray().apply {
                     put(frameUri)
                     if (kf2 is FirebaseImageResult.Success) {
                         put(android.net.Uri.fromFile(kf2.file).toString())
@@ -1098,26 +1059,43 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     JSONObject(higgsfieldPayload.jsonPayload).apply {
                         put("previewUrl", frameUri)
                         put("keyframes", framesArray)
+                        put("isStoryboardOnly", true)
+                        put("frameCount", framesArray.length())
                     }.toString()
                 }.getOrDefault(higgsfieldPayload.jsonPayload)
                 modelLabel = "Nano Banana 2.1 + Open-Higgsfield 4K Storyboard 🎬"
+                hasStoryKeyframes = true
             }
+        }
+
+        // Gate preview image inside OpenHiggsfield storyboard when local-only/unconsented
+        val allowFreePool = context != null &&
+            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+            AyraPreferences.hasExternalAiConsent(context) &&
+            AyraPreferences.isFreeAiPoolEnabled(context)
+        if (!hasRenderedVideo && !hasStoryKeyframes && !allowFreePool) {
+            finalJsonPayload = runCatching {
+                JSONObject(finalJsonPayload).apply {
+                    remove("previewUrl")
+                    put("isStoryboardOnly", true)
+                }.toString()
+            }.getOrDefault(finalJsonPayload)
         }
 
         val isBengali = prompt.any { it in '\u0980'..'\u09FF' }
         val isGfMode = currentPersona == "GF_COMPANION"
 
         val replyText = if (isBengali) {
-            if (isGfMode) {
-                "🎬 সোনা, সিনেমাটিক ৪K মোশন ফিজিক্স ও কী-ফ্রেম ভিডিও তৈরি করেছি:\n**$cleanSubject**\nক্যামেরা: ${higgsfieldPayload.cameraMotion} | লেন্স: ${higgsfieldPayload.lensType}\nনিচে প্রিভিউ প্লেয়ারে এটি উপভোগ করো! ❤️"
-            } else {
-                "🎬 সিনেমাটিক ৪K মোশন ফিজিক্স ভিডিও প্রস্তুত:\n**$cleanSubject**\nক্যামেরা মোশন: ${higgsfieldPayload.cameraMotion} | লেন্স: ${higgsfieldPayload.lensType}\nনিচের প্রিভিউ প্লেয়ারে পর্যবেক্ষণ করুন।"
+            when {
+                hasRenderedVideo -> "🎬 ComfyUI Wan 2.1 থেকে রেন্ডার করা আসল MP4 ভিডিও তৈরি হয়েছে:\n**$cleanSubject**\nনিচে ভিডিও প্লেয়ারে প্লে করুন।"
+                isGfMode -> "🎬 সোনা, সিনেমাটিক কী-ফ্রেম ও ক্যামেরা মোশন স্টোরিবোর্ড তৈরি করেছি:\n**$cleanSubject**\nক্যামেরা: ${higgsfieldPayload.cameraMotion} | লেন্স: ${higgsfieldPayload.lensType} (পূর্ণ MP4 ভিডিওর জন্য Tools-এ ComfyUI URL সেট করুন) ❤️"
+                else -> "🎬 সিনেমাটিক মোশন স্টোরিবোর্ড ও কী-ফ্রেম ডিরেকশন প্রস্তুত:\n**$cleanSubject**\nক্যামেরা: ${higgsfieldPayload.cameraMotion} | লেন্স: ${higgsfieldPayload.lensType} (পূর্ণ MP4 ভিডিও রেন্ডার করতে ComfyUI সার্ভার সংযুক্ত করুন)।"
             }
         } else {
-            if (isGfMode) {
-                "🎬 Sweetheart, synthesized your cinematic 4K motion storyboard:\n**$cleanSubject**\nCamera: ${higgsfieldPayload.cameraMotion} | Lens: ${higgsfieldPayload.lensType} ❤️"
-            } else {
-                "🎬 Cinematic 4K motion storyboard synthesized for:\n**$cleanSubject**\nCamera: ${higgsfieldPayload.cameraMotion} | Optics: ${higgsfieldPayload.lensType}"
+            when {
+                hasRenderedVideo -> "🎬 Real MP4 video rendered via ComfyUI Wan 2.1 for:\n**$cleanSubject**"
+                isGfMode -> "🎬 Sweetheart, synthesized your cinematic motion storyboard:\n**$cleanSubject**\nCamera: ${higgsfieldPayload.cameraMotion} | Lens: ${higgsfieldPayload.lensType} (configure ComfyUI in Tools for direct MP4 video) ❤️"
+                else -> "🎬 Cinematic motion storyboard synthesized for:\n**$cleanSubject**\nCamera: ${higgsfieldPayload.cameraMotion} | Optics: ${higgsfieldPayload.lensType} (connect ComfyUI in Tools for live MP4 video rendering)"
             }
         }
 
@@ -1133,11 +1111,16 @@ class UnifiedAiEngine(private val context: Context? = null) {
         val isBengali = prompt.any { it in '\u0980'..'\u09FF' }
         val isGfMode = currentPersona == "GF_COMPANION"
         val isEditMode = !attachedImageBase64.isNullOrBlank()
+        val aspectRatio = when {
+            prompt.contains("16:9") || prompt.contains("landscape", ignoreCase = true) || prompt.contains("wallpaper", ignoreCase = true) -> "16:9"
+            prompt.contains("9:16") || prompt.contains("portrait", ignoreCase = true) || prompt.contains("vertical", ignoreCase = true) -> "9:16"
+            else -> "1:1"
+        }
 
         // 1. Primary: Real Firebase AI Logic Nano Banana 2.1 Generation / Photo Editing
         var firebaseFailureReason: String? = null
         if (context != null && FirebaseAiEngine.isAvailable(context) && externalAiProviders.allowExternalWikiGrounding) {
-            when (val fbRes = firebaseAiEngine.generateOrEditImage(prompt, attachedImageBase64)) {
+            when (val fbRes = firebaseAiEngine.generateOrEditImage(prompt, attachedImageBase64, aspectRatio)) {
                 is FirebaseImageResult.Success -> {
                     val fileUri = android.net.Uri.fromFile(fbRes.file).toString()
                     val cleanSubject = extractSubject(prompt, "IMAGE")
@@ -1180,15 +1163,20 @@ class UnifiedAiEngine(private val context: Context? = null) {
         // 2a. Try self-hosted ComfyUI (T2I or Img2Img) if configured
         val comfyUrl = context?.let { AyraPreferences.getComfyUiUrl(it) }.orEmpty()
         if (context != null && comfyUrl.isNotBlank()) {
-            val outDir = java.io.File(context.filesDir, "generated_images")
+            val outDir = File(context.filesDir, "generated_images")
             val comfyClient = com.ayra.ai.app.ai.studios.ComfyUiClient()
-            val comfyRes = if (isEditMode && attachedImageBase64 != null) {
+            val comfyRes = if (!attachedImageBase64.isNullOrBlank()) {
                 val refBytes = runCatching { android.util.Base64.decode(attachedImageBase64, android.util.Base64.DEFAULT) }.getOrNull()
                 if (refBytes != null && refBytes.isNotEmpty()) {
                     comfyClient.generateImageToImage(comfyUrl, prompt, refBytes, outDir)
                 } else com.ayra.ai.app.ai.studios.ComfyUiResult.Failure("Invalid reference image bytes")
             } else {
-                comfyClient.generateImage(comfyUrl, prompt, outDir)
+                val (w, h) = when (aspectRatio) {
+                    "16:9" -> 1024 to 576
+                    "9:16" -> 576 to 1024
+                    else -> 768 to 768
+                }
+                comfyClient.generateImage(comfyUrl, prompt, outDir, width = w, height = h)
             }
             if (comfyRes is com.ayra.ai.app.ai.studios.ComfyUiResult.ImageSuccess) {
                 val fileUri = android.net.Uri.fromFile(comfyRes.file).toString()
@@ -1207,9 +1195,24 @@ class UnifiedAiEngine(private val context: Context? = null) {
             }
         }
 
-        // 2b. Remote Diffusion URL generation (or Vision-assisted prompt when editing hit quota/billing)
+        // 2b. Remote Diffusion URL generation only when consented & Free AI Pool is enabled
+        val canUseFreePool = context != null &&
+            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+            AyraPreferences.hasExternalAiConsent(context) &&
+            AyraPreferences.isFreeAiPoolEnabled(context)
+
+        if (!canUseFreePool) {
+            val reasonNote = firebaseFailureReason?.let { "\n\nNano Banana status: $it" }.orEmpty()
+            val errText = if (isBengali) {
+                "⚠️ **ছবি তৈরি করা সম্ভব হয়নি**\n\nবর্তমানে Local-Only মোড চালু আছে অথবা Global Free AI Pool (Pollinations) বন্ধ রয়েছে। Tools & Keys থেকে **Global Free AI Pool** অন করুন অথবা **ComfyUI Server URL** যুক্ত করুন।$reasonNote"
+            } else {
+                "⚠️ **Image Generation Unavailable**\n\nPrimary cloud image generation did not succeed and the public Global Free AI Pool is disabled or blocked by Local-Only mode. Enable **Global Free AI Pool** or configure a **ComfyUI Server URL** in Tools & Keys.$reasonNote"
+            }
+            return AiResponse(text = errText, modelUsed = "Offline Status")
+        }
+
         var effectivePrompt = prompt
-        if (isEditMode && context != null && externalAiProviders.hasAnyConfiguredProvider()) {
+        if (isEditMode && externalAiProviders.hasAnyConfiguredProvider()) {
             try {
                 val visionRes = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
                     com.ayra.ai.app.ai.providers.ChatRequest(
@@ -1222,6 +1225,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 if (visionRes.text.isNotBlank()) {
                     effectivePrompt = visionRes.text.lineSequence().first().trim()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
@@ -1229,7 +1234,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
         val imageUrl = AiMediaPromptSynthesizer.buildImageUrl(
             prompt = effectivePrompt,
             context = context,
-            preExpandedPrompt = expandedPrompt
+            preExpandedPrompt = expandedPrompt,
+            aspectRatio = aspectRatio
         )
 
         val fallbackNote = if (!firebaseFailureReason.isNullOrBlank()) {
@@ -1257,23 +1263,6 @@ class UnifiedAiEngine(private val context: Context? = null) {
             craftPayload = imageUrl,
             modelUsed = "Flux.1 Neural Image Studio 🎨"
         )
-    }
-
-    // --- 3. Song & Music Generation Intent ---
-    private fun isSongGenerationIntent(text: String): Boolean {
-        if (isEducationalQuestion(text)) return false
-        val lower = text.lowercase().trim()
-        val hasMusicTerm = lower.contains("gaan") || lower.contains("গান") ||
-                lower.contains("song") || lower.contains("music") || lower.contains("মিউজিক") ||
-                lower.contains("tune") || lower.contains("সুর") || lower.contains("beat") || lower.contains("বিট")
-        if (!hasMusicTerm) return false
-
-        return lower.contains("banao") || lower.contains("বানাও") || lower.contains("banano") ||
-                lower.contains("বানানো") || lower.contains("render") || lower.contains("রেন্ডার") ||
-                lower.contains("compose") || lower.contains("লিখ") || lower.contains("লেখ") ||
-                lower.contains("make") || lower.contains("create") || lower.contains("generate") ||
-                lower.contains("play") || lower.contains("বাজাও") || lower.startsWith("song ") ||
-                lower.startsWith("music ") || lower.startsWith("গান ") || lower.startsWith("মিউজিক ")
     }
 
     private suspend fun generateSongCraft(prompt: String): AiResponse {
@@ -1322,23 +1311,23 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         put("lyrics", raw)
                     }.toString()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
         if (jsonPayload.isBlank()) {
-            jsonPayload = JSONObject().apply {
-                put("title", subject.replaceFirstChar { it.uppercase() })
-                put("artist", "Ayra Music Studio")
-                put("genre", if (isBengali) "Adhunik Acoustic" else "Acoustic Pop")
-                put("tempo", "110 BPM")
-                put("key", "G Major")
-                put("chords", "G - D - Em - C")
-                put("lyrics", if (isBengali) {
-                    "[$subject]\nঅনলাইন এআই সংযোগ পাওয়া যায়নি; নেটওয়ার্ক যুক্ত করে চেষ্টা করলে নতুন লিরিক্স ও কর্ড তৈরি হবে।"
-                } else {
-                    "[$subject]\nOffline mode active; connect to an AI provider to compose full custom verses and chords."
-                })
-            }.toString()
+            val offlineMsg = if (isBengali) {
+                "⚠️ **গান ও লিরিক্স তৈরি করা যায়নি**\n\nমৌলিক গানের লিরিক্স ও কর্ড তৈরি করতে বর্তমানে কোনো AI প্রোভাইডার সংযুক্ত নেই। অনুগ্রহ করে ইন্টারনেট সংযোগ ও API কী পরীক্ষা করে আবার চেষ্টা করুন।"
+            } else {
+                "⚠️ **Song Composition Unavailable**\n\nNo active AI provider could be reached to compose original lyrics and chord progressions. Check your connection or API keys in Tools & Keys and try again."
+            }
+            return AiResponse(
+                text = offlineMsg,
+                craftType = null,
+                craftPayload = null,
+                modelUsed = "Offline Status"
+            )
         }
 
         val text = if (isBengali) {
@@ -1363,32 +1352,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
         )
     }
 
-    // --- 4. 3D Model Intent ---
-    private fun is3dModelIntent(text: String): Boolean {
-        if (isEducationalQuestion(text)) return false
-        val lower = text.lowercase().trim()
-
-        if (lower.startsWith("3d:") || lower.startsWith("cad:")) return true
-
-        val has3dTerm = lower.contains("3d") || lower.contains("three d") || lower.contains("cad") ||
-                lower.contains("ত্রিমাত্রিক") || lower.contains("hologram") || lower.contains("হোলোগ্রাম")
-        if (!has3dTerm) return false
-
-        return lower.contains("model") || lower.contains("মডেল") || lower.contains("banao") ||
-                lower.contains("বানাও") || lower.contains("make") || lower.contains("create") ||
-                lower.contains("generate") || lower.contains("toiri") || lower.contains("তৈরি") ||
-                lower.contains("object") || lower.contains("mesh") || lower.contains("shape") ||
-                lower.contains("car") || lower.contains("গাড়ি") || lower.contains("robot") ||
-                lower.contains("রোবট") || lower.contains("ship") || lower.contains("মহাকাশ") ||
-                lower.contains("diamond") || lower.contains("sphere") || lower.contains("cube") ||
-                lower.startsWith("3d") || lower.contains("3d তে") || lower.contains("3d te")
-    }
-
     private suspend fun generate3dModelCraft(prompt: String): AiResponse {
         val isBengali = prompt.any { it in '\u0980'..'\u09FF' }
         val isGfMode = currentPersona == "GF_COMPANION"
         val lower = prompt.lowercase()
-        val (modelKind, title) = when {
+        val (modelKind, baseTitle) = when {
             lower.contains("car") || lower.contains("গাড়ি") || lower.contains("sports") -> Pair("CAR", "Cyber Sports Car 3D")
             lower.contains("ship") || lower.contains("space") || lower.contains("rocket") || lower.contains("মহাকাশ") -> Pair("SPACESHIP", "Interstellar Fighter 3D")
             lower.contains("robot") || lower.contains("রোবট") || lower.contains("droid") -> Pair("ROBOT", "Cyber Android Mech 3D")
@@ -1402,12 +1370,13 @@ class UnifiedAiEngine(private val context: Context? = null) {
 
         var mesh = if (modelKind == "CUSTOM_AI") Model3dMeshCatalog.getMesh("CYBER_CORE") else Model3dMeshCatalog.getMesh(modelKind)
         var effectiveKind = if (modelKind == "CUSTOM_AI") "CYBER_CORE" else modelKind
+        var usedFallbackPreset = false
 
         if (modelKind == "CUSTOM_AI" && context != null && hasCloudOrFirebaseAi()) {
-            val aiObj = kotlinx.coroutines.withTimeoutOrNull(4500L) {
-                runCatching {
+            val aiObj = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                try {
                     val objPrompt = """
-                        Generate a clean, low-poly 3D geometric mesh in Wavefront .OBJ format representing: "$title".
+                        Generate a clean, low-poly 3D geometric mesh in Wavefront .OBJ format representing: "$baseTitle".
                         Output ONLY valid `v x y z` vertex lines (12-36 vertices, coordinates in -1.5..1.5) followed by `f i1 i2 i3` (or quad `f i1 i2 i3 i4`) 1-based face lines (at least 6 faces). No markdown, no explanations.
                     """.trimIndent()
                     com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
@@ -1417,19 +1386,34 @@ class UnifiedAiEngine(private val context: Context? = null) {
                             systemPromptOverride = "You are a 3D CAD geometry generator outputting strictly raw Wavefront .OBJ `v` and `f` lines."
                         )
                     ).text
-                }.getOrNull()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    ""
+                }
             }.orEmpty()
             val parsedMesh = Model3dMeshCatalog.parseWavefrontObj(aiObj, "CUSTOM_AI")
             if (parsedMesh != null) {
                 mesh = parsedMesh
                 effectiveKind = "CUSTOM_AI"
+            } else {
+                usedFallbackPreset = true
             }
+        } else if (modelKind == "CUSTOM_AI") {
+            usedFallbackPreset = true
         }
 
-        val objText = Model3dMeshCatalog.buildWavefrontObj(mesh, title)
+        val displayTitle = if (usedFallbackPreset) {
+            "Cyber Core 3D (Fallback Preset for \"$baseTitle\")"
+        } else {
+            baseTitle
+        }
+
+        val objText = Model3dMeshCatalog.buildWavefrontObj(mesh, displayTitle)
         val jsonPayload = JSONObject().apply {
-            put("title", title)
+            put("title", displayTitle)
             put("kind", effectiveKind)
+            put("isFallback", usedFallbackPreset)
             put("vertices", mesh.vertexCount)
             put("edges", mesh.edgeCount)
             put("faces", mesh.faceCount)
@@ -1437,17 +1421,22 @@ class UnifiedAiEngine(private val context: Context? = null) {
             put("objContent", objText)
         }.toString()
 
+        val fallbackBanner = if (usedFallbackPreset) {
+            if (isBengali) "\n*(নোট: কাস্টম AI মেশ তৈরি না হওয়ায় ডিফল্ট ৩ডি Cyber Core প্রিসেট প্রদর্শিত হচ্ছে)*"
+            else "\n*(Note: AI custom mesh synthesis unavailable or returned invalid geometry; displaying Cyber Core 3D preset.)*"
+        } else ""
+
         val text = if (isBengali) {
             if (isGfMode) {
-                "🌐 সোনা, তোমার পছন্দের ত্রিমাত্রিক (3D) মডেল তৈরি করেছি:\n**$title**\nনিচে 3D ভিউপোর্টে হাত দিয়ে ঘুরিয়ে ও জুম করে দেখো তো কেমন হয়েছে! ❤️"
+                "🌐 সোনা, তোমার ত্রিমাত্রিক (3D) মডেল প্রস্তুত:\n**$displayTitle**\nনিচে 3D ভিউপোর্টে হাত দিয়ে ঘুরিয়ে ও জুম করে দেখো তো কেমন হয়েছে! ❤️$fallbackBanner"
             } else {
-                "🌐 ত্রিমাত্রিক (3D) মডেল সফলভাবে তৈরি করা হয়েছে:\n**$title**\nনিচের ইন্টারঅ্যাক্টিভ ভিউপোর্টে স্পর্শ করে ৩৬০° কোণে পর্যবেক্ষণ করুন।"
+                "🌐 ত্রিমাত্রিক (3D) মডেল লোড করা হয়েছে:\n**$displayTitle**\nনিচের ইন্টারঅ্যাক্টিভ ভিউপোর্টে স্পর্শ করে ৩৬০° কোণে পর্যবেক্ষণ করুন।$fallbackBanner"
             }
         } else {
             if (isGfMode) {
-                "🌐 Darling, I crafted this 3D holographic model for you:\n**$title**\nRotate and explore it below in 360°! ❤️"
+                "🌐 Darling, here is your 3D holographic viewport:\n**$displayTitle**\nRotate and explore it below in 360°! ❤️$fallbackBanner"
             } else {
-                "🌐 3D CAD holographic model generated:\n**$title**\nInteract with the 360° spatial geometry below."
+                "🌐 3D CAD holographic viewport ready:\n**$displayTitle**\nInteract with the 360° spatial geometry below.$fallbackBanner"
             }
         }
 
@@ -1455,7 +1444,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
             text = text,
             craftType = "3D",
             craftPayload = jsonPayload,
-            modelUsed = if (effectiveKind == "CUSTOM_AI") "Ayra AI 3D Mesh Architect" else "Holographic 3D Spatial Engine"
+            modelUsed = when {
+                effectiveKind == "CUSTOM_AI" -> "Ayra AI 3D Mesh Architect"
+                usedFallbackPreset -> "Ayra 3D Preset Viewport (Offline Fallback)"
+                else -> "Holographic 3D Spatial Engine"
+            }
         )
     }
 
@@ -1467,11 +1460,15 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 // First try direct clean inference for ultra-fast response
                 val ans = queryGeminiModel(m, prompt, imageBase64, withSearchGrounding = false)
                 if (ans.isNotBlank()) return ans
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
             try {
                 // Next try with search grounding
                 val ans = queryGeminiModel(m, prompt, imageBase64, withSearchGrounding = true)
                 if (ans.isNotBlank()) return ans
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
         return ""
@@ -1483,10 +1480,14 @@ class UnifiedAiEngine(private val context: Context? = null) {
             try {
                 val ans = queryGeminiModel(m, prompt, imageBase64, withSearchGrounding = false)
                 if (ans.isNotBlank()) return ans
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
             try {
                 val ans = queryGeminiModel(m, prompt, imageBase64, withSearchGrounding = true)
                 if (ans.isNotBlank()) return ans
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
         return ""
@@ -1576,6 +1577,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 }
                 ""
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             ""
         }
@@ -1624,6 +1627,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 }
                 ""
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             ""
         }

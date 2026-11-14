@@ -15,15 +15,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashlightOn
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -60,9 +60,9 @@ fun ActionConfirmationCard(
         is ProposedAction.DirectCall -> Icons.Default.Call
         is ProposedAction.SendSms -> Icons.Default.Sms
         is ProposedAction.SetAlarm -> Icons.Default.Alarm
-        is ProposedAction.OpenApp -> Icons.Default.OpenInNew
+        is ProposedAction.OpenApp -> Icons.AutoMirrored.Filled.OpenInNew
         is ProposedAction.ToggleTorch -> Icons.Default.FlashlightOn
-        is ProposedAction.AdjustVolume -> Icons.Default.VolumeUp
+        is ProposedAction.AdjustVolume -> Icons.AutoMirrored.Filled.VolumeUp
     }
 
     val accentColor = if (action.isCritical) NeonRose else NeonCyan

@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,7 +49,7 @@ enum class WorkspaceTab(
     CHAT("Chat", Icons.Default.ChatBubble, "nav_tab_chat"),
     STUDIOS("Studios", Icons.Default.AutoAwesome, "nav_tab_studios"),
     RESEARCH("Research", Icons.Default.TravelExplore, "nav_tab_research"),
-    ARENA("Arena", Icons.Default.CompareArrows, "nav_tab_arena"),
+    ARENA("Arena", Icons.AutoMirrored.Filled.CompareArrows, "nav_tab_arena"),
     TOOLS("Tools", Icons.Default.Build, "nav_tab_tools")
 }
 

@@ -154,9 +154,9 @@ fun SecurityCenterScreen(
     }
 
     fun runWithOptionalBiometricGate(title: String, action: () -> Unit) {
-        val gateNeeded = biometricForExport && activity != null &&
-            BiometricAuthManager.checkCapability(context).deviceCredentialAvailable
-        if (!gateNeeded || activity == null) {
+        if (!biometricForExport || activity == null ||
+            !BiometricAuthManager.checkCapability(context).deviceCredentialAvailable
+        ) {
             action()
             return
         }
@@ -365,7 +365,7 @@ fun SecurityCenterScreen(
                     )
                     SecurityToggleItem(
                         title = "Block Screenshots & Recents Thumbnail (FLAG_SECURE)",
-                        subtitle = "Prevents screen recording and background task switcher previews",
+                        subtitle = "Prevents screenshots, screen recording, and external display/emulator capture",
                         checked = screenCaptureBlocked,
                         tag = "toggle_flag_secure",
                         onCheckedChange = {

@@ -46,7 +46,7 @@ object AyraPreferences {
     private val _themeModeFlow = kotlinx.coroutines.flow.MutableStateFlow("dark")
     val themeModeFlow: kotlinx.coroutines.flow.StateFlow<String> = _themeModeFlow
 
-    private val _screenCaptureBlockedFlow = kotlinx.coroutines.flow.MutableStateFlow(true)
+    private val _screenCaptureBlockedFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
     val screenCaptureBlockedFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _screenCaptureBlockedFlow
 
     fun getThemeMode(context: Context): String {
@@ -581,7 +581,7 @@ object AyraPreferences {
     }
 
     fun isScreenCaptureBlocked(context: Context): Boolean {
-        val blocked = getSensitivePrefs(context).getBoolean(KEY_SCREEN_CAPTURE_BLOCKED, true)
+        val blocked = getSensitivePrefs(context).getBoolean(KEY_SCREEN_CAPTURE_BLOCKED, false)
         if (_screenCaptureBlockedFlow.value != blocked) {
             _screenCaptureBlockedFlow.value = blocked
         }
@@ -664,5 +664,7 @@ object AyraPreferences {
     fun clearAllPreferences(context: Context) {
         getSensitivePrefs(context).clear()
         getPrefs(context).edit().clear().commit()
+        _themeModeFlow.value = "dark"
+        _screenCaptureBlockedFlow.value = false
     }
 }

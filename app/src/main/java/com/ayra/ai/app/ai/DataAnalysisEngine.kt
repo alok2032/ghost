@@ -57,11 +57,48 @@ object DataAnalysisEngine {
         return cells
     }
 
+    fun splitCsvRecords(rawText: String): List<String> {
+        val normalized = rawText.replace("\r\n", "\n").replace("\r", "\n")
+        val records = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < normalized.length) {
+            val ch = normalized[i]
+            when {
+                ch == '"' -> {
+                    sb.append(ch)
+                    if (inQuotes && i + 1 < normalized.length && normalized[i + 1] == '"') {
+                        sb.append('"')
+                        i++
+                    } else {
+                        inQuotes = !inQuotes
+                    }
+                }
+                ch == '\n' && !inQuotes -> {
+                    val rec = sb.toString()
+                    if (rec.isNotBlank()) records.add(rec)
+                    sb.clear()
+                }
+                else -> sb.append(ch)
+            }
+            i++
+        }
+        val last = sb.toString()
+        if (last.isNotBlank()) records.add(last)
+        return records
+    }
+
+    private fun isMissingSentinel(raw: String): Boolean {
+        if (raw.isEmpty()) return true
+        return when (raw.lowercase(Locale.ROOT)) {
+            "na", "n/a", "null", "none", "nan", "-" -> true
+            else -> false
+        }
+    }
+
     fun analyzeTabularText(rawText: String, fileName: String = "dataset.csv"): DatasetSummary {
-        val lines = rawText.replace("\r\n", "\n")
-            .replace("\r", "\n")
-            .split("\n")
-            .filter { it.isNotBlank() }
+        val lines = splitCsvRecords(rawText)
 
         val delimiter = if (fileName.endsWith(".tsv", ignoreCase = true) ||
             (lines.firstOrNull()?.count { it == '\t' } ?: 0) > (lines.firstOrNull()?.count { it == ',' } ?: 0)
@@ -79,11 +116,11 @@ object DataAnalysisEngine {
         val stats = (0 until colCount).map { colIdx ->
             val colName = headers[colIdx]
             val values = dataRows.map { row -> row.getOrNull(colIdx)?.trim().orEmpty() }
-            val nonEmpty = values.filter { it.isNotEmpty() }
-            val missing = values.size - nonEmpty.size
-            val nums = nonEmpty.mapNotNull { it.replace(",", "").toDoubleOrNull() }
+            val nonMissing = values.filterNot(::isMissingSentinel)
+            val missing = values.size - nonMissing.size
+            val nums = nonMissing.mapNotNull { it.replace(",", "").toDoubleOrNull() }
 
-            if (nonEmpty.isNotEmpty() && nums.size == nonEmpty.size) {
+            if (nonMissing.isNotEmpty() && nums.size == nonMissing.size) {
                 val sorted = nums.sorted()
                 val mean = nums.average()
                 val mid = sorted.size / 2
@@ -97,7 +134,7 @@ object DataAnalysisEngine {
                 } else 0.0
                 ColumnStats(
                     name = colName,
-                    nonEmptyCount = nonEmpty.size,
+                    nonEmptyCount = nonMissing.size,
                     missingCount = missing,
                     isNumeric = true,
                     min = sorted.first(),
@@ -107,7 +144,7 @@ object DataAnalysisEngine {
                     stdDev = sqrt(variance)
                 )
             } else {
-                val freq = nonEmpty.groupingBy { it }
+                val freq = nonMissing.groupingBy { it }
                     .eachCount()
                     .entries
                     .sortedByDescending { it.value }
@@ -115,7 +152,7 @@ object DataAnalysisEngine {
                     .map { it.key to it.value }
                 ColumnStats(
                     name = colName,
-                    nonEmptyCount = nonEmpty.size,
+                    nonEmptyCount = nonMissing.size,
                     missingCount = missing,
                     isNumeric = false,
                     topCategories = freq

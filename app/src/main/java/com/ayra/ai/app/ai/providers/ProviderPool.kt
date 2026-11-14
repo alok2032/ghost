@@ -121,6 +121,10 @@ class ProviderPool @JvmOverloads constructor(
         return externalProviders.getActiveConfiguredProviders().filter { circuitBreaker.canExecute(it) }
     }
 
+    fun clearCache() {
+        memoryLruCache.clear()
+    }
+
     private fun computeCacheKey(request: ChatRequest): String? {
         val prompt = request.prompt.trim()
         val lower = prompt.lowercase()
@@ -130,7 +134,10 @@ class ProviderPool @JvmOverloads constructor(
 
         if (!request.activePluginContext.isNullOrBlank()) return null
 
-        val raw = "$prompt|${request.persona}|${request.mode}|${request.preferredProvider?.id}|${request.preferredModelId}"
+        val lang = context?.let { AyraPreferences.getPreferredLanguage(it) } ?: "Auto"
+        val localOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
+        val privacyOn = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } ?: true
+        val raw = "$prompt|${request.persona}|${request.mode}|${request.preferredProvider?.id}|${request.preferredModelId}|$lang|$localOnly|$privacyOn|${request.systemPromptOverride.orEmpty()}"
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
     }
@@ -329,7 +336,7 @@ class ProviderPool @JvmOverloads constructor(
             val fbStreamed = StringBuilder()
             try {
                 firebaseAiEngine.streamText(
-                    prompt = request.prompt,
+                    prompt = safePrompt,
                     systemPrompt = sysPrompt,
                     history = request.history,
                     imageBase64 = request.imageBase64,
@@ -350,6 +357,8 @@ class ProviderPool @JvmOverloads constructor(
                     collector.emit(AyraStreamEvent.Complete(resp))
                     return
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Gracefully fall through to external REST provider channels
             }
@@ -370,7 +379,7 @@ class ProviderPool @JvmOverloads constructor(
                     tokensAccumulator.clear()
                     try {
                         externalProviders.streamChatResponse(
-                            prompt = request.prompt,
+                            prompt = safePrompt,
                             systemPrompt = sysPrompt,
                             history = request.history,
                             imageBase64 = request.imageBase64,
@@ -404,6 +413,8 @@ class ProviderPool @JvmOverloads constructor(
                             return
                         }
                         break
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         val mappedError = mapExceptionToAyraError(channel.provider, e)
                         lastError = mappedError
@@ -416,6 +427,8 @@ class ProviderPool @JvmOverloads constructor(
                         }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 circuitBreaker.recordChannelFailure(channel.id)
                 lastError = mapExceptionToAyraError(channel.provider, e)
@@ -444,17 +457,19 @@ class ProviderPool @JvmOverloads constructor(
         collector.emit(AyraStreamEvent.Thinking("${domain.title} Ensemble ($namesPreview)"))
 
         val sysPrompt = resolveSystemPrompt(request, domain)
+        val privacyRedactionOn = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } == true
+        val safePrompt = if (privacyRedactionOn) {
+            com.ayra.ai.app.security.SecureAiGatewayClient.redactSecretsForOutboundSafety(request.prompt)
+        } else request.prompt
         val turns = externalProviders.buildConversationTurns(
             systemPrompt = sysPrompt,
             history = request.history,
-            currentPrompt = request.prompt,
+            currentPrompt = safePrompt,
             currentImageBase64 = request.imageBase64
         )
 
         val isBestMode = request.mode == ProviderPoolMode.BEST
         val perChannelTimeoutMs = if (isBestMode) 8_500L else 6_000L
-        val targetQuorum = if (isBestMode) minOf(3, ensembleChannels.size) else minOf(2, ensembleChannels.size)
-        val quorumGraceMs = if (isBestMode) 1_500L else 1_000L
 
         val wrappedChannel = Channel<Any>(Channel.UNLIMITED)
         val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -462,13 +477,15 @@ class ProviderPool @JvmOverloads constructor(
         val firebaseEnsembleActive = externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
         val totalWorkers = ensembleChannels.size + if (firebaseEnsembleActive) 1 else 0
+        val targetQuorum = if (isBestMode) minOf(3, totalWorkers) else minOf(2, totalWorkers)
+        val quorumGraceMs = if (isBestMode) 1_500L else 1_000L
 
         val successfulDrafts = mutableListOf<Pair<AiModelChannel, String>>()
         try {
             if (firebaseEnsembleActive) {
                 val fbModelName = firebaseAiEngine.selectModelForTask(
                     modelTier = if (isBestMode) "gemini_pro" else "auto",
-                    prompt = request.prompt,
+                    prompt = safePrompt,
                     preferReasoning = isBestMode
                 )
                 val fbChannel = AiModelChannel(
@@ -485,7 +502,7 @@ class ProviderPool @JvmOverloads constructor(
                     val outcome: Any = withTimeoutOrNull(perChannelTimeoutMs) {
                         try {
                             val fbText = firebaseAiEngine.generateText(
-                                prompt = request.prompt,
+                                prompt = safePrompt,
                                 systemPrompt = sysPrompt,
                                 history = request.history,
                                 imageBase64 = request.imageBase64,
@@ -493,6 +510,8 @@ class ProviderPool @JvmOverloads constructor(
                                 enableSearchGrounding = true
                             )
                             if (fbText.isNotBlank()) Pair(fbChannel, fbText) else Unit
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             Unit
                         }
@@ -511,6 +530,8 @@ class ProviderPool @JvmOverloads constructor(
                                 circuitBreaker.recordChannelSuccess(channel.id)
                                 Pair(channel, text)
                             } else Unit
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             circuitBreaker.recordChannelFailure(channel.id)
                             Unit
@@ -540,7 +561,7 @@ class ProviderPool @JvmOverloads constructor(
                     collector.emit(AyraStreamEvent.Draft(draft.first.displayName, draft.second))
 
                     // Once quorum drafts are in hand, shrink deadline to a short grace window so fast models aren't stalled by slow stragglers
-                    if (successfulDrafts.size >= targetQuorum && finishedCount < ensembleChannels.size) {
+                    if (successfulDrafts.size >= targetQuorum && finishedCount < totalWorkers) {
                         val softStop = System.currentTimeMillis() + quorumGraceMs
                         if (softStop < hardDeadlineMs) {
                             hardDeadlineMs = softStop
@@ -591,7 +612,7 @@ class ProviderPool @JvmOverloads constructor(
 
         val synthesisPrompt = buildString {
             append("You are Ayra AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
-            append("User Query:\n\"${request.prompt}\"\n\n")
+            append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")
                 append(request.activePluginContext.take(3000))
@@ -648,6 +669,8 @@ class ProviderPool @JvmOverloads constructor(
                         }
                     }
                     streamedSynth.isNotBlank()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     false
                 }

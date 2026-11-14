@@ -138,17 +138,17 @@ class AyraTaskScheduler(private val context: Context) {
         }.toString()
 
         val reply = if (isBengali) {
-            "📞 **ভয়েস কল ও বার্তা শিডিউল সম্পন্ন হয়েছে!**\n\n" +
-                    "• যাকে কল করা হবে: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
+            "📞 **ভয়েস কল রিমাইন্ডার শিডিউল সম্পন্ন হয়েছে!**\n\n" +
+                    "• প্রাপক: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• নির্ধারিত সময়: **$formattedTime**\n" +
-                    "• কলে যে কথাটা বলে দেবে: *\"$messageToSpeak\"*\n\n" +
-                    "✅ নির্ধারিত সময়ে আয়রা স্বয়ংক্রিয়ভাবে কল ডায়াল করবে এবং স্পিকারের মাধ্যমে আপনার বার্তাটি তাকে স্পষ্ট কণ্ঠে বলে দেবে! 🎙️"
+                    "• প্রস্তুত বার্তা: *\"$messageToSpeak\"*\n\n" +
+                    "✅ নির্ধারিত সময়ে AlarmManager অ্যালার্ম বাজিয়ে বার্তাটি মনে করিয়ে দেবে এবং এক-ট্যাপ ডায়ালার (ACTION_DIAL) নোটিফিকেশন দেখাবে!"
         } else {
-            "📞 **Scheduled Voice Call Armed!**\n\n" +
+            "📞 **Scheduled Call Prompt Armed!**\n\n" +
                     "• Recipient: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• Scheduled Time: **$formattedTime**\n" +
-                    "• Message to Speak: *\"$messageToSpeak\"*\n\n" +
-                    "✅ At the exact time, Ayra will initiate the phone call and speak your message aloud through automated speech synthesis! 🎙️"
+                    "• Note / Spoken Prompt: *\"$messageToSpeak\"*\n\n" +
+                    "✅ At the scheduled time, AlarmManager will chime, speak your reminder aloud, and post a high-priority notification to open your phone dialer."
         }
 
         return AutomationResult(
@@ -279,19 +279,19 @@ class AyraTaskScheduler(private val context: Context) {
         }.toString()
 
         val reply = if (isBengali) {
-            "✉️ **স্বয়ংক্রিয় মেসেজ শিডিউল সম্পন্ন হয়েছে!**\n\n" +
+            "✉️ **মেসেজ রিমাইন্ডার ও ড্রাফট শিডিউল সম্পন্ন হয়েছে!**\n\n" +
                     "• প্রাপক: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
-                    "• মাধ্যম: **$targetApp** (নেট অফ থাকলে সরাসরি অফলাইন SMS ব্যাকআপ সক্রিয়)\n" +
+                    "• মাধ্যম: **$targetApp**\n" +
                     "• নির্ধারিত সময়: **$formattedTime**\n" +
-                    "• মেসেজ: *\"$messageText\"*\n\n" +
-                    "✅ নির্ধারিত সময়ে নেটওয়ার্ক বন্ধ থাকলেও অফলাইন SMS বা ওয়াইফাই অন করে বার্তাটি সঠিকভাবে পৌঁছে দেওয়া হবে! 🚀"
+                    "• ড্রাফট মেসেজ: *\"$messageText\"*\n\n" +
+                    "✅ নির্ধারিত সময়ে মোবাইল রিংটোন বাজিয়ে আপনাকে মনে করিয়ে দেবে এবং এক-ট্যাপে $targetApp / SMS খোলার প্রিপপুলেটেড নোটিফিকেশন দেখাবে।"
         } else {
-            "✉️ **Scheduled Message Armed!**\n\n" +
+            "✉️ **Scheduled Message Draft Armed!**\n\n" +
                     "• Recipient: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
-                    "• Channel: **$targetApp** (Offline Direct SMS Fallback Active)\n" +
+                    "• Channel: **$targetApp**\n" +
                     "• Scheduled Time: **$formattedTime**\n" +
-                    "• Message: *\"$messageText\"*\n\n" +
-                    "✅ Even if internet is disconnected, direct SMS delivery guarantees this message reaches on time! 🚀"
+                    "• Draft Message: *\"$messageText\"*\n\n" +
+                    "✅ At the scheduled time, AlarmManager will alert you with a high-priority notification pre-filled to review & send via $targetApp / SMS."
         }
 
         return AutomationResult(

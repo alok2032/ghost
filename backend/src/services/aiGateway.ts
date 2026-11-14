@@ -30,6 +30,15 @@ export async function forwardSecureAiRequest(
     if (!check.allowed || !check.normalizedUrl) {
       throw new GatewayError(400, check.reason ?? "Blocked AI upstream URL.");
     }
+    const systemText = payload.messages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content.trim())
+      .filter((t) => t.length > 0)
+      .join("\n\n");
+    const nonSystemMessages = payload.messages.filter((m) => m.role !== "system");
+    if (nonSystemMessages.length === 0) {
+      throw new GatewayError(400, "At least one user or assistant message is required.");
+    }
     const upstreamRes = await fetchFn(check.normalizedUrl, {
       method: "POST",
       headers: {
@@ -37,12 +46,11 @@ export async function forwardSecureAiRequest(
         "x-goog-api-key": config.geminiApiKey,
       },
       body: JSON.stringify({
-        contents: payload.messages
-          .filter((m) => m.role !== "system")
-          .map((m) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }],
-          })),
+        ...(systemText ? { systemInstruction: { parts: [{ text: systemText }] } } : {}),
+        contents: nonSystemMessages.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        })),
         generationConfig: {
           temperature: payload.temperature,
           maxOutputTokens: payload.maxTokens,

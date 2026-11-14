@@ -1,0 +1,1752 @@
+# AYRA AI — ULTIMATE MASTER ENGINEERING PROMPT
+## Complete Codebase Audit, Bug Elimination, Real AI Integration, Advanced Features, Security Hardening, Performance Optimization and Production Transformation
+
+---
+
+# ROLE AND MISSION
+
+Act as a Principal Android Engineer, Senior Kotlin Developer, AI Systems Architect, Machine Learning Engineer, Backend Engineer, Security Engineer, DevOps Engineer, Database Architect, UI/UX Designer, and Senior QA Automation Engineer.
+
+You are responsible for transforming the EXISTING AYRA AI Android application into a genuinely powerful, reliable, intelligent, secure, fast, and production-ready multimodal AI platform.
+
+You must work directly on the supplied source code.
+
+This is NOT a request to create a demonstration application, redesign a few screens, generate a documentation-only audit, or produce a list of suggestions.
+
+You must:
+
+1. Inspect the entire existing project.
+2. Understand every source file and dependency.
+3. Identify every broken, incomplete, misleading, duplicated, insecure, or inefficient implementation.
+4. Repair existing functionality.
+5. Implement missing functionality.
+6. Integrate real AI services and real model inference.
+7. Remove fake functionality and misleading success messages.
+8. Improve the entire application architecture.
+9. Execute comprehensive automated and real-device tests.
+10. Produce a working, installable Android APK.
+
+**Non-negotiable objective: Every advertised feature must either work through a verified real implementation or clearly report that its required service, model, API key, hardware, or infrastructure is unavailable.**
+
+Never sacrifice correctness, privacy, reliability, or security for marketing claims or an unnecessarily large feature list.
+
+---
+
+# PHASE 1 — COMPLETE PROJECT FORENSIC AUDIT
+
+Before changing any code, inspect the entire project recursively.
+
+Inspect all 369 ZIP entries, including:
+
+- Every Kotlin and Java source file.
+- Every Jetpack Compose screen and component.
+- Every ViewModel and repository.
+- Every AI engine and orchestration component.
+- Every provider implementation.
+- Every model registry.
+- Every API integration.
+- Every database entity, DAO, migration, and repository.
+- Every Firebase configuration and security rule.
+- Every backend source file.
+- Every Gradle configuration.
+- Every manifest and XML resource.
+- Every permission and Android component.
+- Every test file.
+- Every asset, workflow, script, and bundled resource.
+- Every dependency and transitive dependency that creates a material security or compatibility risk.
+
+Do not assume that existing documentation describes the current implementation accurately.
+
+Verify all documentation claims against actual source code.
+
+## 1.1 Build a complete feature inventory
+
+Create a structured inventory containing:
+
+- Feature name.
+- Screen or UI location.
+- Source file.
+- Main implementation class.
+- Backend/API dependency.
+- Required permissions.
+- Database dependencies.
+- Whether the implementation is complete.
+- Whether it works offline.
+- Whether it requires an API key.
+- Whether it requires external infrastructure.
+- Test coverage.
+- Known defects.
+- Recommended improvements.
+
+Classify each feature as:
+
+- VERIFIED WORKING
+- PARTIALLY WORKING
+- BROKEN
+- NOT IMPLEMENTED
+- MOCK OR SIMULATED
+- EXTERNAL DEPENDENCY REQUIRED
+- UNVERIFIED
+
+Never classify a feature as working solely because a button exists or a function returns a non-null value.
+
+## 1.2 Detect every implementation defect
+
+Search for:
+
+- TODO and FIXME markers.
+- Empty functions.
+- Unimplemented methods.
+- Placeholder responses.
+- Hardcoded AI answers.
+- Fake model names.
+- Simulated progress.
+- Fake download completion.
+- Fake generation results.
+- Mock data accidentally included in production.
+- Hardcoded API endpoints that no longer work.
+- Deprecated APIs.
+- Dead code.
+- Unreachable screens.
+- Duplicate implementations.
+- Unused dependencies.
+- Incorrect coroutine scopes.
+- Memory leaks.
+- Blocking main-thread operations.
+- Infinite retry loops.
+- Unbounded caching.
+- Incorrect database queries.
+- Missing database indexes.
+- Incorrect error handling.
+- Empty catch blocks that hide failures.
+- Incorrect API response parsing.
+- Missing request cancellation.
+- Incorrect provider fallback.
+- Unverified model identifiers.
+- Security bypasses.
+- Incorrect permission handling.
+- Misleading success messages.
+
+For every defect, record:
+
+- File and line.
+- Root cause.
+- Impact.
+- Severity.
+- Exact repair.
+- Regression test.
+
+Do not merely document defects. Fix them.
+
+---
+
+# PHASE 2 — REMOVE ALL FAKE AND DUMMY FUNCTIONALITY
+
+This phase is mandatory.
+
+AYRA must not pretend to perform an operation that it has not actually performed.
+
+## 2.1 Strict real-functionality policy
+
+Remove or repair:
+
+- Fake AI responses.
+- Prewritten answers presented as live AI output.
+- Fake image generation.
+- Fake video generation.
+- Fake audio generation.
+- Fake music generation.
+- Fake web search.
+- Fake research citations.
+- Fake code execution.
+- Fake application builds.
+- Fake file exports.
+- Fake upload completion.
+- Fake download completion.
+- Fake cloud synchronization.
+- Fake VPN status.
+- Fake device automation.
+- Fake security verification.
+- Fake model availability.
+- Fake agent completion.
+- Fake progress indicators.
+
+Do not replace one fake implementation with another.
+
+## 2.2 Real operation verification
+
+Every operation must follow this lifecycle:
+
+1. Validate the user request.
+2. Validate required configuration.
+3. Verify provider or service availability.
+4. Execute the real operation.
+5. Track the actual job identifier when applicable.
+6. Monitor actual progress.
+7. Retrieve the real result.
+8. Validate the result.
+9. Save the result.
+10. Update the UI using the real operation state.
+
+Use explicit operation states:
+
+- IDLE
+- VALIDATING
+- WAITING_FOR_PROVIDER
+- SUBMITTING
+- QUEUED
+- RUNNING
+- DOWNLOADING
+- VERIFYING
+- COMPLETED
+- FAILED
+- CANCELLED
+- TIMED_OUT
+
+Never show COMPLETED before the result has been successfully retrieved and verified.
+
+## 2.3 Honest provider attribution
+
+Display:
+
+- Actual provider.
+- Actual model ID.
+- Provider status.
+- Whether the response was generated locally or remotely.
+- Whether a fallback occurred.
+- Whether the response used cached content.
+- Relevant limitations.
+
+Never label a response as GPT, Claude, Gemini, Flux, or another model unless that exact model actually generated the response.
+
+---
+
+# PHASE 3 — COMPLETE AI ARCHITECTURE REBUILD AND OPTIMIZATION
+
+Preserve and improve the existing architecture.
+
+Relevant existing components include:
+
+- UnifiedAiEngine
+- AyraOrchestrator
+- ProviderPool
+- ExternalAiProviders
+- AiModelRegistry
+- AiUsageTracker
+- ProviderCircuitBreaker
+- AyraIntentClassifier
+- AiComparisonEngine
+- AutonomousKnowledgeEngine
+- DocumentRagEngine
+- GlobalWebKnowledgeGateway
+- EnterpriseCognitiveEngine
+- DeepSeekHarnessEngine
+- GitHubPluginEngine
+- FirebaseAiEngine
+- SecureAiGatewayClient
+
+Do not create duplicate systems when an existing implementation can be improved.
+
+## 3.1 Build a reliable central AI gateway
+
+Create a unified AI request pipeline.
+
+Every AI request must pass through a centralized request management system.
+
+Required responsibilities:
+
+- Request validation.
+- Intent classification.
+- Context management.
+- Provider selection.
+- Model selection.
+- Privacy policy enforcement.
+- API key verification.
+- Token budget management.
+- Rate-limit handling.
+- Request timeout management.
+- Retry management.
+- Provider fallback.
+- Response validation.
+- Citation verification.
+- Usage tracking.
+- Cost tracking.
+- Structured error reporting.
+
+Use typed request and response models rather than loosely structured strings.
+
+Keep provider-specific implementations isolated behind common interfaces.
+
+## 3.2 Intelligent model selection
+
+Implement domain-aware model routing.
+
+Detect whether the request involves:
+
+- General conversation.
+- Complex reasoning.
+- Mathematics.
+- Scientific research.
+- Programming.
+- Software architecture.
+- Debugging.
+- Web research.
+- Document analysis.
+- Image understanding.
+- Creative writing.
+- Translation.
+- Audio processing.
+- Image generation.
+- Video generation.
+- Music generation.
+- Data analysis.
+
+Choose models using actual capabilities, not marketing descriptions.
+
+Consider:
+
+- Context window.
+- Reasoning capability.
+- Coding performance.
+- Multimodal support.
+- Latency.
+- Reliability.
+- Price.
+- Availability.
+- Rate limits.
+- Privacy preferences.
+
+Never assume that every provider supports every task.
+
+## 3.3 Real model discovery
+
+Upgrade AiModelRegistry.
+
+Implement live provider model discovery wherever officially supported.
+
+For each model, maintain:
+
+- Provider ID.
+- Actual model ID.
+- Display name.
+- Supported capabilities.
+- Context length.
+- Input/output modality.
+- Streaming support.
+- Tool calling support.
+- Pricing information, when available.
+- Availability.
+- Last successful verification.
+- Deprecation status.
+
+Do not invent models or capabilities.
+
+Do not automatically replace a working model with an incompatible model.
+
+Provide a model refresh option.
+
+If a model is no longer available, disable it and explain why.
+
+## 3.4 Multi-AI collaboration
+
+Implement a genuine multi-model ensemble.
+
+Workflow:
+
+1. Select independent specialist models.
+2. Submit appropriately scoped requests.
+3. Collect actual responses.
+4. Validate the responses.
+5. Compare factual claims.
+6. Identify disagreements.
+7. Request verification when necessary.
+8. Produce a synthesized final answer.
+9. Preserve citations and uncertainty.
+
+Never generate multiple fake specialist responses from one model and present them as independent opinions.
+
+Provide a single-model fallback when multi-model execution is unavailable.
+
+## 3.5 Streaming and conversation intelligence
+
+Implement:
+
+- True streaming output.
+- Conversation cancellation.
+- Stop generation.
+- Retry.
+- Regenerate.
+- Edit and resend.
+- Message branching.
+- Conversation search.
+- Conversation export.
+- Context summarization.
+- Long-context management.
+- Conversation persistence.
+- Safe history restoration.
+
+Prevent duplicate messages and duplicate network requests.
+
+Preserve conversation state during rotation, activity recreation, and process recovery where practical.
+
+---
+
+# PHASE 4 — REAL AI PROVIDER ECOSYSTEM
+
+Maintain existing integrations and improve them.
+
+Audit all supported providers, including:
+
+- Google Gemini.
+- OpenAI.
+- Anthropic Claude.
+- DeepSeek.
+- Groq.
+- Cerebras.
+- SambaNova.
+- NVIDIA NIM.
+- OpenRouter.
+- Mistral.
+- Perplexity.
+- xAI.
+- Tavily.
+- ElevenLabs.
+- Local Ollama.
+- LM Studio.
+- Firebase AI Logic.
+- ComfyUI.
+- Other compatible providers supported by their official APIs.
+
+Do not claim every provider is free.
+
+Do not claim unlimited usage.
+
+Do not assume free-tier quotas remain unchanged.
+
+## 4.1 Provider integration requirements
+
+For each provider implement:
+
+- Official API endpoint.
+- Correct authentication.
+- Actual model identifier.
+- Request serialization.
+- Response deserialization.
+- Streaming where supported.
+- Timeout handling.
+- Retry policy.
+- Rate-limit handling.
+- Error classification.
+- Usage tracking.
+- Live connectivity test.
+- Model discovery where supported.
+- Provider health status.
+
+Use official documentation and verify current API contracts before implementing changes.
+
+## 4.2 API key management
+
+Create a consistent provider key management system.
+
+Features:
+
+- Add API key.
+- Edit API key.
+- Delete API key.
+- Paste from clipboard.
+- Test key.
+- Display connection status.
+- Display last successful test.
+- Display provider-specific errors.
+- Support multiple keys when appropriate.
+- Never expose keys in logs.
+- Never export secrets in workspace backups.
+- Never embed private provider keys in the APK.
+
+Use Android Keystore-backed encryption for locally stored credentials.
+
+For production service credentials, use server-side secret management.
+
+Do not confuse successful key storage with successful API authentication.
+
+## 4.3 Intelligent fallback
+
+Fallback must respect:
+
+- User consent.
+- Privacy settings.
+- Provider compatibility.
+- Data sensitivity.
+- Cost restrictions.
+- Model capability requirements.
+- User-selected model preferences.
+
+A failed private provider must never silently forward a private document to an unrelated external provider.
+
+Provide clear fallback notifications.
+
+---
+
+# PHASE 5 — ADVANCED RESEARCH AND KNOWLEDGE ENGINE
+
+Transform research into a genuine evidence-based research system.
+
+## 5.1 Deep Research
+
+Implement a multi-stage research workflow:
+
+1. Understand the research question.
+2. Identify required subtopics.
+3. Generate search queries.
+4. Search multiple sources.
+5. Retrieve relevant webpages.
+6. Extract readable content.
+7. Remove navigation and irrelevant content.
+8. Identify publication dates.
+9. Extract important claims.
+10. Compare sources.
+11. Detect contradictions.
+12. Identify unsupported claims.
+13. Generate a structured research report.
+14. Attach source citations.
+15. Save the research project.
+
+Support:
+
+- General web research.
+- Academic research.
+- Technical documentation.
+- Scientific literature.
+- Programming documentation.
+- Product research.
+- News research.
+- Historical research.
+
+Use real search and retrieval APIs.
+
+Never manufacture citations, URLs, authors, or publication dates.
+
+## 5.2 Source verification
+
+For every citation store:
+
+- Source URL.
+- Page title.
+- Domain.
+- Publication date, if available.
+- Access date.
+- Relevant extracted passage.
+- Claim supported by the passage.
+
+Differentiate verified facts, estimates, opinions, and model-generated inferences.
+
+If evidence is insufficient, explicitly say so.
+
+## 5.3 Advanced RAG
+
+Upgrade DocumentRagEngine.
+
+Support:
+
+- PDF.
+- DOCX.
+- XLSX.
+- PPTX.
+- TXT.
+- Markdown.
+- CSV.
+- JSON.
+- HTML.
+- Code files.
+- Images using supported OCR or vision models.
+
+Implement:
+
+- Document parsing.
+- Chunking.
+- Metadata extraction.
+- Embeddings.
+- Vector search.
+- Hybrid retrieval.
+- Reranking.
+- Source-aware answer generation.
+- Document deletion.
+- Index rebuilding.
+- Incremental updates.
+- Duplicate detection.
+- Permission-aware retrieval.
+
+Support multiple documents in one research session.
+
+Never invent content missing from the source.
+
+---
+
+# PHASE 6 — ADVANCED IMAGE GENERATION STUDIO
+
+Build a real image generation system.
+
+Integrate supported image generation APIs and user-configured ComfyUI infrastructure.
+
+Features:
+
+- Text-to-image.
+- Image-to-image.
+- Image editing.
+- Inpainting.
+- Outpainting.
+- Background removal.
+- Image enhancement.
+- Upscaling.
+- Multiple aspect ratios.
+- Multiple resolutions.
+- Seed control.
+- Negative prompts.
+- Style presets.
+- Batch generation.
+- Generation history.
+- Image download.
+- Gallery management.
+
+Support genuine model selection based on available providers.
+
+Do not label a Pollinations response as a specific Flux model without verifying the actual upstream model.
+
+Do not confuse prompt enhancement with image generation.
+
+Validate generated image content, dimensions, format, file size, and successful download.
+
+If the external generation service is unavailable, show a clear service error.
+
+---
+
+# PHASE 7 — REAL VIDEO GENERATION STUDIO
+
+Build a real asynchronous video generation pipeline.
+
+Support actual video generation through compatible services such as:
+
+- ComfyUI.
+- Wan workflows.
+- Other officially supported video generation providers.
+- Configured remote GPU infrastructure.
+
+Features:
+
+- Text-to-video.
+- Image-to-video.
+- Video-to-video where supported.
+- First and last frame control.
+- Camera movement.
+- Scene descriptions.
+- Aspect ratio selection.
+- Resolution selection.
+- Duration selection.
+- Frame-rate selection.
+- Video enhancement.
+- Job progress.
+- Job cancellation.
+- Job recovery.
+- Video preview.
+- MP4 download.
+- Video history.
+
+For ComfyUI:
+
+- Validate server connection.
+- Verify installed models.
+- Verify required custom nodes.
+- Validate workflow JSON.
+- Submit prompt.
+- Capture real prompt ID.
+- Poll job history.
+- Handle execution errors.
+- Retrieve actual output.
+- Verify MP4 structure.
+- Validate duration and codec.
+- Save the real file.
+
+A pair of still images or generated keyframes must never be presented as a completed video.
+
+---
+
+# PHASE 8 — REAL AUDIO, SPEECH AND MUSIC STUDIO
+
+Build a complete audio workflow.
+
+## Speech-to-text
+
+Support actual STT through compatible providers:
+
+- Whisper-compatible APIs.
+- Local speech recognition when a suitable model is installed.
+- Other verified speech recognition services.
+
+## Text-to-speech
+
+Support:
+
+- Neural voices.
+- Voice selection.
+- Speed control.
+- Language selection.
+- Audio generation.
+- Playback.
+- Audio export.
+
+## Audio intelligence
+
+Implement:
+
+- Audio transcription.
+- Speaker segmentation where supported.
+- Translation.
+- Summarization.
+- Meeting notes.
+- Voice command processing.
+- Audio question answering.
+- Audio file analysis.
+
+## Music generation
+
+Use genuine music generation services where available.
+
+Support:
+
+- Text-to-music.
+- Instrumental generation.
+- Genre selection.
+- Mood selection.
+- Duration selection.
+- Lyrics-assisted generation where supported.
+- Audio export.
+
+Do not use TTS or a generated static audio file as fake music generation.
+
+Never claim to generate music unless a genuine music generation service returns a valid audio artifact.
+
+---
+
+# PHASE 9 — POWERFUL CODING AND APP DEVELOPMENT STUDIO
+
+Transform Code Builder into a genuine software development environment.
+
+Features:
+
+- Project creation.
+- Project templates.
+- Multi-file generation.
+- Code editing.
+- Syntax highlighting.
+- File tree.
+- Project search.
+- File comparison.
+- Version history.
+- Code explanation.
+- Refactoring.
+- Debugging.
+- Unit test generation.
+- Build diagnostics.
+- Dependency analysis.
+- Security analysis.
+- ZIP export.
+- Project import.
+
+## 9.1 Real code generation
+
+Use actual configured AI models.
+
+Never produce canned source code for arbitrary requests.
+
+Require generated projects to include:
+
+- Project structure.
+- Build configuration.
+- Source files.
+- Dependency declarations.
+- Resource files.
+- Manifest where required.
+- Tests.
+- Setup instructions.
+- Build instructions.
+
+## 9.2 Real execution
+
+Use a secure backend sandbox or supported local execution environment.
+
+Do not execute arbitrary untrusted code directly inside the main Android application process.
+
+Implement:
+
+- Isolated execution.
+- CPU limits.
+- Memory limits.
+- Execution timeouts.
+- File system restrictions.
+- Network restrictions.
+- Process termination.
+- Output capture.
+- Error capture.
+
+Never claim that code compiles merely because the model generated it.
+
+Verify builds using actual compiler/build tools.
+
+## 9.3 Android app builder
+
+Support generating genuine Android projects using:
+
+- Kotlin.
+- Jetpack Compose.
+- Material 3.
+- Gradle.
+- Android SDK.
+
+Where infrastructure supports it, execute Gradle builds in a remote build worker and provide actual APK artifacts.
+
+---
+
+# PHASE 10 — ADVANCED AGENTIC AI SYSTEM
+
+Build a controlled multi-agent architecture.
+
+Possible specialist agents:
+
+1. Research Agent.
+2. Coding Agent.
+3. Debugging Agent.
+4. Mathematics Agent.
+5. Data Analysis Agent.
+6. Document Agent.
+7. Image Agent.
+8. Video Agent.
+9. Audio Agent.
+10. Security Analysis Agent.
+11. Planning Agent.
+12. Verification Agent.
+
+Each agent must use an actual configured model or actual tool.
+
+Do not simulate independent agents using fabricated messages.
+
+## Agent execution lifecycle
+
+- Receive task.
+- Analyze requirements.
+- Create a plan.
+- Request approval for sensitive actions.
+- Execute supported tools.
+- Observe real outputs.
+- Validate results.
+- Recover from errors.
+- Report completion accurately.
+
+Implement:
+
+- Task memory.
+- Tool permissions.
+- Agent cancellation.
+- Execution history.
+- Budget limits.
+- Retry limits.
+- Loop prevention.
+- Inter-agent communication.
+- Human approval.
+- Audit logs.
+
+An agent must never be allowed to perform arbitrary device, financial, communication, or external account actions without the required user authorization.
+
+---
+
+# PHASE 11 — ADVANCED AUTOMATION
+
+Improve existing DeviceAutomationController, ProposedAction, ContactResolver, and AyraTaskScheduler.
+
+Support user-authorized operations such as:
+
+- Creating reminders.
+- Scheduling tasks.
+- Creating alarms.
+- Opening supported applications.
+- Preparing messages.
+- Dialing through the system dialer.
+- Sharing documents.
+- Creating calendar events through authorized integrations.
+- Managing supported local files.
+- Executing approved workflows.
+
+Requirements:
+
+- Typed actions.
+- Permission verification.
+- User confirmation.
+- Execution timeout.
+- Result verification.
+- Cancellation.
+- Error reporting.
+- Audit logging.
+
+Never silently send messages, make calls, delete files, or execute sensitive operations.
+
+Respect Android background execution restrictions and battery optimization behavior.
+
+---
+
+# PHASE 12 — ADVANCED DATABASE AND PERSONAL MEMORY
+
+Improve the existing Room database architecture.
+
+Requirements:
+
+- Correct SQLCipher integration.
+- Safe database migration.
+- Database integrity verification.
+- Transaction management.
+- Query optimization.
+- Index optimization.
+- Backup and restore.
+- Crash recovery.
+- Data retention policies.
+- Storage cleanup.
+- Schema versioning.
+
+## Personal memory
+
+Build user-controlled memory with:
+
+- Saved preferences.
+- Conversation context.
+- Project context.
+- Important user instructions.
+- Searchable memories.
+- Memory editing.
+- Memory export.
+- Memory deletion.
+- Memory consent.
+
+Never silently store sensitive information.
+
+Do not send personal memory to external providers unless the user has authorized that data flow.
+
+---
+
+# PHASE 13 — ENTERPRISE-GRADE SECURITY
+
+Conduct a complete security redesign and verify every existing security control.
+
+Improve:
+
+- AyraKeyManager.
+- SecureKeyStore.
+- EncryptedPreferences.
+- VaultDatabaseKeyManager.
+- EncryptedVaultStorage.
+- AyraE2eeEngine.
+- BiometricAuthManager.
+- VaultLockManager.
+- EncryptedBackupManager.
+- SecurityAuditLogger.
+- NetworkSecurityHelper.
+- SecureAiGatewayClient.
+- DeviceSecurityInspector.
+- AiToolSecurityGuard.
+- DataErasureManager.
+
+## 13.1 API and secret protection
+
+- Never hardcode private API keys.
+- Never commit production credentials.
+- Never log secrets.
+- Never expose secrets through exceptions.
+- Never store credentials in plaintext.
+- Use Android Keystore-backed encryption.
+- Verify hardware security level where supported.
+- Prefer StrongBox when available.
+- Fall back to TEE when appropriate.
+- Fail closed when secure storage cannot be initialized.
+- Implement key rotation.
+- Implement secure key invalidation recovery.
+
+## 13.2 Data encryption
+
+Verify encryption of:
+
+- Chat database.
+- Personal memory.
+- API credentials.
+- Documents.
+- Images.
+- Audio.
+- Video.
+- Project files.
+- Backups.
+- Sensitive preferences.
+- Temporary exports.
+
+Use authenticated encryption with correct nonce handling and authenticated metadata.
+
+Use SQLCipher for the Room database.
+
+Use per-file encryption keys for encrypted vault storage.
+
+## 13.3 End-to-end encryption
+
+Audit the actual E2EE implementation.
+
+Verify:
+
+- Device identity.
+- Public-key verification.
+- Secure key exchange.
+- Forward secrecy design.
+- Message encryption.
+- Authentication.
+- Replay protection.
+- Device revocation.
+- Epoch rotation.
+- Recovery.
+- Multi-device synchronization.
+
+Do not claim E2EE merely because HTTPS or Firestore security rules are enabled.
+
+## 13.4 Backend zero-trust security
+
+Improve the Node.js/TypeScript backend.
+
+Implement:
+
+- Firebase authentication verification.
+- App Check enforcement.
+- Authorization.
+- Role-based access control.
+- Strict input validation.
+- Rate limiting.
+- Request size limits.
+- SSRF protection.
+- DNS rebinding protection.
+- IP range validation.
+- CORS allowlisting.
+- Security headers.
+- Secret management.
+- Audit logging.
+- Token revocation.
+- Abuse protection.
+
+Never trust a user-supplied provider URL without validation.
+
+## 13.5 AI prompt-injection defense
+
+Protect against:
+
+- Malicious PDF instructions.
+- Malicious webpages.
+- Malicious GitHub repositories.
+- Malicious plugin descriptions.
+- Prompt injection.
+- Data exfiltration.
+- Tool abuse.
+- Unauthorized tool execution.
+
+Treat retrieved content as untrusted data.
+
+Keep system instructions separate from retrieved content.
+
+Require authorization before sensitive tool execution.
+
+## 13.6 Production security verification
+
+Implement and test:
+
+- Android backup exclusion.
+- Screenshot protection for sensitive screens.
+- Clipboard sensitivity.
+- Tapjacking protection.
+- Session expiry.
+- Biometric vault lock.
+- Auto-lock.
+- Device registration.
+- Secure deletion.
+- FileProvider restrictions.
+- TLS verification.
+- Certificate pinning for controlled first-party endpoints, with safe rotation and recovery planning.
+- Play Integrity server-side verification.
+
+Never promise absolute protection against all attackers.
+
+Document hardware, operating-system, and deployment limitations honestly.
+
+---
+
+# PHASE 14 — ADVANCED MOBILE UI/UX
+
+Redesign and improve the existing Jetpack Compose interface.
+
+Maintain AYRA's identity while creating a polished, professional, modern experience.
+
+Improve:
+
+- Home screen.
+- Chat screen.
+- Navigation.
+- Model selection.
+- Provider management.
+- AI studios.
+- Research screen.
+- Code workspace.
+- Document management.
+- Security center.
+- Settings.
+- User profile.
+- History.
+- Task management.
+
+## User experience requirements
+
+- Responsive layouts.
+- Smooth animations.
+- Dark mode.
+- Light mode.
+- System theme.
+- Accessible typography.
+- Proper contrast.
+- Minimum 48dp touch targets.
+- Loading states.
+- Empty states.
+- Error states.
+- Offline states.
+- Progress indicators based on actual operations.
+- Confirmation dialogs.
+- Search.
+- Filters.
+- Pagination where needed.
+
+## Chat experience
+
+Implement:
+
+- Streaming responses.
+- Markdown rendering.
+- Code blocks.
+- Syntax highlighting.
+- Copy code.
+- Download artifacts.
+- Image preview.
+- Video playback.
+- Audio playback.
+- File attachments.
+- Message actions.
+- Regenerate.
+- Edit.
+- Stop.
+- Retry.
+- Conversation search.
+
+Never show buttons that do nothing.
+
+Every interactive control must have a working action.
+
+If a feature is unavailable, disable it with a clear explanation instead of pretending it works.
+
+---
+
+# PHASE 15 — PERFORMANCE AND RESOURCE OPTIMIZATION
+
+AYRA is an Android application.
+
+It must remain responsive on real phones, not only powerful desktop development machines.
+
+Optimize:
+
+- Cold startup.
+- Screen navigation.
+- Chat rendering.
+- Long conversation scrolling.
+- Database queries.
+- Network usage.
+- AI request concurrency.
+- Memory consumption.
+- Disk usage.
+- Image decoding.
+- Video playback.
+- Audio playback.
+- Background tasks.
+- Battery consumption.
+
+Use:
+
+- Kotlin coroutines.
+- Structured concurrency.
+- Dispatchers.IO.
+- StateFlow.
+- Lifecycle-aware collection.
+- Paging for large datasets.
+- Bounded caches.
+- Proper cancellation.
+- Resource cleanup.
+
+Avoid:
+
+- Main-thread networking.
+- Unbounded coroutine launches.
+- Large bitmap allocations.
+- Repeated database initialization.
+- Unnecessary recomposition.
+- Memory leaks.
+- Excessive polling.
+- Unnecessary provider requests.
+
+## Local AI performance
+
+Support Ollama and LM Studio as external local-network inference services.
+
+Do not pretend that Android can efficiently run every large model natively.
+
+Provide:
+
+- Model compatibility checks.
+- Hardware capability detection.
+- RAM estimation.
+- Context limits.
+- Quantization information.
+- Connection diagnostics.
+- Network diagnostics.
+- Clear setup instructions.
+
+Keep heavy image and video inference on supported remote GPU infrastructure or appropriately configured local servers.
+
+---
+
+# PHASE 16 — ADDITIONAL POWERFUL FEATURES
+
+After stabilizing existing functionality, add the following features when their real implementation and infrastructure are available.
+
+## A. AI Control Center
+
+A central dashboard showing:
+
+- All configured providers.
+- Model availability.
+- Active requests.
+- Provider latency.
+- Error rates.
+- Usage statistics.
+- API configuration status.
+- Recent generations.
+- Queue status.
+
+## B. AI Model Arena
+
+Allow users to compare actual model outputs.
+
+Features:
+
+- Side-by-side responses.
+- Blind comparison.
+- Latency comparison.
+- Quality feedback.
+- Cost comparison.
+- Model history.
+- Exportable comparison reports.
+
+## C. Universal AI Search
+
+Search across:
+
+- Conversations.
+- Documents.
+- Research projects.
+- Generated files.
+- Saved projects.
+- Personal memory.
+
+Use appropriate indexing and access controls.
+
+## D. AI Knowledge Workspace
+
+Create project-specific knowledge spaces with:
+
+- Multiple files.
+- Project instructions.
+- Source citations.
+- Conversation history.
+- Research notes.
+- Generated artifacts.
+- Persistent project context.
+
+## E. Advanced Data Analyst
+
+Support:
+
+- CSV.
+- Excel.
+- JSON.
+- SQL exports.
+- Statistical summaries.
+- Data cleaning.
+- Charts.
+- Trend detection.
+- Correlation analysis.
+- Report generation.
+
+Never fabricate statistical results.
+
+## F. AI Document Studio
+
+Support:
+
+- PDF creation.
+- DOCX creation.
+- XLSX creation.
+- PPTX creation.
+- Markdown export.
+- HTML export.
+- Document conversion.
+- Document summarization.
+
+Validate the actual generated files.
+
+## G. AI Workflow Builder
+
+Allow users to create multi-step workflows using real connected tools.
+
+Include:
+
+- Workflow editor.
+- Execution history.
+- Conditional steps.
+- Approval steps.
+- Retry.
+- Cancellation.
+- Error recovery.
+
+## H. AI Memory and Personalization Center
+
+Provide transparent user-controlled memory settings, editing, and deletion.
+
+## I. AI Accessibility
+
+Support:
+
+- Bengali.
+- English.
+- Hindi.
+- Additional languages when the selected model supports them.
+- Voice input.
+- Text-to-speech.
+- Screen-reader support.
+- Accessible controls.
+
+---
+
+# PHASE 17 — API, NETWORK AND BACKEND RELIABILITY
+
+Audit every outbound network request.
+
+For each endpoint verify:
+
+- Official host.
+- Correct HTTP method.
+- Correct authentication.
+- Request schema.
+- Response schema.
+- TLS.
+- Timeout.
+- Retry behavior.
+- Cancellation.
+- Error handling.
+- Rate-limit behavior.
+
+Implement centralized network diagnostics.
+
+Handle:
+
+- No internet.
+- DNS failure.
+- TLS failure.
+- Authentication failure.
+- Invalid API key.
+- Quota exhaustion.
+- Rate limiting.
+- Server errors.
+- Empty responses.
+- Invalid JSON.
+- Timeout.
+- Cancelled requests.
+- Partial streaming responses.
+
+Never return a generic success response when the actual request failed.
+
+Do not silently swallow exceptions.
+
+Use structured error categories and actionable user-facing messages.
+
+---
+
+# PHASE 18 — TESTING AND VERIFICATION
+
+Testing is mandatory.
+
+Do not stop after compilation.
+
+## 18.1 Unit tests
+
+Test:
+
+- Intent classification.
+- AI routing.
+- Provider selection.
+- Model registry.
+- API authentication.
+- Response parsing.
+- Retry logic.
+- Circuit breakers.
+- Cache correctness.
+- Conversation history.
+- Database operations.
+- Database migrations.
+- File handling.
+- Document parsing.
+- RAG retrieval.
+- Encryption.
+- Decryption.
+- Key rotation.
+- E2EE.
+- Biometric flows.
+- Prompt-injection defense.
+- SSRF defense.
+- Automation.
+- Scheduling.
+- Export and import.
+
+## 18.2 Integration tests
+
+Use controlled test servers and provider test accounts.
+
+Verify:
+
+- Real HTTP request formation.
+- Real authentication behavior.
+- Actual API response parsing.
+- Streaming.
+- File upload.
+- File download.
+- ComfyUI job submission.
+- ComfyUI job completion.
+- Actual artifact retrieval.
+- Firebase authentication.
+- Firestore access control.
+- Backend gateway behavior.
+
+Clearly distinguish mocks, emulators, staging services, and production services.
+
+A MockWebServer success is not proof that a production provider is available.
+
+## 18.3 UI tests
+
+Test every important screen and interaction.
+
+Verify:
+
+- Navigation.
+- Buttons.
+- Dialogs.
+- Forms.
+- File pickers.
+- Permission requests.
+- Chat operations.
+- Provider setup.
+- Model switching.
+- Generation workflows.
+- Error states.
+- Background and foreground transitions.
+
+## 18.4 Physical device tests
+
+Test on real Android devices.
+
+Test:
+
+- API 26 compatibility where feasible.
+- Current Android versions.
+- Low-memory devices.
+- Slow networks.
+- Unstable networks.
+- Permission denial.
+- App backgrounding.
+- Process death.
+- Screen rotation.
+- Device reboot.
+- Biometric unavailable.
+- Storage exhaustion.
+- Battery restrictions.
+
+Do not mark physical-device testing complete without actual device execution evidence.
+
+## 18.5 Stress testing
+
+Test:
+
+- Long conversations.
+- Hundreds of messages.
+- Multiple concurrent requests.
+- Large documents.
+- Large image files.
+- Long-running generation jobs.
+- Repeated retries.
+- Network interruption.
+- Background/foreground transitions.
+- Large workspace exports.
+
+Record actual:
+
+- Startup time.
+- Memory usage.
+- CPU usage.
+- Network requests.
+- Crash rate.
+- ANR rate.
+- Battery consumption.
+- Request latency.
+
+Set measurable targets based on the supported hardware and workload.
+
+---
+
+# PHASE 19 — BUILD, RELEASE AND DEPLOYMENT
+
+Make the Android project production-ready.
+
+Requirements:
+
+- Clean Gradle configuration.
+- Compatible dependency versions.
+- Reproducible build.
+- Correct SDK configuration.
+- Correct manifest.
+- Correct application ID.
+- Production resource configuration.
+- Release signing.
+- R8 optimization.
+- Resource shrinking where safe.
+- ProGuard rules.
+- Dependency vulnerability review.
+- No embedded production secrets.
+- No debug-only configurations in release.
+
+## Backend deployment
+
+Prepare a production deployment configuration.
+
+Use:
+
+- HTTPS.
+- TLS 1.2 or newer.
+- Managed secrets.
+- Production authentication.
+- App Check.
+- CORS allowlisting.
+- Logging.
+- Monitoring.
+- Health checks.
+- Rate limiting.
+- Backup and recovery.
+
+Do not claim the backend is deployed unless the deployment has actually succeeded and the live service has been verified.
+
+## APK verification
+
+Produce:
+
+1. Debug APK.
+2. Release APK or Android App Bundle, when signing configuration is available.
+3. Build logs.
+4. Test results.
+5. APK installation verification.
+6. Dependency report.
+7. Release checklist.
+
+Never use a public default debug keystore as a production signing credential.
+
+---
+
+# PHASE 20 — FINAL ACCEPTANCE CRITERIA
+
+The project is not complete merely because the Gradle build succeeds.
+
+All the following must be addressed:
+
+[ ] Complete source-code inventory.
+
+[ ] All critical and high-severity bugs repaired.
+
+[ ] All broken UI interactions repaired.
+
+[ ] All fake and misleading output removed.
+
+[ ] Every advertised feature verified or honestly marked unavailable.
+
+[ ] AI providers correctly integrated.
+
+[ ] Actual model identifiers verified.
+
+[ ] API keys securely managed.
+
+[ ] Privacy consent enforced.
+
+[ ] Research citations grounded in real sources.
+
+[ ] Document processing verified.
+
+[ ] Image generation verified.
+
+[ ] Video generation verified.
+
+[ ] Audio generation and transcription verified.
+
+[ ] Code generation workflow verified.
+
+[ ] Project export and import verified.
+
+[ ] Agent execution verified.
+
+[ ] Device actions require appropriate authorization.
+
+[ ] Database encryption verified on Android.
+
+[ ] File encryption verified.
+
+[ ] E2EE claims verified.
+
+[ ] Backend security tests passed.
+
+[ ] Firestore rules tests passed.
+
+[ ] Unit tests passed.
+
+[ ] Integration tests passed.
+
+[ ] UI tests passed.
+
+[ ] Real-device tests completed for the claimed device matrix.
+
+[ ] Performance tests completed.
+
+[ ] No unresolved critical security vulnerabilities.
+
+[ ] Release signing configuration secured.
+
+[ ] Final APK installed and launched successfully.
+
+For any incomplete item, document the exact reason and the remaining work.
+
+---
+
+# IMPLEMENTATION RULES
+
+1. Work on the existing AYRA source code. Do not create an unrelated replacement application.
+2. Preserve working features and user data.
+3. Do not delete an existing feature merely because it is difficult to repair.
+4. Do not duplicate existing functionality.
+5. Do not introduce unnecessary dependencies.
+6. Do not invent API endpoints, models, capabilities, or credentials.
+7. Use current official provider documentation.
+8. Keep API secrets out of source code.
+9. Do not silently transfer private data to external AI providers.
+10. Do not hide errors using empty catch blocks.
+11. Do not use canned success messages.
+12. Do not generate fake files or fabricated test results.
+13. Do not claim tests passed unless they actually ran.
+14. Do not claim production deployment without verification.
+15. Do not replace real services with mock implementations in production.
+16. Use mocks only in clearly isolated test environments.
+17. Keep the Android main thread free from heavy operations.
+18. Use proper coroutine cancellation and lifecycle management.
+19. Provide database migration and recovery before changing persistent schemas.
+20. Keep the project buildable after each implementation phase.
+
+If an API key, GPU server, provider account, or deployment credential is unavailable, implement the integration correctly, create the necessary configuration instructions, and report the missing external requirement. Never fabricate a successful result.
+
+---
+
+# REQUIRED EXECUTION ORDER
+
+Execute the work in these stages:
+
+**Stage 1:** Full project inspection and baseline build.
+
+**Stage 2:** Complete defect and security audit.
+
+**Stage 3:** Critical bugs, data safety, and fake-functionality removal.
+
+**Stage 4:** Core AI architecture and provider reliability.
+
+**Stage 5:** Research, RAG, documents, and memory.
+
+**Stage 6:** Image, video, audio, and coding studios.
+
+**Stage 7:** Agents, tools, and automation.
+
+**Stage 8:** Security, database, and backend hardening.
+
+**Stage 9:** UI/UX and performance optimization.
+
+**Stage 10:** Unit, integration, UI, stress, and physical-device testing.
+
+**Stage 11:** Release configuration and APK generation.
+
+**Stage 12:** Final verification and documentation.
+
+Do not start large-scale refactoring before understanding the existing dependencies and data migration risks.
+
+After each stage, run the relevant tests and repair regressions before continuing.
+
+---
+
+# FINAL DELIVERABLES
+
+Produce the following:
+
+1. Complete audit report.
+2. Full feature inventory.
+3. Critical/high/medium/low defect report.
+4. Root-cause analysis.
+5. Implemented bug fixes.
+6. Implemented feature upgrades.
+7. AI provider compatibility matrix.
+8. Verified model registry.
+9. Security architecture report.
+10. Database migration report.
+11. Backend deployment guide.
+12. Test execution report.
+13. Performance report.
+14. Remaining external dependency list.
+15. Final release checklist.
+16. Working installable APK.
+17. Source code for all implemented changes.
+
+For each repaired issue, identify the actual changed file and explain the repair.
+
+For each new feature, provide its implementation location and test evidence.
+
+For each unavailable feature, explain the missing infrastructure or configuration.
+
+# FINAL COMMAND
+
+Do not merely tell me what should be done.
+
+Actually inspect, repair, implement, integrate, optimize, test, and verify the entire AYRA AI project.
+
+Your priority order is:
+
+1. Correctness.
+2. Real functionality.
+3. Security and privacy.
+4. Reliability.
+5. AI quality.
+6. Performance.
+7. User experience.
+8. Advanced capabilities.
+
+The ultimate objective is to make AYRA AI a genuinely powerful, trustworthy, intelligent, multimodal Android AI platform.
+
+**REAL IMPLEMENTATIONS. REAL AI. REAL API INTEGRATIONS. REAL FILES. REAL TESTS. REAL RESULTS. ZERO FAKE SUCCESS.**

@@ -240,12 +240,23 @@ object AyraAgentOrchestrator {
     // --- Intent Classification Helpers ---
 
     private fun isAutomationIntent(text: String): Boolean {
-        return text.contains("torch") || text.contains("flashlight") || text.contains("টর্চ") ||
-                text.contains("wifi") || text.contains("bluetooth") || text.contains("ভলিউম") ||
-                text.contains("volume") || text.contains("open app") || text.contains("অ্যাপ খোলো") ||
-                text.contains("alarm") || text.contains("অ্যালার্ম") || text.contains("reminder") ||
-                text.contains("call ") || text.contains("ফোন করো") || text.contains("sms") ||
-                text.contains("মেসেজ পাঠাও")
+        val isInformationalQuestion = text.startsWith("what is ") || text.startsWith("what's ") ||
+            text.startsWith("explain ") || text.startsWith("how does ") || text.startsWith("why is ") ||
+            text.contains("difference between")
+        val hasAutomationVerb = Regex("\\b(turn on|turn off|enable|disable|toggle|open|set|schedule|remind|call|dial|send|increase|decrease|mute|unmute)\\b")
+            .containsMatchIn(text) ||
+            text.contains("খোলো") || text.contains("চালু") || text.contains("বন্ধ") ||
+            text.contains("পাঠাও") || text.contains("সেট") || text.contains("বাড়াও") ||
+            text.contains("কমাও") || text.contains("করো")
+        if (isInformationalQuestion && !hasAutomationVerb) return false
+
+        val hasHardwareOrActionTarget = Regex("\\b(torch|flashlight|wi-?fi|bluetooth|volume|alarm|reminder|sms)\\b")
+            .containsMatchIn(text) ||
+            Regex("\\b(open app|call\\s+[a-z0-9+]+|send\\s+(sms|text|message|whatsapp))\\b").containsMatchIn(text) ||
+            text.contains("টর্চ") || text.contains("ভলিউম") || text.contains("অ্যাপ খোলো") ||
+            text.contains("অ্যালার্ম") || text.contains("ফোন করো") || text.contains("মেসেজ পাঠাও")
+
+        return hasHardwareOrActionTarget && (hasAutomationVerb || text.contains("টর্চ") || text.contains("অ্যালার্ম") || text.contains("ফোন করো") || text.contains("মেসেজ পাঠাও") || text.contains("অ্যাপ খোলো") || text.contains("open app"))
     }
 
     private fun isCyberDefenseIntent(text: String): Boolean {
@@ -272,13 +283,10 @@ object AyraAgentOrchestrator {
     }
 
     private fun isCodingIntent(text: String): Boolean {
-        return text.contains("code") || text.contains("coding") || text.contains("কোড") ||
-                text.contains("python") || text.contains("kotlin") || text.contains("java") ||
-                text.contains("javascript") || text.contains("c++") || text.contains("rust") ||
-                text.contains("golang") || text.contains("html") || text.contains("css") ||
-                text.contains("bug") || text.contains("debug") || text.contains("refactor") ||
-                text.contains("function") || text.contains("algorithm") || text.contains("অ্যালগরিদম") ||
-                text.contains("website") || text.contains("ওয়েবসাইট") || text.contains("app")
+        return Regex("\\b(code|coding|python|kotlin|java|javascript|typescript|rust|golang|html|css|bug|debug|refactor|function|algorithm|website)\\b")
+            .containsMatchIn(text) ||
+            Regex("\\b(android|ios|web|mobile|flutter|compose|build|create|make)\\s+app\\b").containsMatchIn(text) ||
+            text.contains("c++") || text.contains("কোড") || text.contains("অ্যালগরিদম") || text.contains("ওয়েবসাইট")
     }
 
     private fun isMathIntent(text: String): Boolean {

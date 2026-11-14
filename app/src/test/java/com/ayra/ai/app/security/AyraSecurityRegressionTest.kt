@@ -1,12 +1,15 @@
 package com.ayra.ai.app.security
 
 import android.content.Context
+import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
+import com.ayra.ai.app.MainActivity
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.data.ChatSession
 import com.ayra.ai.app.data.InstalledGitHubPlugin
 import kotlinx.coroutines.runBlocking
+import org.robolectric.Robolectric
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -343,5 +346,34 @@ class AyraSecurityRegressionTest {
             AyraKeyManager.decryptStringWithAad(context, AyraKeyManager.ALIAS_MASTER_SECRETS, envBefore, "ctx")
         }
         assertTrue("Previous ciphertext must be unrecoverable after cryptographic erasure", decryptAfterNuke.isFailure)
+    }
+
+    @Test
+    fun mainActivity_launchesWithoutFlagSecureByDefaultAndRespectsOptInToggle() {
+        assertFalse(
+            "Screen capture protection (FLAG_SECURE) must be opt-in so virtual/streaming displays do not render black",
+            AyraPreferences.isScreenCaptureBlocked(context)
+        )
+        assertFalse(AyraPreferences.screenCaptureBlockedFlow.value)
+
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        val activity = controller.get()
+        val initialFlags = activity.window.attributes.flags
+        assertEquals(
+            "FLAG_SECURE should be cleared on startup by default",
+            0,
+            initialFlags and WindowManager.LayoutParams.FLAG_SECURE
+        )
+
+        // Opt-in toggle still applies and clears FLAG_SECURE dynamically
+        AyraPreferences.setScreenCaptureBlocked(context, true)
+        assertTrue(AyraPreferences.isScreenCaptureBlocked(context))
+        AndroidHardeningHelper.applyScreenCaptureProtection(activity, true)
+        assertNotEquals(0, activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)
+
+        AyraPreferences.setScreenCaptureBlocked(context, false)
+        AndroidHardeningHelper.applyScreenCaptureProtection(activity, false)
+        assertEquals(0, activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)
+        controller.pause().stop().destroy()
     }
 }

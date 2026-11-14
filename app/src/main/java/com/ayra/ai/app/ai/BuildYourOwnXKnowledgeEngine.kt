@@ -456,6 +456,7 @@ object BuildYourOwnXKnowledgeEngine {
             def __init__(self, filename="ayra_db.bin"):
                 self.filename = filename
                 self.tables = {} # table_name -> rows [dict]
+                self.schemas = {} # table_name -> list[column_name]
                 self.indexes = {} # table.column -> B-Tree dict
                 self._load()
 
@@ -475,16 +476,22 @@ object BuildYourOwnXKnowledgeEngine {
                 if cmd == "CREATE":
                     # CREATE TABLE users (id, name, email)
                     tbl_name = tokens[2].split("(")[0].strip()
+                    cols = []
+                    if "(" in sql and ")" in sql:
+                        cols_part = sql[sql.find("(") + 1:sql.rfind(")")]
+                        cols = [c.strip().split()[0] for c in cols_part.split(",") if c.strip()]
+                    self.schemas[tbl_name] = cols
                     self.tables[tbl_name] = []
-                    return f"Table '{tbl_name}' created."
+                    return f"Table '{tbl_name}' created with columns {cols}."
 
                 elif cmd == "INSERT":
                     # INSERT INTO users VALUES (1, 'Alok', 'alok@ayra.ai')
-                    tbl_name = tokens[2]
+                    tbl_name = tokens[2].split("(")[0].strip()
                     values_part = sql[sql.upper().find("VALUES") + 6:].strip(" ()")
                     vals = [v.strip().strip("'\"") for v in values_part.split(",")]
-                    row = {"id": vals[0], "name": vals[1], "email": vals[2] if len(vals) > 2 else ""}
-                    self.tables[tbl_name].append(row)
+                    cols = self.schemas.get(tbl_name) or [f"col_{i}" for i in range(len(vals))]
+                    row = {cols[i]: (vals[i] if i < len(vals) else "") for i in range(len(cols))}
+                    self.tables.setdefault(tbl_name, []).append(row)
                     return f"1 row inserted into '{tbl_name}'."
 
                 elif cmd == "SELECT":

@@ -19,7 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -115,7 +115,7 @@ fun ModelsArenaScreen(
             FilterChip(
                 selected = activeTab == ArenaTab.COMPARISON,
                 onClick = { activeTab = ArenaTab.COMPARISON },
-                leadingIcon = { Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text(ArenaTab.COMPARISON.label, fontSize = 12.sp) },
                 modifier = Modifier.testTag("arena_subtab_comparison")
             )

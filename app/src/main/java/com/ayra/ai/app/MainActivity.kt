@@ -12,6 +12,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -22,6 +23,7 @@ import com.ayra.ai.app.cloud.AyraCloudRepository
 import com.ayra.ai.app.cloud.GoogleAuthManager
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.data.ChatRepository
 import com.ayra.ai.app.security.AndroidHardeningHelper
 import com.ayra.ai.app.security.EncryptedVaultStorage
 import com.ayra.ai.app.security.VaultLockManager
@@ -85,8 +87,6 @@ class MainActivity : FragmentActivity() {
         VaultLockManager.initialize(applicationContext)
         lifecycle.addObserver(vaultLifecycleObserver)
 
-        val chatDao = ChatDatabase.getDatabase(applicationContext).chatDao()
-
         setContent {
             val themeMode by AyraPreferences.themeModeFlow.collectAsStateWithLifecycle(
                 initialValue = AyraPreferences.getThemeMode(applicationContext)
@@ -127,6 +127,17 @@ class MainActivity : FragmentActivity() {
                     }
 
                     key(user.uid) {
+                        val activeDb = remember(user.uid) { ChatDatabase.getDatabase(applicationContext) }
+                        val activeRepo = remember(activeDb) {
+                            ChatRepository(
+                                context = applicationContext,
+                                chatDao = activeDb.chatDao(),
+                                sessionDao = activeDb.chatSessionDao()
+                            )
+                        }
+                        LaunchedEffect(activeRepo) {
+                            chatViewModel.attachRepository(activeRepo)
+                        }
                         if (isVaultLocked) {
                             VaultLockScreen(
                                 lockReason = vaultLockReason,
@@ -134,11 +145,15 @@ class MainActivity : FragmentActivity() {
                             )
                         } else {
                             AyraWorkspaceHost(
-                                chatDao = chatDao,
+                                chatDao = activeDb.chatDao(),
                                 viewModel = chatViewModel,
                                 currentUser = user,
                                 onSignOut = {
-                                    VaultLockManager.lockNow(applicationContext, "Signed out of session")
+                                    if (AyraPreferences.isBiometricLockEnabled(applicationContext)) {
+                                        VaultLockManager.lockNow(applicationContext, "Signed out of session")
+                                    } else {
+                                        VaultLockManager.unlockIfDisabled(applicationContext)
+                                    }
                                     lifecycleScope.launch {
                                         authManager.signOut()
                                     }

@@ -11,8 +11,11 @@ import com.ayra.ai.app.data.ChatMessage
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.AspectRatio
 import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.ImageConfig
 import com.google.firebase.ai.type.ImagePart
+import com.google.firebase.ai.type.ImageSize
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.content
@@ -232,13 +235,20 @@ class FirebaseAiEngine(private val context: Context?) {
      */
     suspend fun generateOrEditImage(
         prompt: String,
-        attachedImageBase64: String? = null
+        attachedImageBase64: String? = null,
+        aspectRatio: String = "1:1"
     ): FirebaseImageResult = withContext(Dispatchers.IO) {
         val appContext = context?.applicationContext
             ?: return@withContext FirebaseImageResult.Failure("Context unavailable for Firebase AI image generation.")
 
         if (!isAvailable(appContext)) {
             return@withContext FirebaseImageResult.Failure("Firebase AI Logic is not initialized.")
+        }
+
+        val resolvedAspect = when (aspectRatio.trim()) {
+            "16:9" -> AspectRatio.LANDSCAPE_16x9
+            "9:16" -> AspectRatio.PORTRAIT_9x16
+            else -> AspectRatio.SQUARE_1x1
         }
 
         val startMs = System.currentTimeMillis()
@@ -248,6 +258,10 @@ class FirebaseAiEngine(private val context: Context?) {
                     modelName = MODEL_IMAGE_NANO_BANANA,
                     generationConfig = generationConfig {
                         responseModalities = listOf(ResponseModality.TEXT, ResponseModality.IMAGE)
+                        imageConfig = ImageConfig.builder()
+                            .setAspectRatio(resolvedAspect)
+                            .setImageSize(ImageSize.SIZE_1K)
+                            .build()
                     }
                 )
 

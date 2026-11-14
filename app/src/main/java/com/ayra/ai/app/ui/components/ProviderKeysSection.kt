@@ -186,8 +186,27 @@ fun ProviderKeysSection(
                         .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
-                    val req = okhttp3.Request.Builder().url(endpoint).build()
-                    client.newCall(req).execute().close()
+                    val clean = endpoint.trim().trimEnd('/')
+                    val base = clean.removeSuffix("/v1")
+                    val probes = listOf("$base/v1/models", "$base/api/tags", "$clean/", clean).distinct()
+                    var verified = false
+                    var lastCode = 0
+                    for (probeUrl in probes) {
+                        val req = okhttp3.Request.Builder().url(probeUrl).get().build()
+                        val code = runCatching {
+                            client.newCall(req).execute().use { resp -> resp.code }
+                        }.getOrDefault(0)
+                        if (code in 200..299 || ((code == 401 || code == 403) && probeUrl.endsWith("/v1/models"))) {
+                            verified = true
+                            break
+                        }
+                        if (code > 0) lastCode = code
+                    }
+                    if (!verified) {
+                        throw IllegalStateException(
+                            if (lastCode > 0) "Proxy health check failed (HTTP $lastCode)" else "Proxy unreachable"
+                        )
+                    }
                 }
                 (System.currentTimeMillis() - start).coerceAtLeast(1L)
             }

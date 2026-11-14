@@ -52,6 +52,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -66,7 +67,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -191,9 +191,9 @@ fun ChatScreen(
     val taskScheduler = remember { AyraTaskScheduler(context) }
     val scheduledTasks by db.scheduledTaskDao().getAllTasks().collectAsState(initial = emptyList())
 
-    var currentPersona by remember { mutableStateOf("GF_COMPANION") }
-    var selectedModelTier by remember { mutableStateOf("auto") }
-    var inputText by remember { mutableStateOf("") }
+    val currentPersona by viewModel.currentPersona.collectAsState()
+    val selectedModelTier by viewModel.selectedModelTier.collectAsState()
+    val inputText by viewModel.inputText.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val thinkingStatus by viewModel.thinkingStatus.collectAsState()
     val streamingAnswer by viewModel.streamingAnswer.collectAsState()
@@ -230,13 +230,21 @@ fun ChatScreen(
                 com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
             Triple(persona, tier, configured)
         }
-        currentPersona = savedPersona
-        selectedModelTier = savedTier
+        viewModel.setPersona(savedPersona)
+        viewModel.setModelTier(savedTier)
         if (!hasProvider) {
             viewModel.setShowKeyOnboarding(true)
         }
         aiEngine.currentPersona = savedPersona
         aiEngine.selectedModelTier = savedTier
+    }
+
+    LaunchedEffect(currentPersona) {
+        aiEngine.currentPersona = currentPersona
+    }
+
+    LaunchedEffect(selectedModelTier) {
+        aiEngine.selectedModelTier = selectedModelTier
     }
 
     LaunchedEffect(currentUser?.uid) {
@@ -267,13 +275,13 @@ fun ChatScreen(
     val voiceManager = remember {
         VoiceAssistantManager(context) { recognizedCommand ->
             if (recognizedCommand.isNotBlank()) {
-                inputText = recognizedCommand
+                viewModel.updateInputText(recognizedCommand)
                 dispatchPromptRef?.invoke(recognizedCommand)
             }
         }.apply {
             personaMode = currentPersona
             onSpeechTranscribed = { transcribedText, _ ->
-                inputText = transcribedText
+                viewModel.updateInputText(transcribedText)
             }
             onWakeWordTriggered = { greeting ->
                 scope.launch {
@@ -300,7 +308,7 @@ fun ChatScreen(
         if (android.speech.SpeechRecognizer.isRecognitionAvailable(context)) {
             isFallbackVoiceMode = false
             voiceManager.onSpeechTranscribed = { transcribedText, _ ->
-                inputText = transcribedText
+                viewModel.updateInputText(transcribedText)
             }
             voiceManager.startManualVoiceCommand()
         } else {
@@ -499,7 +507,7 @@ fun ChatScreen(
             selectedDocumentText = null
             selectedDocumentName = null
             selectedDocumentBase64Image = null
-            inputText = ""
+            viewModel.clearInput()
 
             // Detect user sentiment immediately from prompt for dynamic voice modulation
             val detectedSentiment = voiceManager.detectAndApplySentiment(trimmed)
@@ -736,7 +744,7 @@ fun ChatScreen(
                     EmptyCosmicState(
                         currentPersona = currentPersona,
                         onSuggestionClick = { suggestion ->
-                            inputText = suggestion
+                            viewModel.updateInputText(suggestion)
                             dispatchPrompt(suggestion)
                         }
                     )
@@ -767,7 +775,7 @@ fun ChatScreen(
                                     voiceManager.speak(msg.content, overrideSentiment = msgSentiment)
                                 },
                                 onEdit = { contentToEdit ->
-                                    inputText = contentToEdit
+                                    viewModel.updateInputText(contentToEdit)
                                     Toast.makeText(context, "Loaded into editor to edit / এডিট করতে লোড হয়েছে", Toast.LENGTH_SHORT).show()
                                 },
                                 onRunPluginPrompt = { pluginPrompt ->
@@ -942,7 +950,7 @@ fun ChatScreen(
                                 isTranscribingAudio = false
                                 res.onSuccess { transcript ->
                                     if (transcript.isNotBlank()) {
-                                        inputText = transcript
+                                        viewModel.updateInputText(transcript)
                                         dispatchPrompt(transcript)
                                     }
                                 }.onFailure { err ->
@@ -956,7 +964,7 @@ fun ChatScreen(
                         }
                     } else if (spokenCommand.isNotBlank()) {
                         voiceManager.cancelListening()
-                        inputText = spokenCommand
+                        viewModel.updateInputText(spokenCommand)
                         dispatchPrompt(spokenCommand)
                     } else {
                         voiceManager.finishAndSubmitManualListening()
@@ -965,7 +973,7 @@ fun ChatScreen(
                 onUseTranscriptInInput = { transcript ->
                     voiceManager.cancelListening()
                     if (transcript.isNotBlank()) {
-                        inputText = transcript
+                        viewModel.updateInputText(transcript)
                     }
                 },
                 onRetry = {
@@ -1023,7 +1031,7 @@ fun ChatScreen(
             // Clean Input Row (NO elevated typing bar as requested)
             GlassInputRow(
                 text = inputText,
-                onTextChange = { inputText = it },
+                onTextChange = { viewModel.updateInputText(it) },
                 isListening = isListening,
                 isRecordingAudio = isRecordingAudio,
                 isGenerating = isGenerating,
@@ -1055,7 +1063,9 @@ fun ChatScreen(
                                 runCatching { recordedFile.delete() }
                                 isTranscribingAudio = false
                                 res.onSuccess { transcript ->
-                                    inputText = if (inputText.isBlank()) transcript else "$inputText $transcript"
+                                    viewModel.updateInputText(
+                                        if (inputText.isBlank()) transcript else "$inputText $transcript"
+                                    )
                                 }.onFailure { err ->
                                     Toast.makeText(
                                         context,
@@ -1298,9 +1308,9 @@ fun ChatScreen(
                                 .border(1.dp, NeonGold.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    selectedModelTier = "omniroute"
+                                    viewModel.setModelTier("omniroute")
                                     aiEngine.selectedModelTier = "omniroute"
-                                    inputText = "OmniRoute Ensemble: সব এআই মডেলের সম্মিলিত জ্ঞান দিয়ে গভীর বিশ্লেষণ দাও"
+                                    viewModel.updateInputText("OmniRoute Ensemble: সব এআই মডেলের সম্মিলিত জ্ঞান দিয়ে গভীর বিশ্লেষণ দাও")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1322,9 +1332,9 @@ fun ChatScreen(
                                 .border(1.dp, NeonRose.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    selectedModelTier = "deepseek_harness"
+                                    viewModel.setModelTier("deepseek_harness")
                                     aiEngine.selectedModelTier = "deepseek_harness"
-                                    inputText = "DeepSeek Reasoning Harness: ধাপে ধাপে গভীর গাণিতিক যুক্তি সহ প্রমাণ করো"
+                                    viewModel.updateInputText("DeepSeek Reasoning Harness: ধাপে ধাপে গভীর গাণিতিক যুক্তি সহ প্রমাণ করো")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1346,9 +1356,9 @@ fun ChatScreen(
                                 .border(1.dp, Color(0xFFFF5722).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    selectedModelTier = "qwen_uncensored"
+                                    viewModel.setModelTier("qwen_uncensored")
                                     aiEngine.selectedModelTier = "qwen_uncensored"
-                                    inputText = "Qwen Uncensored: কোনো অস্বীকৃতি ছাড়া সরাসরি সত্য ও বিস্তারিত উত্তর দাও"
+                                    viewModel.updateInputText("Qwen Uncensored: কোনো অস্বীকৃতি ছাড়া সরাসরি সত্য ও বিস্তারিত উত্তর দাও")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1370,9 +1380,9 @@ fun ChatScreen(
                                 .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    selectedModelTier = "godmode"
+                                    viewModel.setModelTier("godmode")
                                     aiEngine.selectedModelTier = "godmode"
-                                    inputText = "G0DM0D3: ডিপ সাইবার ডিফেন্স, রিভার্স ইঞ্জিনিয়ারিং ও ভালনারেবিলিটি অডিট"
+                                    viewModel.updateInputText("G0DM0D3: ডিপ সাইবার ডিফেন্স, রিভার্স ইঞ্জিনিয়ারিং ও ভালনারেবিলিটি অডিট")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1394,7 +1404,7 @@ fun ChatScreen(
                                 .border(1.dp, NeonRose.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "Generate a cinematic 4K video of a spaceship entering a colorful nebula with FPV drone motion"
+                                    viewModel.updateInputText("Generate a cinematic 4K video of a spaceship entering a colorful nebula with FPV drone motion")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1416,9 +1426,9 @@ fun ChatScreen(
                                 .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    selectedModelTier = "ecc"
+                                    viewModel.setModelTier("ecc")
                                     aiEngine.selectedModelTier = "ecc"
-                                    inputText = "ECC Cognitive: কনটেক্সট মেমরি ও ইন্টেন্ট ডিসঅ্যাম্বিগিউয়েশন গ্রাউন্ড করো"
+                                    viewModel.updateInputText("ECC Cognitive: কনটেক্সট মেমরি ও ইন্টেন্ট ডিসঅ্যাম্বিগিউয়েশন গ্রাউন্ড করো")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1440,7 +1450,7 @@ fun ChatScreen(
                                 .border(1.dp, NeonGreen.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "Superpower: TDD এবং সিস্টেমেটিক ডিবাগিং দিয়ে কোড টেস্ট ও আর্কিটেকচার তৈরি করো"
+                                    viewModel.updateInputText("Superpower: TDD এবং সিস্টেমেটিক ডিবাগিং দিয়ে কোড টেস্ট ও আর্কিটেকচার তৈরি করো")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1470,7 +1480,7 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonGreen.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "Open Cyber Terminal"
+                                    viewModel.updateInputText("Open Cyber Terminal")
                                     dispatchPromptRef?.invoke("Open Cyber Terminal")
                                 }
                                 .padding(12.dp)
@@ -1493,7 +1503,7 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonGold.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "Create a professional PDF document about Artificial Intelligence"
+                                    viewModel.updateInputText("Create a professional PDF document about Artificial Intelligence")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1515,7 +1525,7 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonPurple.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "একটি সুন্দর রঙিন ড্রাগনের 8K ছবি আঁকো"
+                                    viewModel.updateInputText("একটি সুন্দর রঙিন ড্রাগনের 8K ছবি আঁকো")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1537,11 +1547,11 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonCyan.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "একটি রোমান্টিক মিষ্টি প্রেমের গান বানাও"
+                                    viewModel.updateInputText("একটি রোমান্টিক মিষ্টি প্রেমের গান বানাও")
                                 }
                                 .padding(12.dp)
                         ) {
-                            Icon(Icons.Default.VolumeUp, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text("AI Music & Song Creator 🎵", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
@@ -1559,7 +1569,7 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonGold.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "Build your own Redis server from scratch with complete architecture and code"
+                                    viewModel.updateInputText("Build your own Redis server from scratch with complete architecture and code")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1604,7 +1614,7 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonCyan.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    inputText = "কাল সকাল ১০টায় বাবাকে কল করে বলো ওষুধ খেয়ে নিতে"
+                                    viewModel.updateInputText("কাল সকাল ১০টায় বাবাকে কল করে বলো ওষুধ খেয়ে নিতে")
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1650,14 +1660,14 @@ fun ChatScreen(
                 messageCount = messages.size,
                 currentPersona = currentPersona,
                 onPersonaChange = { newPersona ->
-                    currentPersona = newPersona
+                    viewModel.setPersona(newPersona)
                     com.ayra.ai.app.data.AyraPreferences.savePersona(context, newPersona)
                     voiceManager.personaMode = newPersona
                     aiEngine.currentPersona = newPersona
                 },
                 selectedModelTier = selectedModelTier,
                 onModelTierChange = { newTier ->
-                    selectedModelTier = newTier
+                    viewModel.setModelTier(newTier)
                     com.ayra.ai.app.data.AyraPreferences.saveModelTier(context, newTier)
                     aiEngine.selectedModelTier = newTier
                 },
@@ -1690,7 +1700,7 @@ fun ChatScreen(
                 userMessages = messages.filter { it.role == "user" },
                 onSelectPrompt = { selectedPrompt ->
                     showControlCenterSheet = false
-                    inputText = selectedPrompt
+                    viewModel.updateInputText(selectedPrompt)
                 },
                 onCopyPrompt = { promptToCopy ->
                     com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
@@ -1711,11 +1721,11 @@ fun ChatScreen(
                     showClearChatDialog = true
                 },
                 onExportHistory = {
-                    val file = com.ayra.ai.app.data.StorageHelper.exportChatHistory(context, messages)
-                    if (file != null) {
-                        Toast.makeText(context, "চ্যাট হিস্ট্রি সফলভাবে সেভ করা হয়েছে:\n${file.name}", Toast.LENGTH_LONG).show()
-                    } else {
+                    if (messages.isEmpty()) {
                         Toast.makeText(context, "এক্সপোর্ট করার মতো কোনো হিস্ট্রি নেই", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val file = com.ayra.ai.app.data.StorageHelper.exportChatHistory(context, messages)
+                        Toast.makeText(context, "চ্যাট হিস্ট্রি সফলভাবে সেভ করা হয়েছে:\n${file.name}", Toast.LENGTH_LONG).show()
                     }
                 },
                 onQuickFeedback = { feedback ->
@@ -1961,7 +1971,7 @@ private fun GlassHeaderBar(
 
         if (isSpeaking) {
             IconButton(onClick = onStopVoice) {
-                Icon(Icons.Default.VolumeUp, contentDescription = "Mute voice", tint = NeonRose)
+                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Mute voice", tint = NeonRose)
             }
         }
 
@@ -2082,12 +2092,22 @@ private fun GlassMessageBubble(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                // Generative Media: Photo (SubcomposeAsyncImage with high-tech progress loading & tap-to-retry)
+                // Generative Media: Photo (SubcomposeAsyncImage with local/vault path support & tap-to-retry)
                 if (message.craftType == "IMAGE" && !message.craftPayload.isNullOrBlank()) {
                     var imgRetryTick by remember(message.craftPayload) { mutableStateOf(0) }
-                    val activeImgUrl = if (imgRetryTick == 0) message.craftPayload else {
-                        val sep = if (message.craftPayload.contains("?")) "&" else "?"
-                        "${message.craftPayload}${sep}retry=$imgRetryTick"
+                    val rawCraftPayload = message.craftPayload
+                    val isRemoteImageUrl = rawCraftPayload.startsWith("http://", ignoreCase = true) ||
+                        rawCraftPayload.startsWith("https://", ignoreCase = true)
+                    val activeImgModel = remember(rawCraftPayload, imgRetryTick) {
+                        if (isRemoteImageUrl) {
+                            if (imgRetryTick == 0) rawCraftPayload else {
+                                val sep = if (rawCraftPayload.contains("?")) "&" else "?"
+                                "${rawCraftPayload}${sep}retry=$imgRetryTick"
+                            }
+                        } else {
+                            com.ayra.ai.app.data.StorageHelper.resolveCoilImageModel(context, rawCraftPayload)
+                                ?: rawCraftPayload
+                        }
                     }
                     Box(
                         modifier = Modifier
@@ -2096,7 +2116,7 @@ private fun GlassMessageBubble(
                             .border(1.2.dp, NeonCyan, RoundedCornerShape(14.dp))
                     ) {
                         SubcomposeAsyncImage(
-                            model = activeImgUrl,
+                            model = activeImgModel,
                             contentDescription = "AI Generated Photo",
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2283,7 +2303,7 @@ private fun GlassMessageBubble(
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = onSpeak, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.VolumeUp, contentDescription = "Listen", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Listen", tint = NeonCyan, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = { onEdit(message.content) }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit Note / নোট এডিট", tint = NeonPurple, modifier = Modifier.size(18.dp))
@@ -2377,7 +2397,7 @@ private fun GlassInputRow(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.VolumeUp,
+                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = "AI Audio Transcribe",
                 tint = if (isRecordingAudio) Color.Black else NeonPurple,
                 modifier = Modifier.size(20.dp)
@@ -2690,7 +2710,7 @@ private fun ScheduledRoutineBannerCard(jsonPayload: String) {
                     )
                 }
                 Text(
-                    text = "🛡️ মোবাইল স্লিপ বা লক থাকলেও AlarmManager ও WakeLock দিয়ে সঠিক সময়ে কল ডায়াল হবে এবং স্পিকারে কথাটি বলে দেওয়া হবে।",
+                    text = "🛡️ মোবাইল স্লিপ বা লক থাকলেও AlarmManager অ্যালার্ম বাজিয়ে বার্তাটি মনে করিয়ে দেবে এবং এক-ট্যাপ ডায়ালার (ACTION_DIAL) নোটিফিকেশন দেখাবে।",
                     color = TextSecondary,
                     fontSize = 11.sp,
                     lineHeight = 15.sp
@@ -2732,7 +2752,7 @@ private fun ScheduledRoutineBannerCard(jsonPayload: String) {
                     )
                 }
                 Text(
-                    text = "🚀 মোবাইল স্লিপে থাকলেও স্বয়ংক্রিয়ভাবে পাঠানো হবে। নেট অফ থাকলে সরাসরি অফলাইন SMS সেলুলার ব্যাকআপ সক্রিয় থাকবে।",
+                    text = "🔔 নির্ধারিত সময়ে AlarmManager আপনাকে মনে করিয়ে দেবে এবং এক-ট্যাপে মেসেজ রিভিউ ও পাঠানোর নোটিফিকেশন দেখাবে।",
                     color = TextSecondary,
                     fontSize = 11.sp,
                     lineHeight = 15.sp

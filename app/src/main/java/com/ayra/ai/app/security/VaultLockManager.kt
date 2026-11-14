@@ -85,6 +85,14 @@ object VaultLockManager {
         )
     }
 
+    fun unlockIfDisabled(context: Context) {
+        if (!AyraPreferences.isBiometricLockEnabled(context)) {
+            _lastCryptoProofPrefix.value = null
+            _lockReason.value = null
+            _isVaultLocked.value = false
+        }
+    }
+
     /**
      * Releases the lock ONLY when supplied with a non-empty cryptographic proof tag
      * produced by [BiometricAuthManager] (backed by Keystore CryptoObject cipher execution).

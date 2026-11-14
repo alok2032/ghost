@@ -44,6 +44,7 @@ sqlcipher = "4.6.1"
 sqliteKtx = "2.4.0"
 biometric = "1.1.0"
 playIntegrity = "1.4.0"
+fragmentKtx = "1.5.7"
 
 
 [libraries]
@@ -103,6 +104,7 @@ sqlcipher-android = { group = "net.zetetic", name = "sqlcipher-android", version
 androidx-sqlite-ktx = { group = "androidx.sqlite", name = "sqlite-ktx", version.ref = "sqliteKtx" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 play-integrity = { group = "com.google.android.play", name = "integrity", version.ref = "playIntegrity" }
+androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
 
 
 [plugins]

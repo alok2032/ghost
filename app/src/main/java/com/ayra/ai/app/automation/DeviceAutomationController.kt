@@ -936,23 +936,11 @@ class DeviceAutomationController(private val context: Context) {
         AyraVpnPrivacyController.initialize(context)
         val isBengali = text.any { it in '\u0980'..'\u09FF' }
 
-        // Connect / Turn on
-        val isConnect = text.contains("on") || text.contains("অন") || text.contains("connect") || text.contains("কানেক্ট") || text.contains("chalu") || text.contains("চালু")
-        val isDisconnect = text.contains("off") || text.contains("অফ") || text.contains("disconnect") || text.contains("বন্ধ") || text.contains("bondho")
-
         return AutomationResult(
             executed = false,
             feedbackMessage = if (isBengali) "🛡️ ভিপিএন সার্ভিস প্রাইভেসি পলিসির কারণে নিষ্ক্রিয় রাখা হয়েছে।"
             else "🛡️ VPN tunnel service is decommissioned in accordance with Google Play privacy guidelines.",
             actionType = "VPN_DECOMMISSIONED"
-        )
-
-        val summary = AyraVpnPrivacyController.formatStatusSummary(isBengali)
-        return AutomationResult(
-            executed = true,
-            feedbackMessage = summary,
-            actionType = "VPN_STATUS",
-            extraData = if (AyraVpnPrivacyController.vpnStatus.value.isConnected) "CONNECTED" else "DISCONNECTED"
         )
     }
 }

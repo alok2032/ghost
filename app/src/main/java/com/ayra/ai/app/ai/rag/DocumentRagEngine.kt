@@ -13,7 +13,8 @@ data class RagSearchHit(
     val documentTitle: String,
     val chunkIndex: Int,
     val excerpt: String,
-    val score: Double
+    val score: Double,
+    val isExactMatch: Boolean = true
 ) {
     val citationTag: String get() = "[Doc: $documentTitle §${chunkIndex + 1}]"
 }
@@ -93,11 +94,11 @@ class DocumentRagEngine @JvmOverloads constructor(
         }
 
         val totalDocs = chunks.size.toDouble()
-        val avgLen = chunks.map { tokenize(it.content).size }.average().coerceAtLeast(1.0)
+        val chunkTokensList = chunks.map { tokenize(it.content) }
+        val avgLen = chunkTokensList.map { it.size }.average().coerceAtLeast(1.0)
 
         // Document frequency per query term
         val dfMap = mutableMapOf<String, Int>()
-        val chunkTokensList = chunks.map { tokenize(it.content) }
         for (term in queryTerms.distinct()) {
             dfMap[term] = chunkTokensList.count { tokens -> term in tokens }
         }
@@ -134,7 +135,8 @@ class DocumentRagEngine @JvmOverloads constructor(
                 documentTitle = chunk.documentTitle,
                 chunkIndex = chunk.chunkIndex,
                 excerpt = chunk.content,
-                score = bm25
+                score = bm25,
+                isExactMatch = true
             )
         }
 
@@ -144,7 +146,7 @@ class DocumentRagEngine @JvmOverloads constructor(
         } else {
             // Fallback to leading chunks if query used synonyms not lexically present
             chunks.take(topK.coerceAtMost(2)).map {
-                RagSearchHit(it.documentId, it.documentTitle, it.chunkIndex, it.content, 0.05)
+                RagSearchHit(it.documentId, it.documentTitle, it.chunkIndex, it.content, 0.05, isExactMatch = false)
             }
         }
     }
@@ -160,7 +162,8 @@ class DocumentRagEngine @JvmOverloads constructor(
                     sourceLabel = hit.citationTag,
                     rawContent = hit.excerpt
                 )
-                append(hit.citationTag).append("\n")
+                val overlapNote = if (!hit.isExactMatch) " [Low lexical overlap fallback]" else ""
+                append(hit.citationTag).append(overlapNote).append("\n")
                 append(guarded.wrappedUntrustedContent).append("\n\n")
             }
         }

@@ -1,6 +1,7 @@
 package com.ayra.ai.app.ui.screens
 
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Base64
 import android.widget.Toast
@@ -266,7 +267,7 @@ private fun ImageStudioPanel(context: android.content.Context) {
                             val fbPrompt = if (negativePrompt.isNotBlank()) {
                                 "$clean (Avoid: ${negativePrompt.trim()})"
                             } else clean
-                            when (val fbRes = firebaseAi.generateOrEditImage(fbPrompt, refBase64)) {
+                            when (val fbRes = firebaseAi.generateOrEditImage(fbPrompt, refBase64, imageAspect)) {
                                 is FirebaseImageResult.Success -> {
                                     generatedFile = fbRes.file
                                     statusLabel = "Generated via ${fbRes.modelUsed}"
@@ -328,12 +329,22 @@ private fun ImageStudioPanel(context: android.content.Context) {
                             }
                         }
 
-                        // 3. Fallback to Pollinations Flux URL
+                        // 3. Fallback to Pollinations Flux URL (only when external pool & consent enabled)
+                        val allowCommunityImagePool = withContext(Dispatchers.IO) {
+                            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+                                AyraPreferences.hasExternalAiConsent(context) &&
+                                AyraPreferences.isFreeAiPoolEnabled(context)
+                        }
+                        if (!allowCommunityImagePool) {
+                            statusLabel = "Image generation unavailable: Nano Banana/ComfyUI failed and Global Free AI Pool or external consent is disabled (or Local-Only AI Mode is active)."
+                            isBusy = false
+                            return@launch
+                        }
                         val url = withContext(Dispatchers.IO) {
-                            AiMediaPromptSynthesizer.buildImageUrl(clean, context = context)
+                            AiMediaPromptSynthesizer.buildImageUrl(clean, context = context, aspectRatio = imageAspect)
                         }
                         generatedUrl = url
-                        statusLabel = "Generated via Pollinations Flux (Community Tier)"
+                        statusLabel = "Loading preview via Pollinations Flux..."
                         isBusy = false
                     }
                 },
@@ -354,7 +365,13 @@ private fun ImageStudioPanel(context: android.content.Context) {
             Text(text = it, color = TextSecondary, fontSize = 11.sp)
         }
 
-        val displayModel: Any? = generatedFile ?: generatedUrl
+        var imageRetryNonce by remember(generatedFile, generatedUrl) { mutableIntStateOf(0) }
+        val displayModel: Any? = generatedFile ?: generatedUrl?.let { raw ->
+            if (imageRetryNonce == 0) raw else {
+                val sep = if (raw.contains("?")) "&" else "?"
+                "${raw}${sep}retry=$imageRetryNonce"
+            }
+        }
         if (displayModel != null) {
             SubcomposeAsyncImage(
                 model = displayModel,
@@ -365,9 +382,47 @@ private fun ImageStudioPanel(context: android.content.Context) {
                     .height(260.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.Black),
+                onSuccess = {
+                    if (generatedFile == null && generatedUrl != null) {
+                        statusLabel = "Generated via Pollinations Flux (Community Tier)"
+                    }
+                },
+                onError = { state ->
+                    if (generatedFile == null) {
+                        val reason = state.result.throwable.message ?: "Image request failed"
+                        statusLabel = "Preview failed ($reason)"
+                    }
+                },
                 loading = {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = NeonCyan)
+                    }
+                },
+                error = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF111827))
+                            .clickable {
+                                statusLabel = "Retrying image preview..."
+                                imageRetryNonce++
+                            }
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Retry image preview",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Could not load image preview • Tap to retry",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             )
@@ -477,12 +532,16 @@ private fun VideoStoryboardPanel(context: android.content.Context) {
                             )
                         ) {
                             is ComfyUiResult.VideoSuccess -> {
+                                val realDuration = withContext(Dispatchers.IO) {
+                                    readStudioVideoDurationText(res.file)
+                                } ?: "MP4"
                                 videoPayloadJson = JSONObject().apply {
                                     put("title", clean.take(44))
                                     put("prompt", clean)
                                     put("aspectRatio", aspectRatio)
                                     put("localVideoPath", res.file.absolutePath)
-                                    put("duration", "0:04")
+                                    put("duration", realDuration)
+                                    put("isStoryboardOnly", false)
                                     put("cameraMotion", "Wan 2.1 ComfyUI MP4")
                                 }.toString()
                                 statusNote = "Rendered MP4 via ComfyUI Wan 2.1 (${res.elapsedMs}ms)"
@@ -529,6 +588,7 @@ private fun MusicStudioPanel(context: android.content.Context) {
     var prompt by remember { mutableStateOf("") }
     var bpm by remember { mutableIntStateOf(112) }
     var songJson by remember { mutableStateOf<String?>(null) }
+    var errorNote by remember { mutableStateOf<String?>(null) }
     var isBusy by remember { mutableStateOf(false) }
 
     Column(
@@ -570,29 +630,44 @@ private fun MusicStudioPanel(context: android.content.Context) {
                 val clean = prompt.trim()
                 if (clean.isBlank() || isBusy) return@Button
                 isBusy = true
+                errorNote = null
                 scope.launch {
-                    val composed = withContext(Dispatchers.IO) {
+                    val (composed, failureMessage) = withContext(Dispatchers.IO) {
                         val req = ChatRequest(
-                            prompt = "Write original song lyrics and a 4-chord progression (e.g. Am - F - C - G) for: $clean. Return sections [Verse], [Chorus], and first line `CHORDS: ...`.",
+                            prompt = "Write original song lyrics and a 4-chord progression for: $clean. Start with `KEY: ...`, `GENRE: ...`, and `CHORDS: ...` lines followed by sections [Verse], [Chorus].",
                             persona = "AI_ASSISTANT",
                             mode = ProviderPoolMode.FAST,
-                            systemPromptOverride = "You are a songwriter and music producer. Include `CHORDS: Am - F - C - G` on the first line followed by complete lyrics."
+                            systemPromptOverride = "You are a songwriter and music producer. Include `KEY: ...`, `GENRE: ...`, and `CHORDS: ...` lines followed by complete lyrics."
                         )
-                        val res = runCatching { pool.executeSync(req).text }.getOrDefault("")
-                        val chordLine = Regex("CHORDS:\\s*(.+)").find(res)?.groupValues?.get(1)?.trim() ?: "Am - F - C - G"
-                        val lyricsBody = res.ifBlank {
-                            "[Verse 1]\nPrompt: $clean\n(AI lyrics service offline — instrumental chord synthesizer active)"
+                        val result = runCatching { pool.executeSync(req) }
+                        val res = result.getOrNull()?.text?.trim().orEmpty()
+                        if (res.isBlank()) {
+                            val err = result.exceptionOrNull()?.message
+                                ?: "Configure an AI provider or disable Local-Only mode to compose original song lyrics."
+                            null to "Song composition unavailable: $err"
+                        } else {
+                            val keyLine = Regex("(?im)^KEY:\\s*(.+)$").find(res)?.groupValues?.get(1)?.trim() ?: "Custom Scale"
+                            val genreLine = Regex("(?im)^GENRE:\\s*(.+)$").find(res)?.groupValues?.get(1)?.trim() ?: "Synth Studio Track"
+                            val chordLine = Regex("(?im)^CHORDS:\\s*(.+)$").find(res)?.groupValues?.get(1)?.trim() ?: "Am - F - C - G"
+                            val cleanedLyrics = res
+                                .replace(Regex("(?im)^(?:KEY|GENRE|CHORDS):\\s*.+$\\r?\\n?"), "")
+                                .trim()
+                                .ifBlank { res }
+                            JSONObject().apply {
+                                put("title", clean.take(40).replaceFirstChar { it.uppercase() })
+                                put("genre", genreLine)
+                                put("tempo", "$bpm BPM")
+                                put("key", keyLine)
+                                put("chords", chordLine)
+                                put("lyrics", cleanedLyrics)
+                            }.toString() to null
                         }
-                        JSONObject().apply {
-                            put("title", clean.take(40).replaceFirstChar { it.uppercase() })
-                            put("genre", "Synth Studio Track")
-                            put("tempo", "$bpm BPM")
-                            put("key", "A Minor")
-                            put("chords", chordLine)
-                            put("lyrics", lyricsBody)
-                        }.toString()
                     }
-                    songJson = composed
+                    if (composed != null) {
+                        songJson = composed
+                    } else {
+                        errorNote = failureMessage
+                    }
                     isBusy = false
                 }
             },
@@ -600,6 +675,10 @@ private fun MusicStudioPanel(context: android.content.Context) {
             modifier = Modifier.fillMaxWidth().testTag("studio_compose_song_button")
         ) {
             Text(if (isBusy) "Composing..." else "Compose Lyrics & Synth Preview")
+        }
+
+        errorNote?.let { note ->
+            Text(text = note, color = TextSecondary, fontSize = 11.sp)
         }
 
         songJson?.let { payload ->
@@ -647,7 +726,7 @@ private fun ThreeDStudioPanel(context: android.content.Context) {
                     isBusy = true
                     statusNote = "Synthesizing 3D Wavefront .OBJ geometry..."
                     scope.launch {
-                        val resultPayload = withContext(Dispatchers.IO) {
+                        val (resultPayload, resolvedNote) = withContext(Dispatchers.IO) {
                             val title = "3D ${clean.take(40).replaceFirstChar { it.uppercase() }}"
                             val rawObj = runCatching {
                                 pool.executeSync(
@@ -663,8 +742,8 @@ private fun ThreeDStudioPanel(context: android.content.Context) {
                             }.getOrDefault("")
                             val parsed = Model3dMeshCatalog.parseWavefrontObj(rawObj, "CUSTOM_AI")
                             if (parsed != null) {
-                                statusNote = "AI synthesized custom mesh (${parsed.vertexCount} vertices, ${parsed.faceCount} faces)"
-                                JSONObject().apply {
+                                val note = "AI synthesized custom mesh (${parsed.vertexCount} vertices, ${parsed.faceCount} faces)"
+                                val payload = JSONObject().apply {
                                     put("title", title)
                                     put("kind", "CUSTOM_AI")
                                     put("vertices", parsed.vertexCount)
@@ -672,14 +751,15 @@ private fun ThreeDStudioPanel(context: android.content.Context) {
                                     put("faces", parsed.faceCount)
                                     put("objContent", Model3dMeshCatalog.buildWavefrontObj(parsed, title))
                                 }.toString()
+                                payload to note
                             } else {
-                                statusNote = "Showing interactive WebGL2 PBR studio presets below."
-                                null
+                                null to "AI 3D mesh unavailable or invalid .OBJ response — showing interactive WebGL2 PBR studio presets below."
                             }
                         }
                         if (resultPayload != null) {
                             customPayload = resultPayload
                         }
+                        statusNote = resolvedNote
                         isBusy = false
                     }
                 },
@@ -942,3 +1022,20 @@ private fun CodeBuilderPanel(context: android.content.Context) {
         }
     }
 }
+
+private fun readStudioVideoDurationText(file: File): String? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(file.absolutePath)
+        val ms = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return null
+        val totalSecs = (ms / 1000L).coerceAtLeast(1L)
+        val mins = totalSecs / 60L
+        val secs = totalSecs % 60L
+        String.format(java.util.Locale.US, "%d:%02d", mins, secs)
+    } catch (_: Exception) {
+        null
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+

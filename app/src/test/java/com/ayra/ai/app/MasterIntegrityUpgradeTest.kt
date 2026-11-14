@@ -1,0 +1,248 @@
+package com.ayra.ai.app
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.ayra.ai.app.ai.AiMediaPromptSynthesizer
+import com.ayra.ai.app.ai.AyraIntentClassifier
+import com.ayra.ai.app.ai.AyraToolIntent
+import com.ayra.ai.app.ai.DataAnalysisEngine
+import com.ayra.ai.app.ai.UnifiedAiEngine
+import com.ayra.ai.app.ai.agents.AgentDomain
+import com.ayra.ai.app.ai.agents.AyraAgentOrchestrator
+import com.ayra.ai.app.ai.code.GeneratedProjectFile
+import com.ayra.ai.app.ai.code.ProjectWorkspaceManager
+import com.ayra.ai.app.ai.providers.ChatRequest
+import com.ayra.ai.app.ai.providers.ProviderPool
+import com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine
+import com.ayra.ai.app.ai.rag.DocumentRagEngine
+import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.data.ChatDatabase
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.File
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class MasterIntegrityUpgradeTest {
+
+    private lateinit var context: Context
+    private lateinit var server: MockWebServer
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        server = MockWebServer()
+        server.start()
+        ProviderPool(context).clearCache()
+        UnifiedAiEngine.clearCache()
+    }
+
+    @After
+    fun tearDown() {
+        ProviderPool(context).clearCache()
+        UnifiedAiEngine.clearCache()
+        runCatching { server.shutdown() }
+    }
+
+    @Test
+    fun testQwenTestConnectionRejects404AndAccepts200Or401() = runBlocking {
+        val qwen = Qwen38UncensoredEngine(context)
+
+        // All 3 probe paths (/api/tags, /v1/models, /) return 404 -> must throw
+        repeat(3) { server.enqueue(MockResponse().setResponseCode(404).setBody("Not Found")) }
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        var failed404 = false
+        try {
+            qwen.testConnection(baseUrl)
+        } catch (_: Exception) {
+            failed404 = true
+        }
+        assertTrue("404 across all probes must throw", failed404)
+
+        // /api/tags returns 200 -> succeeds cleanly
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"models":[]}"""))
+        val latency200 = qwen.testConnection(baseUrl)
+        assertTrue(latency200 >= 1L)
+
+        // /api/tags 404, /v1/models returns 401 auth challenge -> accepted
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("Unauthorized"))
+        val latency401 = qwen.testConnection(baseUrl)
+        assertTrue(latency401 >= 1L)
+    }
+
+    @Test
+    fun testIntentClassifierRecallAndSafety() {
+        assertEquals(AyraToolIntent.IMAGE, AyraIntentClassifier.classifyIntent("generate image of a cyberpunk skyline"))
+        assertEquals(AyraToolIntent.IMAGE, AyraIntentClassifier.classifyIntent("একটি সুন্দর সূর্যাস্তের ছবি বানাও"))
+        assertEquals(AyraToolIntent.SONG, AyraIntentClassifier.classifyIntent("create a song about monsoon rain"))
+        assertEquals(AyraToolIntent.SONG, AyraIntentClassifier.classifyIntent("বৃষ্টি নিয়ে একটা রোমান্টিক গান তৈরি করো"))
+
+        // Informational questions still go to CHAT
+        assertEquals(AyraToolIntent.CHAT, AyraIntentClassifier.classifyIntent("How do you generate images with diffusion models?"))
+        assertEquals(AyraToolIntent.CHAT, AyraIntentClassifier.classifyIntent("Tell me about the history of music in Bengal and make it short"))
+    }
+
+    @Test
+    fun testAgentOrchestratorAvoidsSubstringFalsePositives() {
+        assertFalse(AyraAgentOrchestrator.classifyIntent("What is Wi-Fi 7?") == AgentDomain.AUTOMATION_AGENT)
+        assertFalse(AyraAgentOrchestrator.classifyIntent("Explain Bluetooth LE protocols") == AgentDomain.AUTOMATION_AGENT)
+        assertFalse(AyraAgentOrchestrator.classifyIntent("Tell me about the apple company") == AgentDomain.AUTOMATION_AGENT)
+        assertFalse(AyraAgentOrchestrator.classifyIntent("Wish you a happy birthday!") == AgentDomain.CODING_AGENT)
+
+        // Explicit commands still route properly
+        assertEquals(AgentDomain.AUTOMATION_AGENT, AyraAgentOrchestrator.classifyIntent("Turn on wifi"))
+        assertEquals(AgentDomain.AUTOMATION_AGENT, AyraAgentOrchestrator.classifyIntent("Open WhatsApp"))
+    }
+
+    @Test
+    fun testDataAnalysisHandlesQuotedMultilineCsvAndMissingSentinels() {
+        val csv = """
+            name,score,notes
+            "Alice","92.5","Line one
+            line two"
+            "Bob","N/A","Absent"
+            "Carol","null","Pending"
+            "Dave","85.0","OK"
+        """.trimIndent()
+
+        val summary = DataAnalysisEngine.analyzeTabularText(csv, "grades.csv")
+        assertEquals(4, summary.rowCount)
+        assertEquals(3, summary.columnCount)
+
+        val scoreCol = summary.columns.first { it.name == "score" }
+        assertTrue("score column with N/A and null sentinels must still be numeric", scoreCol.isNumeric)
+        assertEquals(2, scoreCol.nonEmptyCount)
+        assertEquals(2, scoreCol.missingCount)
+        assertEquals(85.0, scoreCol.min ?: 0.0, 0.01)
+        assertEquals(92.5, scoreCol.max ?: 0.0, 0.01)
+    }
+
+    @Test
+    fun testDocumentRagMarksLowOverlapFallbackClearly() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, ChatDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val engine = DocumentRagEngine(db.knowledgeDocumentDao())
+            engine.ingestDocument(
+                title = "notes.txt",
+                mimeType = "text/plain",
+                rawText = "Photosynthesis converts solar photons into glucose using chlorophyll in plant chloroplasts."
+            )
+            val hits = engine.searchRelevantChunks("quantum chromodynamics quarks gluons", topK = 1)
+            assertEquals(1, hits.size)
+            assertFalse("Zero-overlap fallback hit must set isExactMatch = false", hits[0].isExactMatch)
+
+            val (cited, _) = engine.buildCitedContext("quantum chromodynamics quarks gluons", topK = 1)
+            assertTrue(cited.contains("Low lexical overlap fallback"))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun testProjectWorkspaceManagerPreventsSiblingPrefixTraversalAndSupportsCrud() {
+        val base = context.filesDir
+        val projDir = ProjectWorkspaceManager.writeProjectToDiskAndZip(
+            context = context,
+            projectName = "safeproj",
+            files = listOf(
+                GeneratedProjectFile("Main.kt", "fun main() {}"),
+                GeneratedProjectFile("../safeproj_evil/secret.txt", "pwned")
+            )
+        ).first
+        assertNotNull(projDir)
+        val siblingEscape = File(base, "ayra_projects/safeproj_evil/secret.txt")
+        assertFalse("Sibling prefix traversal file must NOT be written", siblingEscape.exists())
+
+        assertTrue(ProjectWorkspaceManager.createProjectFile(projDir!!, "README.md", "# Test"))
+        assertTrue(File(projDir, "README.md").exists())
+        assertTrue(ProjectWorkspaceManager.deleteProject(context, projDir.name))
+        assertFalse(projDir.exists())
+    }
+
+    @Test
+    fun testMediaSynthesizerRespectsConsentAspectRatioAndStoryboardHonesty() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
+
+        val urlWide = AiMediaPromptSynthesizer.buildImageUrl("neon skyline", context = context, aspectRatio = "16:9")
+        assertTrue(urlWide.contains("width=1024") && urlWide.contains("height=576"))
+
+        val json = AiMediaPromptSynthesizer.buildVideoPayload("rocket launch", context = context, aspectRatio = "16:9")
+        assertTrue(json.optBoolean("isStoryboardOnly", false))
+        assertEquals(2, json.optInt("frameCount", 0))
+        assertFalse(json.has("duration"))
+
+        // When consent is revoked, previewUrl and url are redacted/empty
+        AyraPreferences.setExternalAiConsent(context, false)
+        assertEquals("", AiMediaPromptSynthesizer.buildImageUrl("neon skyline", context = context))
+        val blockedVideo = AiMediaPromptSynthesizer.buildVideoPayload("rocket launch", context = context, aspectRatio = "16:9")
+        assertEquals("", blockedVideo.optString("previewUrl"))
+        AyraPreferences.setExternalAiConsent(context, true)
+    }
+
+    @Test
+    fun testUnifiedAiEngineHonestOfflineSongAndBlockedImage() = runBlocking {
+        // Ensure offline / local-only mode with no external consent or free pool
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setCustomGeminiKey(context, "")
+        AyraPreferences.setCustomOpenRouterKey(context, "")
+        AyraPreferences.setGroqKey(context, "")
+
+        val engine = UnifiedAiEngine(context)
+
+        val songResp = engine.generateUnifiedResponse("একটি বৃষ্টির গান লেখো")
+        assertNull("Offline song synthesis must not emit fake SONG craft card", songResp.craftType)
+        assertTrue(songResp.modelUsed?.contains("Offline", ignoreCase = true) == true)
+
+        val imgResp = engine.generateUnifiedResponse("generate image of an owl")
+        assertNull("Blocked external image pool must not emit fake/unconsented IMAGE url", imgResp.craftType)
+
+        // Restore preferences cleanly
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, true)
+        AyraPreferences.setExternalAiConsent(context, true)
+    }
+
+    @Test
+    fun testProviderPoolPropagatesCancellationCleanly() = runBlocking {
+        val pool = ProviderPool(context)
+        val deferred = async {
+            pool.executeSync(
+                ChatRequest(
+                    prompt = "Hello",
+                    systemPromptOverride = "be brief"
+                )
+            )
+        }
+        delay(5)
+        deferred.cancel(CancellationException("cancelled by test"))
+        var threwCancellation = false
+        try {
+            deferred.await()
+        } catch (_: CancellationException) {
+            threwCancellation = true
+        }
+        assertTrue("Coroutines must propagate CancellationException", threwCancellation)
+    }
+}

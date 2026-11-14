@@ -112,15 +112,20 @@ object AyraIntentClassifier {
             return AyraToolIntent.PDF
         }
 
+        val isQuestionForm = QUESTION_PREFIX_REGEX.matcher(trimmed).find() ||
+                lower.startsWith("how to ") || lower.contains("kivabe")
+
         // Image Intent
         if (lower.contains("আঁকো") || lower.contains("এঁকে দাও") || lower.contains("ছবি আঁকো") || lower.contains("ছবি আঁক")) {
             return AyraToolIntent.IMAGE
         }
-        val hasImgTerm = lower.contains("image") || lower.contains("photo") || lower.contains("picture") ||
-                lower.contains("wallpaper") || lower.contains("portrait") || lower.contains("ছবি") || lower.contains("চিত্র")
+        val hasImgTerm = Regex("\\b(image|photo|picture|wallpaper|portrait|artwork|illustration)\\b").containsMatchIn(lower) ||
+                lower.contains("ছবি") || lower.contains("চিত্র") || lower.contains("ফটো")
         val hasImgAction = (lower.contains("draw") || lower.contains("paint") || lower.contains("sketch") ||
-                lower.contains("generate") || lower.contains("render") || lower.contains("বানাও")) && !lower.contains("tips")
-        if (hasImgTerm && hasImgAction && (lower.contains("a ") || lower.contains("an ") || lower.contains("একটি") || lower.contains("একটা") || lower.contains("8k") || lower.contains("ড্রাগন") || lower.contains("রাজকন্যা"))) {
+                lower.contains("generate") || lower.contains("render") || lower.contains("create") ||
+                lower.contains("make") || lower.contains("বানাও") || lower.contains("তৈরি") ||
+                lower.contains("banano")) && !lower.contains("tips")
+        if (!isQuestionForm && hasImgTerm && hasImgAction) {
             return AyraToolIntent.IMAGE
         }
 
@@ -128,21 +133,23 @@ object AyraIntentClassifier {
         val hasVidTerm = lower.contains("video") || lower.contains("ভিডিও") || lower.contains("cinematic")
         val hasVidAction = lower.contains("video edit") || lower.contains("video banano") || lower.contains("ভিডিও বানাও") ||
                 (hasVidTerm && (lower.contains("generate") || lower.contains("make") || lower.contains("banano") || lower.contains("বানাও") || lower.contains("collision") || lower.contains("galaxy") || lower.contains("black hole")))
-        if (hasVidAction && !lower.contains("video game")) {
+        if (!isQuestionForm && hasVidAction && !lower.contains("video game")) {
             return AyraToolIntent.VIDEO
         }
 
         // Song Intent
-        val hasSongTerm = lower.contains("song") || lower.contains("music") || lower.contains("গান")
+        val hasSongTerm = Regex("\\b(song|songs|music|lyrics)\\b").containsMatchIn(lower) || lower.contains("গান")
         val isComposeProgramming = lower.contains("jetpack compose") || lower.contains("compose e") ||
                 lower.contains("compose er") || lower.contains("compose recomposition") ||
                 lower.contains("compose animation") || lower.contains("compose kivabe") ||
                 lower.contains("state hoisting compose")
         val hasSongAction = !isComposeProgramming && (lower.contains("music render") || lower.contains("music banano") ||
-                lower.contains("গান বানাও") || lower.contains("compose a song") || lower.contains("গান লিখ") ||
-                lower.contains("লিরিক্স") || lower.contains("প্রেমের গান") ||
-                (hasSongTerm && (lower.contains("acoustic") || lower.contains("synthwave") || lower.contains("বানাও"))))
-        if (hasSongAction && !lower.contains("history of music")) {
+                lower.contains("গান বানাও") || lower.contains("গান তৈরি") || lower.contains("compose a song") ||
+                lower.contains("create a song") || lower.contains("make a song") || lower.contains("generate a song") ||
+                lower.contains("generate music") || lower.contains("create music") || lower.contains("make music") ||
+                lower.contains("গান লিখ") || lower.contains("লিরিক্স") || lower.contains("প্রেমের গান") ||
+                (hasSongTerm && (lower.contains("acoustic") || lower.contains("synthwave") || lower.contains("বানাও") || lower.contains("তৈরি"))))
+        if (!isQuestionForm && hasSongAction && !lower.contains("history of music")) {
             return AyraToolIntent.SONG
         }
 

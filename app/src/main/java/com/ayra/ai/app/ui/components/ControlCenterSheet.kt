@@ -47,10 +47,10 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VolumeDown
-import androidx.compose.material.icons.filled.VolumeMute
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import com.ayra.ai.app.data.ChatMessage
@@ -804,7 +804,7 @@ fun ControlCenterSheet(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            Icons.Default.VolumeUp,
+                            Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = null,
                             tint = Color(currentSentiment.glowColorHex),
                             modifier = Modifier.size(16.dp)
@@ -908,7 +908,7 @@ fun ControlCenterSheet(
                                         }
                                     }
                                     Icon(
-                                        Icons.Default.VolumeUp,
+                                        Icons.AutoMirrored.Filled.VolumeUp,
                                         contentDescription = "Test",
                                         tint = if (isSelected) chipColor else TextSecondary,
                                         modifier = Modifier.size(14.dp)
@@ -955,7 +955,7 @@ fun ControlCenterSheet(
                 // Volume Max Button
                 QuickControlCard(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Default.VolumeUp,
+                    icon = Icons.AutoMirrored.Filled.VolumeUp,
                     title = "Max Sound",
                     status = "100% 🔊",
                     isActive = false,
@@ -969,7 +969,7 @@ fun ControlCenterSheet(
                 // Mute Sound Button
                 QuickControlCard(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Default.VolumeMute,
+                    icon = Icons.AutoMirrored.Filled.VolumeMute,
                     title = "Mute Sound",
                     status = "Mute 🔇",
                     isActive = false,
@@ -1127,7 +1127,7 @@ fun ControlCenterSheet(
                             .clip(CircleShape)
                             .background(Color(0xFF1E283F))
                     ) {
-                        Icon(Icons.Default.VolumeDown, contentDescription = "Down", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.VolumeDown, contentDescription = "Down", tint = NeonCyan, modifier = Modifier.size(18.dp))
                     }
                     IconButton(
                         onClick = {
@@ -1139,7 +1139,7 @@ fun ControlCenterSheet(
                             .clip(CircleShape)
                             .background(Color(0xFF1E283F))
                     ) {
-                        Icon(Icons.Default.VolumeUp, contentDescription = "Up", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Up", tint = NeonCyan, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -1270,7 +1270,7 @@ fun ControlCenterSheet(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "💡 আপনি সরাসরি বলতে বা টাইপ করতে পারেন: \"রাত ১২টায় রাহুলকে হোয়াটসঅ্যাপে শুভ জন্মদিন উইশ করো\" — ফোন লক/স্লিপ থাকলেও Ayra সময়মতো পাঠিয়ে দেবে!",
+                            text = "💡 আপনি সরাসরি বলতে বা টাইপ করতে পারেন: \"রাত ১২টায় রাহুলকে হোয়াটসঅ্যাপে শুভ জন্মদিন উইশ করো\" — নির্ধারিত সময়ে AlarmManager অ্যালার্ম বাজিয়ে মেসেজ রিভিউ ও পাঠানোর নোটিফিকেশন দেখাবে।",
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp

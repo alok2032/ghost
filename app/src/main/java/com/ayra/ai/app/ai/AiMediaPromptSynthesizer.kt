@@ -76,7 +76,11 @@ object AiMediaPromptSynthesizer {
             return pair
         }
 
-        if (context != null) {
+        val canUseExternal = context != null &&
+            !com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+            com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)
+
+        if (canUseExternal) {
             val geminiKey = com.ayra.ai.app.data.AyraPreferences.getEffectiveGeminiKey(context)
             if (geminiKey.isNotBlank()) {
                 val expanded = expandViaGemini(cleanSubject, geminiKey, type)
@@ -85,25 +89,10 @@ object AiMediaPromptSynthesizer {
                 }
             }
 
-            // NVIDIA NIM visual prompt expansion fallback
-            val minimaxKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaMinimaxKey(context)
-            val nvidiaKey = minimaxKey.ifBlank { com.ayra.ai.app.data.AyraPreferences.getNvidiaMuseKey(context) }
-            if (nvidiaKey.isNotBlank()) {
-                val nvidiaModel = if (minimaxKey.isNotBlank()) {
-                    "minimaxai/minimax-m3.1-flash"
-                } else {
-                    "meta/muse-glimmer-30b"
-                }
-                val expanded = expandViaOpenAiEndpoint(
-                    subject = cleanSubject,
-                    endpointUrl = "${com.ayra.ai.app.ai.providers.AiProviderType.NVIDIA_NIM.defaultBaseUrl}chat/completions",
-                    apiKey = nvidiaKey,
-                    modelId = nvidiaModel,
-                    type = type
-                )
-                if (expanded.isNotBlank()) {
-                    return cacheAndReturn(expanded)
-                }
+            // Fast OpenAI-compatible expansion fallback (NVIDIA NIM, Groq, Cerebras, OpenRouter, GitHub Models)
+            val expandedFast = expandViaFastOpenAiProviders(cleanSubject, context, type)
+            if (expandedFast.isNotBlank()) {
+                return cacheAndReturn(expandedFast)
             }
         }
 
@@ -124,12 +113,24 @@ object AiMediaPromptSynthesizer {
         prompt: String,
         seed: Long = (100000..999999).random().toLong(),
         context: android.content.Context? = null,
-        preExpandedPrompt: String? = null
+        preExpandedPrompt: String? = null,
+        aspectRatio: String = "1:1"
     ): String {
+        if (context != null &&
+            (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context) ||
+                !com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context))
+        ) {
+            return ""
+        }
         val expandedPrompt = preExpandedPrompt?.takeIf { it.isNotBlank() }
             ?: synthesizeVisualPrompt(prompt, "IMAGE", context).second
+        val (width, height) = when (aspectRatio.trim()) {
+            "16:9" -> 1024 to 576
+            "9:16" -> 576 to 1024
+            else -> 768 to 768
+        }
         val encoded = URLEncoder.encode(expandedPrompt, "UTF-8")
-        return "https://image.pollinations.ai/prompt/$encoded?model=flux&width=768&height=768&seed=$seed&nologo=true"
+        return "https://image.pollinations.ai/prompt/$encoded?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
     }
 
     @JvmOverloads
@@ -143,18 +144,29 @@ object AiMediaPromptSynthesizer {
         val isPortrait = aspectRatio.trim() == "9:16"
         val width = if (isPortrait) 576 else 1024
         val height = if (isPortrait) 1024 else 576
-        val encodedOpening = URLEncoder.encode("$expandedPrompt, opening wide establishing shot", "UTF-8")
-        val encodedAction = URLEncoder.encode("$expandedPrompt, dynamic tracking close-up progression", "UTF-8")
-        val previewUrl = "https://image.pollinations.ai/prompt/$encodedOpening?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
-        val secondFrameUrl = "https://image.pollinations.ai/prompt/$encodedAction?model=flux&width=$width&height=$height&seed=${seed + 17}&nologo=true"
+        val canUseExternal = context == null ||
+            (!com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+                com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context))
+        val previewUrl = if (canUseExternal) {
+            val encodedOpening = URLEncoder.encode("$expandedPrompt, opening wide establishing shot", "UTF-8")
+            "https://image.pollinations.ai/prompt/$encodedOpening?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
+        } else ""
+        val keyframes = JSONArray()
+        if (canUseExternal) {
+            val encodedAction = URLEncoder.encode("$expandedPrompt, dynamic tracking close-up progression", "UTF-8")
+            val secondFrameUrl = "https://image.pollinations.ai/prompt/$encodedAction?model=flux&width=$width&height=$height&seed=${seed + 17}&nologo=true"
+            keyframes.put(previewUrl)
+            keyframes.put(secondFrameUrl)
+        }
 
         return JSONObject().apply {
             put("title", cleanSubject.replaceFirstChar { it.uppercase() })
             put("prompt", cleanSubject)
             put("previewUrl", previewUrl)
-            put("keyframes", JSONArray().put(previewUrl).put(secondFrameUrl))
+            put("keyframes", keyframes)
             put("aspectRatio", if (isPortrait) "9:16" else "16:9")
-            put("duration", "0:15")
+            put("isStoryboardOnly", true)
+            put("frameCount", keyframes.length())
         }
     }
 

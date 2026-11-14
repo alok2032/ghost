@@ -20,6 +20,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.snapshots
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
@@ -119,6 +120,8 @@ class AyraCloudRepository(
                 docRef.set(payload).awaitResult()
             }
             registerCurrentDeviceAndSession(uid)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "upsertUserProfile")
             throw e
@@ -137,7 +140,7 @@ class AyraCloudRepository(
         val deviceRef = firestore.collection("users").document(resolvedUid)
             .collection("devices").document(bundle.deviceId)
 
-        runCatching {
+        try {
             val existing = deviceRef.get().awaitResult()
             if (existing.exists()) {
                 deviceRef.update(
@@ -196,6 +199,10 @@ class AyraCloudRepository(
                     )
                 ).awaitResult()
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "registerCurrentDeviceAndSession")
         }
     }
 
@@ -241,6 +248,8 @@ class AyraCloudRepository(
                 )
                 docRef.set(payload).awaitResult()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "syncMessageToCloud")
             throw e
@@ -298,6 +307,8 @@ class AyraCloudRepository(
                     actionCommand = doc.getString("modelUsed")?.takeIf { it.isNotBlank() }
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "fetchCloudMessagesOnce")
             emptyList()
@@ -308,6 +319,8 @@ class AyraCloudRepository(
         val uid = currentUserIdOrNull() ?: return
         try {
             deleteCollectionDocuments(firestore.collection("users").document(uid).collection("messages"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "clearCloudMessages")
             throw e
@@ -365,6 +378,8 @@ class AyraCloudRepository(
                 )
                 docRef.set(payload).awaitResult()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "syncPluginToCloud")
             throw e
@@ -379,6 +394,8 @@ class AyraCloudRepository(
                 .collection("plugins").document(docId)
                 .delete()
                 .awaitResult()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "deletePluginFromCloud")
             throw e
@@ -412,6 +429,8 @@ class AyraCloudRepository(
                     isEnabled = doc.getBoolean("isEnabled") ?: true
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "fetchCloudPluginsOnce")
             emptyList()
@@ -445,6 +464,8 @@ class AyraCloudRepository(
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             docRef.set(payload).awaitResult()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "logCreation")
             throw e
@@ -455,7 +476,7 @@ class AyraCloudRepository(
 
     suspend fun fetchCloudDevices(): List<TrustedE2eeDevice> {
         val uid = currentUserIdOrNull() ?: return emptyList()
-        return runCatching {
+        return try {
             val snap = firestore.collection("users").document(uid)
                 .collection("devices").get().awaitResult()
             snap.documents.mapNotNull { doc ->
@@ -470,12 +491,17 @@ class AyraCloudRepository(
                     isRevoked = doc.getBoolean("isRevoked") ?: false
                 )
             }
-        }.getOrDefault(emptyList())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "fetchCloudDevices")
+            emptyList()
+        }
     }
 
     suspend fun fetchCloudSessions(): List<CloudSessionInfo> {
         val uid = currentUserIdOrNull() ?: return emptyList()
-        return runCatching {
+        return try {
             val snap = firestore.collection("users").document(uid)
                 .collection("sessions").get().awaitResult()
             snap.documents.mapNotNull { doc ->
@@ -489,13 +515,18 @@ class AyraCloudRepository(
                     lastActiveMs = doc.getLong("lastActiveMs") ?: 0L
                 )
             }.sortedByDescending { it.lastActiveMs }
-        }.getOrDefault(emptyList())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "fetchCloudSessions")
+            emptyList()
+        }
     }
 
     suspend fun revokeDeviceAndSessionInCloud(deviceId: String) {
         val uid = currentUserIdOrNull() ?: return
         appContext?.let { AyraE2eeEngine.revokeDeviceAndRotateEpoch(it, deviceId) }
-        runCatching {
+        try {
             firestore.collection("users").document(uid)
                 .collection("devices").document(deviceId)
                 .update(
@@ -504,8 +535,12 @@ class AyraCloudRepository(
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).awaitResult()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "revokeDeviceInCloud")
         }
-        runCatching {
+        try {
             val sessId = sanitizeDocId("sess_$deviceId")
             firestore.collection("users").document(uid)
                 .collection("sessions").document(sessId)
@@ -515,6 +550,10 @@ class AyraCloudRepository(
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).awaitResult()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "revokeSessionInCloud")
         }
     }
 
@@ -545,7 +584,7 @@ class AyraCloudRepository(
 
     suspend fun listCloudBackups(): List<CloudBackupRecord> {
         val uid = currentUserIdOrNull() ?: return emptyList()
-        return runCatching {
+        return try {
             val snap = firestore.collection("users").document(uid)
                 .collection("backups").get().awaitResult()
             snap.documents.mapNotNull { d ->
@@ -558,7 +597,12 @@ class AyraCloudRepository(
                     createdAtMs = d.getLong("createdAtMs") ?: 0L
                 )
             }.sortedByDescending { it.createdAtMs }
-        }.getOrDefault(emptyList())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "listCloudBackups")
+            emptyList()
+        }
     }
 
     suspend fun deleteCloudBackup(backupId: String) {
@@ -580,7 +624,7 @@ class AyraCloudRepository(
         val uid = currentUserIdOrNull() ?: return
         val docRef = firestore.collection("users").document(uid)
             .collection("securityEvents").document()
-        runCatching {
+        try {
             docRef.set(
                 mapOf(
                     "userId" to uid,
@@ -593,6 +637,10 @@ class AyraCloudRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).awaitResult()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "uploadSecurityEvent")
         }
     }
 
@@ -616,9 +664,13 @@ class AyraCloudRepository(
         subCollections.forEach { sub ->
             totalDeleted += deleteCollectionDocuments(userDoc.collection(sub))
         }
-        runCatching {
+        try {
             userDoc.delete().awaitResult()
             totalDeleted += 1
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, "purgeAllUserCloudData")
         }
         return totalDeleted
     }

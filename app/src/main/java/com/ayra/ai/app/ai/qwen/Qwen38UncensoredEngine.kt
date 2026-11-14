@@ -48,6 +48,8 @@ class Qwen38UncensoredEngine(private val context: Context? = null) {
                 preferredModelId = firstConfigured?.second,
                 withSearchGrounding = false
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             com.ayra.ai.app.ai.providers.ProviderPool(context, externalProviders).executeSync(
                 com.ayra.ai.app.ai.providers.ChatRequest(
@@ -78,13 +80,30 @@ class Qwen38UncensoredEngine(private val context: Context? = null) {
             .readTimeout(4, TimeUnit.SECONDS)
             .build()
 
-        val checkUrl = if (targetUrl.endsWith("/")) targetUrl else "$targetUrl/"
-        val req = Request.Builder().url(checkUrl).build()
-        try {
-            client.newCall(req).execute().close()
-        } catch (_: Exception) {
-            // Still compute latency if host answered or timed out
+        val base = targetUrl.trimEnd('/')
+        val probeUrls = listOf("$base/api/tags", "$base/v1/models", "$base/")
+        var lastError: Exception? = null
+        var lastStatus: Int? = null
+
+        for (probe in probeUrls) {
+            val req = Request.Builder().url(probe).get().build()
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful || resp.code == 401 || resp.code == 403) {
+                        return@withContext (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                    }
+                    lastStatus = resp.code
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+            }
         }
-        (System.currentTimeMillis() - start).coerceAtLeast(1L)
+
+        if (lastStatus != null) {
+            throw IllegalStateException("Endpoint unreachable or unhealthy (HTTP $lastStatus)")
+        }
+        throw lastError ?: IllegalStateException("Unable to reach endpoint: $targetUrl")
     }
 }
