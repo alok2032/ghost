@@ -243,7 +243,7 @@ object AyraAgentOrchestrator {
         val isInformationalQuestion = text.startsWith("what is ") || text.startsWith("what's ") ||
             text.startsWith("explain ") || text.startsWith("how does ") || text.startsWith("why is ") ||
             text.contains("difference between")
-        val hasAutomationVerb = Regex("\\b(turn on|turn off|enable|disable|toggle|open|set|schedule|remind|call|dial|send|increase|decrease|mute|unmute)\\b")
+        val hasAutomationVerb = Regex("\\b(turn on|turn off|enable|disable|toggle|open|launch|set|schedule|remind|call|dial|send|increase|decrease|mute|unmute)\\b")
             .containsMatchIn(text) ||
             text.contains("খোলো") || text.contains("চালু") || text.contains("বন্ধ") ||
             text.contains("পাঠাও") || text.contains("সেট") || text.contains("বাড়াও") ||
@@ -252,11 +252,13 @@ object AyraAgentOrchestrator {
 
         val hasHardwareOrActionTarget = Regex("\\b(torch|flashlight|wi-?fi|bluetooth|volume|alarm|reminder|sms)\\b")
             .containsMatchIn(text) ||
-            Regex("\\b(open app|call\\s+[a-z0-9+]+|send\\s+(sms|text|message|whatsapp))\\b").containsMatchIn(text) ||
+            Regex("\\b(?:open|launch)\\s+(?:the\\s+)?(?:app|whatsapp|youtube|chrome|gmail|spotify|instagram|facebook|telegram|maps|camera|settings|clock|calendar|gallery|photos|dialer|contacts|calculator|[a-z0-9_.-]+\\s+app)\\b")
+                .containsMatchIn(text) ||
+            Regex("\\b(call\\s+[a-z0-9+]+|send\\s+(sms|text|message|whatsapp))\\b").containsMatchIn(text) ||
             text.contains("টর্চ") || text.contains("ভলিউম") || text.contains("অ্যাপ খোলো") ||
             text.contains("অ্যালার্ম") || text.contains("ফোন করো") || text.contains("মেসেজ পাঠাও")
 
-        return hasHardwareOrActionTarget && (hasAutomationVerb || text.contains("টর্চ") || text.contains("অ্যালার্ম") || text.contains("ফোন করো") || text.contains("মেসেজ পাঠাও") || text.contains("অ্যাপ খোলো") || text.contains("open app"))
+        return hasHardwareOrActionTarget && (hasAutomationVerb || text.contains("টর্চ") || text.contains("অ্যালার্ম") || text.contains("ফোন করো") || text.contains("মেসেজ পাঠাও") || text.contains("অ্যাপ খোলো"))
     }
 
     private fun isCyberDefenseIntent(text: String): Boolean {

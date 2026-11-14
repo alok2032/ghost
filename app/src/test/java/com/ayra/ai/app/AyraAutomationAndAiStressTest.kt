@@ -5,6 +5,7 @@ import com.ayra.ai.app.voice.UserSentiment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.regex.Pattern
@@ -295,30 +296,29 @@ class AyraAutomationAndAiStressTest {
     fun testSongAndMusicPromptSynthesis() {
         val aiEngine = com.ayra.ai.app.ai.UnifiedAiEngine()
         kotlinx.coroutines.runBlocking {
-            // "music render"
+            // Intent classifier accurately routes all music prompts to SONG
+            assertEquals(
+                com.ayra.ai.app.ai.AyraToolIntent.SONG,
+                com.ayra.ai.app.ai.AyraIntentClassifier.classifyIntent("cyberpunk synthwave music render")
+            )
+            assertEquals(
+                com.ayra.ai.app.ai.AyraToolIntent.SONG,
+                com.ayra.ai.app.ai.AyraIntentClassifier.classifyIntent("romantic acoustic guitar music banano")
+            )
+            assertEquals(
+                com.ayra.ai.app.ai.AyraToolIntent.SONG,
+                com.ayra.ai.app.ai.AyraIntentClassifier.classifyIntent("বৃষ্টির দিনে একটি সুন্দর রোমান্টিক গান বানাও")
+            )
+
+            // Without a Context / AI provider, engine honestly reports offline status instead of fake lyrics
             val musicRes1 = aiEngine.generateUnifiedResponse(
                 prompt = "cyberpunk synthwave music render",
                 personaMode = "GF_COMPANION",
                 modelTier = "auto"
             )
-            assertEquals("SONG", musicRes1.craftType)
+            assertNull(musicRes1.craftType)
+            assertEquals("Offline Status", musicRes1.modelUsed)
             assertTrue(musicRes1.text.isNotEmpty())
-
-            // "music banano"
-            val musicRes2 = aiEngine.generateUnifiedResponse(
-                prompt = "romantic acoustic guitar music banano",
-                personaMode = "GF_COMPANION",
-                modelTier = "auto"
-            )
-            assertEquals("SONG", musicRes2.craftType)
-
-            // "গান বানাও"
-            val songRes = aiEngine.generateUnifiedResponse(
-                prompt = "বৃষ্টির দিনে একটি সুন্দর রোমান্টিক গান বানাও",
-                personaMode = "GF_COMPANION",
-                modelTier = "auto"
-            )
-            assertEquals("SONG", songRes.craftType)
         }
     }
 
@@ -439,13 +439,21 @@ class AyraAutomationAndAiStressTest {
     fun testTripleAiImageAndVideoSynergy() {
         val aiEngine = com.ayra.ai.app.ai.UnifiedAiEngine()
         kotlinx.coroutines.runBlocking {
+            assertEquals(
+                com.ayra.ai.app.ai.AyraToolIntent.IMAGE,
+                com.ayra.ai.app.ai.AyraIntentClassifier.classifyIntent("রাজকন্যার সুন্দর ছবি আঁকো")
+            )
+            val fluxUrl = com.ayra.ai.app.ai.AiMediaPromptSynthesizer.buildImageUrl("রাজকন্যার সুন্দর ছবি আঁকো")
+            assertTrue(fluxUrl.contains("image.pollinations.ai/prompt/"))
+
+            // Without Android Context to verify external consent, UnifiedAiEngine refuses unconsented remote image URLs
             val imgRes = aiEngine.generateUnifiedResponse(
                 prompt = "রাজকন্যার সুন্দর ছবি আঁকো",
                 personaMode = "GF_COMPANION",
                 modelTier = "auto"
             )
-            assertEquals("IMAGE", imgRes.craftType)
-            assertTrue(imgRes.modelUsed!!.contains("Flux.1"))
+            assertNull(imgRes.craftType)
+            assertEquals("Offline Status", imgRes.modelUsed)
 
             val vidRes = aiEngine.generateUnifiedResponse(
                 prompt = "মহাকাশের 4k সিনেমাটিক ভিডিও বানাও",
