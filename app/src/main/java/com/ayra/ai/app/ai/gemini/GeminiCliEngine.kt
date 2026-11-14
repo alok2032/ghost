@@ -28,14 +28,14 @@ class GeminiCliEngine(private val context: Context? = null) {
         val sys = systemDirective ?: "You are Gemini CLI Engine. Provide direct, highly accurate, and helpful answers in the user's language."
 
         if (externalProviders.isProviderConfigured(AiProviderType.GEMINI)) {
-            runCatching {
+            try {
                 val resp = externalProviders.generateChatResponse(
                     prompt = prompt,
                     systemPrompt = sys,
                     imageBase64 = imageBase64,
                     preferredProvider = AiProviderType.GEMINI,
                     preferredModelId = ExternalAiProviders.GEMINI_FLASH_MODEL,
-                    withSearchGrounding = true
+                    withSearchGrounding = externalProviders.allowExternalWikiGrounding
                 )
                 if (resp.text.isNotBlank()) {
                     return@withContext AiResponse(
@@ -43,11 +43,13 @@ class GeminiCliEngine(private val context: Context? = null) {
                         modelUsed = resp.modelUsed.ifBlank { "Gemini 3.8 Flash (Direct CLI) ⚡" }
                     )
                 }
-            }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {}
         }
 
         if (FirebaseAiEngine.isAvailable(context) && externalProviders.allowExternalWikiGrounding) {
-            val fbRes = runCatching {
+            val fbRes = try {
                 FirebaseAiEngine(context).generateText(
                     prompt = prompt,
                     systemPrompt = sys,
@@ -55,7 +57,11 @@ class GeminiCliEngine(private val context: Context? = null) {
                     modelName = FirebaseAiEngine.MODEL_FLASH,
                     enableSearchGrounding = true
                 )
-            }.getOrDefault("")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                ""
+            }
             if (fbRes.isNotBlank()) {
                 return@withContext AiResponse(
                     text = fbRes,

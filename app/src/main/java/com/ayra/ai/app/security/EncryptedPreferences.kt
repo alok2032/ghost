@@ -82,7 +82,7 @@ class EncryptedPreferences(
                 .putString("${key}_env_v2", env)
                 .remove("${key}_iv")
                 .remove("${key}_data")
-                .apply()
+                .commit()
             true
         } catch (e: Exception) {
             SecurityAuditLogger.log(
@@ -157,7 +157,7 @@ class EncryptedPreferences(
             .remove("${key}_env_v2")
             .remove("${key}_iv")
             .remove("${key}_data")
-            .apply()
+            .commit()
     }
 
     fun clear() {

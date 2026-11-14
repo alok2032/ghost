@@ -1,0 +1,1167 @@
+# AYRA AI — ULTIMATE MASTER AUDIT, REPAIR, REAL IMPLEMENTATION, SECURITY HARDENING & PRODUCTION UPGRADE PROMPT
+
+## ROLE AND MISSION
+
+Act as a world-class team consisting of:
+
+- Senior Android Architect
+- Kotlin and Jetpack Compose Engineer
+- AI/ML Infrastructure Engineer
+- Backend and API Engineer
+- Firebase Architect
+- Cybersecurity Engineer
+- Database and Encryption Specialist
+- DevOps and CI/CD Engineer
+- QA Automation Engineer
+- Performance Engineer
+- UI/UX Designer
+- Android Release and Distribution Specialist
+
+Your mission is to completely inspect, repair, upgrade, optimize, and production-harden the existing AYRA AI Android application.
+
+You are working on an EXISTING PROJECT, not a new application.
+
+You MUST inspect the actual uploaded project ZIP and every relevant source file before making architectural decisions.
+
+Project characteristics identified from the supplied archive include:
+
+- Android application
+- Kotlin
+- Jetpack Compose
+- Firebase Authentication
+- Firebase Firestore
+- Firebase AI integration
+- Room Database
+- SQLCipher dependencies
+- OkHttp and Retrofit
+- Moshi
+- Android Keystore-related security modules
+- BiometricPrompt
+- Google Credential Manager
+- Android location services
+- Node.js/TypeScript backend
+- AI model routing and provider integrations
+- Voice, automation, document, media and security modules
+
+Important existing configuration details to investigate:
+
+- Application ID: com.ayra.ai.app
+- Namespace: com.ayra.ai.app
+- compileSdk: 36
+- minSdk: 26
+- targetSdk: 36
+- Java compatibility: 21
+- Existing release signing configuration uses debug.keystore.
+- Existing GitHub Actions configuration must be checked against Java 21.
+- The Gradle wrapper file permissions must be repaired.
+- Firebase project identifiers must be reconciled across all environments.
+- Existing test skeletons must be replaced or supplemented with real behavioral tests.
+
+These are investigation targets, not permission to blindly overwrite existing working architecture.
+
+---
+
+# PHASE 1 — COMPLETE PROJECT FORENSIC AUDIT
+
+Before modifying anything, extract the entire ZIP and build a complete project inventory.
+
+Inspect every relevant file, including:
+
+- Kotlin source files
+- Java source files
+- Gradle build files
+- Version catalogs
+- AndroidManifest.xml
+- XML resources
+- Compose UI files
+- ViewModels
+- Repositories
+- Services
+- Workers
+- Database entities and DAOs
+- Database migrations
+- AI providers
+- AI routing engines
+- API clients
+- Backend source files
+- Firebase configuration
+- Firestore security rules
+- Authentication configuration
+- ProGuard/R8 rules
+- CI/CD workflows
+- Test files
+- Documentation
+- Build and release scripts
+- Permission configurations
+- Network security configuration
+
+Create a complete dependency graph and feature-to-source-file mapping.
+
+Identify:
+
+1. Compilation errors.
+2. Runtime exceptions.
+3. Crashes.
+4. Broken navigation.
+5. Incorrect state management.
+6. Missing API implementations.
+7. Fake AI responses.
+8. Hardcoded demo data.
+9. Placeholder functions.
+10. Empty implementations.
+11. Unused code.
+12. Duplicate classes.
+13. Dead dependencies.
+14. Incorrect imports.
+15. Broken dependency injection.
+16. Memory leaks.
+17. Coroutines lifecycle problems.
+18. Database consistency problems.
+19. API timeout problems.
+20. Incorrect error handling.
+21. Security vulnerabilities.
+22. Broken permissions.
+23. Incompatible SDK configurations.
+24. Missing resources.
+25. Broken build configurations.
+
+For each finding, document:
+
+- Finding ID
+- Severity: Critical / High / Medium / Low
+- Exact file path
+- Relevant class or function
+- Actual observed problem
+- Root cause
+- Reproduction steps
+- Required modification
+- Regression test
+- Verification evidence
+
+Do not report hypothetical problems as confirmed bugs.
+
+Clearly distinguish confirmed defects, potential risks, and items that require external testing.
+
+---
+
+# PHASE 2 — BUILD SYSTEM AND APK INSTALLATION REPAIR
+
+Make the complete Android build system reliable.
+
+Investigate and repair:
+
+- Gradle Wrapper
+- Gradle distribution configuration
+- Android Gradle Plugin compatibility
+- Kotlin plugin compatibility
+- KSP compatibility
+- Java 21 configuration
+- SDK configuration
+- Dependency resolution
+- Repository configuration
+- Android resources
+- Manifest merging
+- Native library packaging
+- ABI compatibility
+- APK signing
+- Release build configuration
+
+Specific requirements:
+
+1. Set the Gradle wrapper executable permission correctly.
+2. Ensure both Windows and Linux build workflows work.
+3. Align GitHub Actions with the actual Java and Gradle requirements.
+4. Use compatible stable dependency versions.
+5. Remove incompatible and obsolete dependencies only after checking their usage.
+6. Configure Gradle dependency verification where practical.
+7. Ensure offline failures are reported accurately rather than hidden.
+8. Configure deterministic build inputs where practical.
+9. Verify debug and release variants separately.
+
+## Release Signing
+
+Never ship a production APK signed using a debug keystore.
+
+Implement:
+
+- Dedicated release signing configuration.
+- Secure environment-based keystore credentials.
+- CI/CD secret injection.
+- No hardcoded passwords.
+- No committed private keystores.
+- Signature verification.
+- Signing certificate fingerprint reporting.
+- Upgrade compatibility checks.
+
+Never generate or invent a production signing secret.
+
+If signing credentials are unavailable, build an unsigned release artifact or use an explicitly identified temporary test signing configuration. Clearly report the limitation.
+
+## Android Installation Compatibility
+
+Test:
+
+- Fresh installation.
+- Upgrade installation.
+- Reinstallation after uninstall.
+- Existing app-data migration.
+- Package name consistency.
+- VersionCode progression.
+- VersionName.
+- APK signing compatibility.
+- Minimum SDK.
+- Target SDK.
+- Supported CPU architectures.
+- Native library availability.
+- Android Package Installer compatibility.
+
+Investigate INSTALL_FAILED_UPDATE_INCOMPATIBLE, INSTALL_FAILED_VERSION_DOWNGRADE, INSTALL_FAILED_INSUFFICIENT_STORAGE, INSTALL_FAILED_NO_MATCHING_ABIS and other actual installation errors.
+
+Never change applicationId or signing certificates casually because doing so can break upgrades.
+
+Produce an installable APK and a complete installation troubleshooting report.
+
+---
+
+# PHASE 3 — ELIMINATE ALL FAKE AND DUMMY IMPLEMENTATIONS
+
+This is one of the highest-priority requirements.
+
+Search the entire project for:
+
+- TODO
+- FIXME
+- Placeholder
+- Mock
+- Dummy
+- Fake
+- Demo
+- Hardcoded responses
+- Random AI responses
+- Simulated progress
+- Fake success messages
+- Empty callbacks
+- Unimplemented functions
+- Hardcoded model outputs
+- Fake API status
+- Mock repositories accidentally used in production
+- Sample user data
+- Static usage statistics
+- Simulated security scans
+- Fake generated files
+
+Investigate every result individually.
+
+Do not automatically remove legitimate test fixtures or explicitly labelled sample data.
+
+## Mandatory real-functionality rules
+
+Every visible button must perform its advertised action.
+
+Every switch must change actual application behavior.
+
+Every model selection must select the corresponding real provider/model.
+
+Every upload must upload or process the actual selected file.
+
+Every download must produce an actual downloadable file.
+
+Every export must create a valid output file.
+
+Every search must query a real data source.
+
+Every chat response must come from an actual configured AI provider or a clearly identified local model.
+
+Every generation operation must use a real generation provider.
+
+Every progress indicator must reflect actual job status.
+
+Every error message must describe a real failure.
+
+Never display success when an operation failed.
+
+Never pretend an AI request completed when the provider was unavailable.
+
+If a provider requires an API key, display a proper configuration screen.
+
+If a feature requires a paid API, clearly disclose the cost.
+
+If a provider is unavailable, report that it is unavailable.
+
+Do not replace a broken feature with a fake implementation.
+
+If a feature cannot be implemented reliably, disable it transparently and explain why.
+
+Create a feature verification matrix with:
+
+- Feature
+- Actual implementation
+- Provider or data source
+- Required permissions
+- Required configuration
+- Test performed
+- Actual result
+- Status
+
+Use these statuses:
+
+- REAL AND VERIFIED
+- IMPLEMENTED BUT NOT VERIFIED
+- CONFIGURATION REQUIRED
+- UNAVAILABLE
+- MOCK ONLY — REMOVE FROM PRODUCTION
+- BROKEN — REPAIR REQUIRED
+
+No feature may be labelled REAL AND VERIFIED without actual evidence.
+
+---
+
+# PHASE 4 — COMPLETE AI ENGINE REBUILD AND VERIFICATION
+
+Inspect the entire UnifiedAiEngine and every AI provider implementation.
+
+Create a reliable modular AI architecture.
+
+Separate:
+
+- Provider registry
+- Model registry
+- Model capability definitions
+- Authentication
+- API clients
+- Request builders
+- Response parsers
+- Streaming handlers
+- Error handling
+- Retry logic
+- Rate limiting
+- Usage tracking
+- Model health monitoring
+- Provider fallback
+- Cost estimation
+
+## Real AI Provider Integration
+
+Support only providers and models whose current official APIs are verified.
+
+Potential integrations may include:
+
+- Google Gemini
+- OpenAI
+- Anthropic Claude
+- DeepSeek
+- Qwen
+- NVIDIA NIM
+- Groq
+- Mistral
+- Together AI
+- Hugging Face Inference
+- Other genuinely accessible providers
+
+Do not assume every provider is free.
+
+Do not assume every model supports every capability.
+
+Verify current official documentation, endpoint, model identifier, authentication, request schema, response schema and usage limits before integration.
+
+Never invent model names or API endpoints.
+
+## Model Capability Validation
+
+For each model, determine whether it actually supports:
+
+- Text generation
+- Streaming
+- Vision
+- Image understanding
+- Image generation
+- Audio input
+- Audio output
+- Video understanding
+- Video generation
+- Tool calling
+- Structured output
+- JSON mode
+- Reasoning
+- Long context
+- Embeddings
+- Code generation
+
+Only advertise supported capabilities.
+
+Do not display unsupported capabilities as active features.
+
+## AI Router
+
+Implement:
+
+- Intelligent provider selection
+- Capability-based routing
+- User-selected model support
+- Provider priority
+- Automatic fallback
+- Timeout management
+- Retry with exponential backoff
+- Circuit breaker
+- Rate-limit handling
+- Token usage tracking
+- Provider-specific error reporting
+- Cancellation support
+
+Fallback must never silently switch to an unrelated model without telling the user.
+
+Do not claim a model has performed deep reasoning, browsing, coding or research unless the corresponding operation actually occurred.
+
+## AI Chat
+
+Repair:
+
+- Conversation management
+- Context preservation
+- Message streaming
+- Stop generation
+- Regenerate response
+- Edit and resend
+- Message copy
+- Markdown rendering
+- Code blocks
+- Long conversations
+- Attachments
+- Image input
+- Conversation history
+- Error recovery
+
+Ensure the AI actually answers questions instead of returning empty, generic or unrelated content.
+
+---
+
+# PHASE 5 — ADVANCED AI RESEARCH AND AGENT SYSTEM
+
+Implement a genuine permission-based AI agent architecture.
+
+Possible agents:
+
+1. Research Agent
+2. Coding Agent
+3. Browser Research Agent
+4. Document Analysis Agent
+5. Data Analysis Agent
+6. Image Agent
+7. Video Agent
+8. Audio Agent
+9. Planning Agent
+10. Automation Agent
+
+Each agent must have:
+
+- Defined responsibilities
+- Explicit capabilities
+- Tool registry
+- Permission boundaries
+- Execution state
+- Cancellation
+- Timeout
+- Error recovery
+- Audit logs
+- Resource limits
+
+## Deep Research
+
+Implement genuine multi-step research:
+
+1. Understand the question.
+2. Create a research plan.
+3. Search authorized sources.
+4. Retrieve source content.
+5. Cross-check important claims.
+6. Identify contradictions.
+7. Produce a structured report.
+8. Cite sources.
+9. Identify uncertainty.
+
+Never fabricate references, citations, URLs or research results.
+
+## Coding Agent
+
+Implement:
+
+- Code analysis
+- Repository inspection
+- Code generation
+- Controlled file editing
+- Test execution
+- Build execution
+- Error diagnosis
+- Patch generation
+- Regression verification
+
+Require approval before destructive operations or external deployments.
+
+---
+
+# PHASE 6 — IMAGE, VIDEO, AUDIO, MUSIC AND CREATIVE STUDIO
+
+Audit every creative feature individually.
+
+## Image Generation
+
+Use real image-generation providers.
+
+Support:
+
+- Prompt input
+- Negative prompts where supported
+- Aspect ratios
+- Resolution selection
+- Image variations where supported
+- Reference image handling
+- Download
+- Gallery
+- Job status
+- Error reporting
+
+## Video Generation
+
+Implement only real provider-supported functionality:
+
+- Text-to-video
+- Image-to-video
+- Duration selection
+- Aspect ratio
+- Job submission
+- Asynchronous polling
+- Cancellation where supported
+- Actual video retrieval
+- Playback
+- Download
+
+Do not display fake video previews or simulated completion.
+
+## Audio and Music
+
+Implement genuine:
+
+- Speech-to-text
+- Text-to-speech
+- Audio understanding
+- Audio generation
+- Music generation
+- Audio export
+- Playback
+- Download
+
+Clearly identify provider limitations.
+
+## Creative Job Management
+
+All long-running generation tasks must use actual job IDs, persisted states and recoverable execution.
+
+Use appropriate background execution and Android WorkManager where needed.
+
+---
+
+# PHASE 7 — DOCUMENT, FILE AND KNOWLEDGE SYSTEM
+
+Audit and repair:
+
+- PDF generation
+- PDF reading
+- DOCX generation
+- Spreadsheet generation
+- CSV
+- Markdown
+- TXT
+- File conversion
+- Document export
+- Document import
+- File sharing
+- Attachment management
+- Local indexing
+- Document search
+- RAG
+
+## RAG Architecture
+
+Implement a genuine retrieval pipeline:
+
+1. Import actual files.
+2. Extract text.
+3. Preserve document metadata.
+4. Chunk content.
+5. Generate embeddings using a real configured model.
+6. Store vectors securely.
+7. Retrieve relevant chunks.
+8. Provide retrieved context to the AI.
+9. Cite document sources.
+10. Report when relevant information is unavailable.
+
+Do not return fabricated document citations.
+
+Respect file permissions and user privacy.
+
+---
+
+# PHASE 8 — COMPLETE SECURITY HARDENING
+
+Perform a security review using OWASP MASVS and applicable Android security best practices.
+
+## API Key Security
+
+- Never hardcode provider secrets.
+- Never expose privileged provider keys in the APK.
+- Use backend secret management for privileged operations.
+- Secure API authentication.
+- Implement key rotation.
+- Prevent accidental secret logging.
+- Scan repository history for exposed credentials.
+
+Remember that Firebase client configuration is not equivalent to a privileged service-account secret.
+
+## Android Keystore
+
+Implement:
+
+- Hardware-backed Keystore where available.
+- Strong key generation.
+- Key lifecycle management.
+- Secure encryption/decryption.
+- Authentication-bound keys where appropriate.
+- Key invalidation handling.
+- Recovery strategy.
+- Fail-closed security behavior.
+
+Never silently downgrade encryption when secure key creation fails.
+
+## Database Security
+
+Audit:
+
+- Room Database
+- SQLCipher
+- Database migrations
+- Encryption key storage
+- Sensitive preferences
+- Cache files
+- Temporary files
+- Exported files
+
+Encrypt sensitive data at rest.
+
+Ensure migrations preserve user data.
+
+## Network Security
+
+Implement:
+
+- HTTPS
+- Certificate validation
+- Secure TLS configuration
+- Restricted cleartext traffic
+- Authentication token verification
+- Request validation
+- Rate limiting
+- SSRF protection
+- Secure CORS policy
+- Safe redirects
+- Timeout management
+
+Never disable TLS certificate verification.
+
+## Firebase Security
+
+Audit:
+
+- Firebase Authentication
+- Firestore Rules
+- Storage Rules if used
+- App Check
+- User ownership
+- Role-based access
+- Database isolation
+- Cross-user data access
+- Emulator tests
+
+Ensure users cannot read or modify another user's private data.
+
+Reconcile all Firebase Project IDs and environment configurations.
+
+Never deploy security rules to an unverified production project.
+
+## Biometric Security
+
+Use Android BiometricPrompt correctly.
+
+Test:
+
+- Successful authentication
+- Failed authentication
+- Lockout
+- Key invalidation
+- Device credential fallback
+- Cancellation
+- No biometric hardware
+
+## Privacy
+
+Implement:
+
+- Clear privacy settings
+- Data export
+- Data deletion
+- Account deletion where supported
+- Permission transparency
+- Backup controls
+- Secure temporary-file cleanup
+- Session management
+
+Never promise that no attacker can ever compromise a device. State realistic security guarantees and limitations.
+
+---
+
+# PHASE 9 — ANDROID FEATURES AND DEVICE AUTOMATION
+
+Inspect every permission and device-related operation.
+
+Verify:
+
+- Camera
+- Microphone
+- Location
+- Notifications
+- Storage
+- Bluetooth if used
+- Contacts if used
+- Calendar if used
+- Alarm functionality
+- Background execution
+- Foreground services
+- File sharing
+
+Request permissions only when necessary.
+
+Never bypass Android permission controls.
+
+For sensitive actions such as calls, messages, file deletion or device configuration, require explicit user approval.
+
+Automation must use real supported Android APIs.
+
+Do not pretend to control device settings that Android does not permit the application to control.
+
+Ensure accessibility features are transparent, user-authorized and compliant with platform requirements.
+
+---
+
+# PHASE 10 — UI/UX AND ACCESSIBILITY REBUILD
+
+Inspect every screen, dialog, bottom sheet, navigation route and interactive component.
+
+Repair:
+
+- Broken buttons
+- Incorrect navigation
+- Blank screens
+- Layout overflow
+- Keyboard overlap
+- Loading state problems
+- Dark mode
+- Light mode
+- Responsive layout
+- Touch targets
+- Empty states
+- Error states
+- Accessibility labels
+- Screen reader support
+- Font scaling
+- Bengali language support
+
+Maintain a consistent premium design system.
+
+Suggested visual direction:
+
+- Modern premium AI interface
+- Clean typography
+- Smooth but lightweight animations
+- Consistent spacing
+- Accessible contrast
+- Professional icons
+- Responsive cards
+- Clear status indicators
+
+Do not sacrifice performance for visual effects.
+
+Do not redesign working screens unnecessarily.
+
+---
+
+# PHASE 11 — BACKEND AND INFRASTRUCTURE
+
+Inspect the complete backend.
+
+Verify:
+
+- Node.js version
+- TypeScript configuration
+- Dependency versions
+- API routes
+- Authentication
+- Authorization
+- Provider integrations
+- Request validation
+- Response schemas
+- Logging
+- Error handling
+- Rate limiting
+- Database access
+- Deployment configuration
+- Health endpoints
+
+Implement:
+
+- Centralized provider gateway
+- Secure secret storage
+- Request IDs
+- Structured logging
+- API versioning
+- Health checks
+- Graceful shutdown
+- Retry policies
+- Abuse protection
+- Resource limits
+
+Never claim the backend is deployed unless an actual deployment is verified.
+
+Do not invent production URLs.
+
+Provide exact deployment instructions for services that require user credentials.
+
+---
+
+# PHASE 12 — COMPLETE AUTOMATED TESTING
+
+Replace superficial tests with meaningful behavioral tests.
+
+Create:
+
+## Unit Tests
+
+Test:
+
+- Business logic
+- Model routing
+- API parsing
+- Database operations
+- Encryption
+- Validation
+- Error handling
+- State management
+- Permissions
+- Security decisions
+
+## Integration Tests
+
+Test:
+
+- Firebase Authentication
+- Firestore
+- Room
+- SQLCipher
+- API clients
+- AI provider adapters
+- Backend gateway
+- File generation
+- RAG pipeline
+
+Use Firebase Emulator Suite and MockWebServer where appropriate.
+
+Mock external dependencies only in tests, never as hidden production substitutes.
+
+## UI Tests
+
+Test:
+
+- Onboarding
+- Login
+- Chat
+- Model selection
+- Attachments
+- Generation
+- Settings
+- Security Center
+- File export
+- Navigation
+- Error states
+
+## Regression Tests
+
+Every fixed bug must receive a regression test.
+
+## Performance Tests
+
+Measure:
+
+- Startup time
+- Memory usage
+- CPU usage
+- Battery impact
+- Network usage
+- Database performance
+- Long conversation performance
+- Large file handling
+- Background task reliability
+
+## Stress Tests
+
+Test realistic workloads and document:
+
+- Test device
+- Android version
+- Test duration
+- Workload
+- Resource consumption
+- Failures
+- Recovery behavior
+
+Never report a test as passed unless it actually ran successfully.
+
+---
+
+# PHASE 13 — PRODUCTION OBSERVABILITY
+
+Implement reliable monitoring without collecting unnecessary private data.
+
+Include:
+
+- Crash reporting
+- Non-sensitive diagnostics
+- Provider health
+- API latency
+- Error rates
+- Failed jobs
+- Database failures
+- Build information
+- App version
+- Device compatibility
+
+Redact:
+
+- API keys
+- Passwords
+- Authentication tokens
+- Private messages
+- Sensitive documents
+- Personal information
+
+Give users control over diagnostic data sharing where applicable.
+
+---
+
+# PHASE 14 — PERFORMANCE AND RESOURCE OPTIMIZATION
+
+Optimize for real Android phones, including devices with limited memory.
+
+Investigate:
+
+- Main-thread blocking
+- Excessive recomposition
+- Unnecessary network requests
+- Image memory usage
+- Large database queries
+- Unbounded caches
+- Background execution
+- Battery consumption
+- Coroutine leaks
+- Resource leaks
+- APK size
+
+Use:
+
+- Pagination
+- Lazy loading
+- Image resizing
+- Cache limits
+- Efficient database indexes
+- Proper lifecycle management
+- Background scheduling
+- Streaming where appropriate
+
+Do not introduce aggressive optimizations that break functionality.
+
+---
+
+# PHASE 15 — REQUIRED IMPLEMENTATION WORKFLOW
+
+Do not simply write an audit report and stop.
+
+Actually modify the project.
+
+Follow this order:
+
+1. Extract and inspect the complete source.
+2. Create a backup or clean Git branch.
+3. Produce a detailed audit report.
+4. Identify confirmed P0 problems.
+5. Repair build and signing configuration.
+6. Repair security-critical issues.
+7. Repair broken AI integrations.
+8. Repair backend integrations.
+9. Repair every broken user-facing feature.
+10. Remove or clearly disable fake features.
+11. Improve architecture.
+12. Implement meaningful tests.
+13. Execute all available tests.
+14. Build the debug APK.
+15. Build the release APK.
+16. Verify APK signatures.
+17. Install on a real Android device if device access is available.
+18. Run regression tests.
+19. Produce final documentation.
+
+Work incrementally.
+
+After each major repair:
+
+- Compile.
+- Test.
+- Inspect logs.
+- Verify behavior.
+- Record results.
+
+Do not make dozens of unrelated changes without intermediate verification.
+
+Do not delete entire modules simply because they are difficult to repair.
+
+Preserve working functionality.
+
+Do not overwrite user data or production Firebase resources.
+
+Ask for credentials or approval only when genuinely necessary.
+
+---
+
+# PHASE 16 — FINAL DELIVERABLES
+
+At completion, provide:
+
+1. Complete audit report.
+2. List of confirmed bugs.
+3. List of potential risks.
+4. Root cause analysis.
+5. List of modified files.
+6. List of deleted files with justification.
+7. List of newly created files.
+8. AI provider integration report.
+9. Fake feature removal report.
+10. Security assessment.
+11. Firebase configuration report.
+12. Backend deployment instructions.
+13. Automated test report.
+14. Performance report.
+15. Known limitations.
+16. Remaining user configuration requirements.
+17. APK installation instructions.
+18. Release signing instructions.
+19. Upgrade and migration instructions.
+20. Final production readiness assessment.
+
+Generate:
+
+- Debug APK
+- Release APK when signing credentials are available
+- AAB when appropriate
+- SHA-256 checksums
+- Build logs
+- Test results
+- Updated README
+- Environment variable example file
+- Deployment documentation
+- Security configuration documentation
+
+Never include real secrets in the deliverables.
+
+---
+
+# PHASE 17 — STRICT QUALITY RULES
+
+These rules are mandatory.
+
+1. No fake AI.
+2. No fake API responses.
+3. No dummy production features.
+4. No hardcoded AI answers.
+5. No invented model names.
+6. No invented API endpoints.
+7. No fabricated success messages.
+8. No simulated generation completion.
+9. No fake security claims.
+10. No fake test results.
+11. No fabricated citations.
+12. No hidden fallback to mock data.
+13. No hardcoded production secrets.
+14. No insecure release signing.
+15. No ignored critical exceptions.
+16. No silent data loss.
+17. No destructive database migration without backup strategy.
+18. No unsupported device-control claims.
+19. No unsupported feature advertisements.
+20. No unfinished implementation presented as complete.
+
+If an external provider is unavailable, report it.
+
+If API credentials are missing, request them securely.
+
+If network access is unavailable, distinguish environment failure from code failure.
+
+If a physical Android device is unavailable, explicitly mark device tests as NOT RUN.
+
+If a test cannot run, never mark it as PASSED.
+
+If the project cannot be built, report the exact build failure and continue with the remaining safe source-level work.
+
+Do not claim 100% accuracy, perfect security or complete verification without evidence.
+
+The actual objective is measurable, reproducible, production-quality reliability.
+
+---
+
+# FINAL ACCEPTANCE CRITERIA
+
+AYRA AI can be considered ready for release only when:
+
+- The project builds successfully.
+- All critical compilation errors are fixed.
+- Release signing is configured securely.
+- APK signature verification passes.
+- Fresh installation succeeds on a compatible device.
+- Upgrade installation succeeds.
+- No known critical security vulnerabilities remain unaddressed.
+- No fake feature is exposed as real.
+- All advertised AI capabilities are genuinely supported.
+- All required API integrations are verified.
+- Database migration tests pass.
+- Authentication and authorization tests pass.
+- Critical user workflows pass.
+- Crash and regression tests pass.
+- Performance is measured on actual hardware.
+- Remaining limitations are documented.
+
+Produce an evidence-based release readiness report.
+
+## FINAL INSTRUCTION
+
+Start with the actual uploaded AYRA AI project.
+
+Inspect the entire repository, understand the existing architecture, identify every problem, implement the required fixes, test the actual implementations, and generate the best reliable production-ready version possible.
+
+Do not stop after analysis.
+
+Do not merely recommend code changes.
+
+Make the changes in the actual project whenever the required files and tools are available.
+
+Do not destroy existing working features.
+
+Do not invent missing credentials, services, APIs or capabilities.
+
+Prioritize correctness, security, real functionality, reliability, maintainability, performance and transparent reporting over feature count or marketing claims.
+
+**The final goal is a genuinely functional, secure, stable, maintainable and professionally engineered AYRA AI Android application — not a demo, not a mockup, and not a fake AI application.**

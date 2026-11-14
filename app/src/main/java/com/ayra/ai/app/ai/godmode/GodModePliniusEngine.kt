@@ -29,12 +29,20 @@ class GodModePliniusEngine(private val context: Context? = null) {
             .take(2)
             .toList()
 
-        for (cveId in cveMatches) {
-            val cveReport = withTimeoutOrNull(1800L) {
-                runCatching { CyberTerminalEngine.executeCommand("cve $cveId", context).output }.getOrDefault("")
-            }.orEmpty()
-            if (cveReport.isNotBlank()) {
-                blocks.add("[LIVE CVE INTEL: $cveId]\n${cveReport.take(1400)}")
+        if (externalProviders.allowExternalWikiGrounding) {
+            for (cveId in cveMatches) {
+                val cveReport = withTimeoutOrNull(1800L) {
+                    try {
+                        CyberTerminalEngine.executeCommand("cve $cveId", context).output
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        ""
+                    }
+                }.orEmpty()
+                if (cveReport.isNotBlank()) {
+                    blocks.add("[LIVE CVE INTEL: $cveId]\n${cveReport.take(1400)}")
+                }
             }
         }
 
@@ -76,6 +84,8 @@ class GodModePliniusEngine(private val context: Context? = null) {
                     systemPromptOverride = systemPrompt
                 )
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             externalProviders.generateChatResponse(
                 prompt = prompt,

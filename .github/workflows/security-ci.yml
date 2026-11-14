@@ -29,12 +29,14 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x gradlew
       - name: Run Android Debug Unit & Security Regression Tests
         run: ./gradlew :app:testDebugUnitTest
-      - name: Assemble Debug APK
-        run: ./gradlew :app:assembleDebug
+      - name: Assemble Debug & R8 Release APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease
 
   backend-zero-trust-tests:
     name: Zero-Trust Node/TS Backend Build & Tests

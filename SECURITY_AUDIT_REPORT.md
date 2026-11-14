@@ -73,3 +73,22 @@
   - No `FLAG_SECURE` window protection or tapjacking (`filterTouchesWhenObscured`) on sensitive security controls.
   - Default template `.webp` launcher icons remain in `res/mipmap-*/`.
 - **Remediation**: Configure strict XML exclusion rules, implement `SensitiveClipboardHelper` & `FLAG_SECURE`, harden manifest/components, and replace template `.webp` launcher assets with AYRA custom adaptive/non-adaptive PNGs.
+
+---
+
+## 3. Post-Remediation Audit Status (Verified 14 Nov 2026)
+
+All 10 findings (`FINDING-01` through `FINDING-10`) have been remediated and verified in the codebase, plus additional hardening applied during final audit:
+
+| Finding | Implemented Controls | Verification Status |
+|---|---|---|
+| **FINDING-01** | `VaultDatabaseKeyManager` + `sqlcipher-android:4.6.1` (`SupportOpenHelperFactory`), `PRAGMA secure_delete=ON`, automatic legacy SQLite export migration, fail-closed missing native SQLCipher check on Android | Verified (`VaultDatabaseKeyManager`, `ChatDatabaseSessionTest` migrations `4->5->6`, `AyraSecurityRegressionTest`) |
+| **FINDING-02** | `EncryptedVaultStorage` (`AYRAVLT1` per-file 256-bit AES-GCM DEKs + AAD), `AndroidHardeningHelper.secureWipeFile`, canonical path confinement in `materializeTempDecryptedFile` & `ComfyUiClient.resolveConfinedOutputFile` | Verified (`AyraSecurityRegressionTest`, `MasterIntegrityUpgradeTest`) |
+| **FINDING-03** | `AyraE2eeEngine` (`E2EEv1:` P-256 ECDH + HKDF-SHA256 + ECDSA P-256 identity signatures, anti-replay watermark, persisted `revokedAtEpoch` multi-epoch revocation enforcement) | Verified (`AyraSecurityRegressionTest` including multi-epoch revocation test) |
+| **FINDING-04** | `AyraKeyManager` purpose-separated aliases, StrongBox preference + TEE fallback, `KeyInfo` inspection, versioned key rotation, fail-closed when `AndroidKeyStore` is present | Verified (`AyraSecurityRegressionTest`) |
+| **FINDING-05** | `EncryptedPreferences` (`.commit()` atomic persistence) + `ALIAS_PREFS_KEK` protecting custom instructions, memory facts, usage telemetry, and host URLs | Verified (`AyraSecurityRegressionTest`) |
+| **FINDING-06** | `BiometricAuthManager` (`CryptoObject` cipher + `DEVICE_CREDENTIAL`), `VaultLockManager` background/timeout auto-lock, `VaultLockScreen` | Verified (`AyraSecurityRegressionTest`) |
+| **FINDING-07** | Zero-trust `backend/` (Firebase Auth `checkRevoked=true`, App Check, Zod `.strict()`, Helmet, CORS, rate limit, SSRF DNS-rebinding protection) + Android `SecureAiGatewayClient`, default-off `POLLINATIONS_FREE`, Local-Only blocking in `ECC`/`GodMode`/`GeminiCLI`/`ExternalAiProviders.discoverDynamicModels` | Verified (`backend` 8/8 tests, `MasterIntegrityUpgradeTest`) |
+| **FINDING-08** | `NetworkSecurityHelper` TLS 1.3/1.2 AEAD cipher suites & SSRF validator across terminal, ComfyUI, Qwen, and provider test flows + `network_security_config.xml` | Verified (`AyraSecurityRegressionTest`) |
+| **FINDING-09** | `AiToolSecurityGuard` role-tag stripping, `<untrusted_external_data>` framing, exfiltration scoring, Local-Only & SSRF tool gating | Verified (`AyraSecurityRegressionTest`) |
+| **FINDING-10** | Full `<exclude>` in `backup_rules.xml` & `data_extraction_rules.xml`, `allowBackup="false"`, opt-in `FLAG_SECURE` (`MainActivity`), `filterTouchesWhenObscured`, `EXTRA_IS_SENSITIVE` clipboard helper, Play-compliant removal of `CALL_PHONE`/`SEND_SMS`, R8 release minification (`isMinifyEnabled=true`, `isShrinkResources=true`), and release exclusion of `DebugAppCheckProviderFactory` | Verified (`app-release.apk` dex & manifest scan, `AyraSecurityRegressionTest`) |

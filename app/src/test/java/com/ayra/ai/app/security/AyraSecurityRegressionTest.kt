@@ -376,4 +376,70 @@ class AyraSecurityRegressionTest {
         assertEquals(0, activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)
         controller.pause().stop().destroy()
     }
+
+    @Test
+    fun e2eeEngine_multiEpochRevocationBlocksPreviouslyRevokedEpochEnvelopes() {
+        val kpg = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+        val localBundle = AyraE2eeEngine.getOrCreateLocalDeviceBundle(context)
+
+        val envEpoch1 = AyraE2eeEngine.encryptEnvelope(context, "Epoch 1 secret", "uid|m1|text")
+        // Register local device bundle (already registered) + simulate another peer so we can rotate past epoch 2
+        val extraPeer = TrustedE2eeDevice(
+            deviceId = "dev_extra_peer",
+            deviceName = "Extra Peer",
+            identityPublicKeyB64 = AyraKeyManager.encodeB64(kpg.generateKeyPair().public.encoded),
+            ecdhPublicKeyB64 = AyraKeyManager.encodeB64(kpg.generateKeyPair().public.encoded),
+            fingerprintSha256 = "aa:bb:cc:dd",
+            epochAdded = 1
+        )
+        AyraE2eeEngine.upsertTrustedDevice(context, extraPeer)
+
+        // Revoke local device at epoch 2, then rotate to epoch 3 by revoking extraPeer
+        val epoch2 = AyraE2eeEngine.revokeDeviceAndRotateEpoch(context, localBundle.deviceId)
+        assertEquals(2, epoch2)
+        val epoch3 = AyraE2eeEngine.revokeDeviceAndRotateEpoch(context, extraPeer.deviceId)
+        assertEquals(3, epoch3)
+
+        // Even though currentEpoch is now 3 and revokedAtEpoch is 2, an epoch 1 envelope from before revocation
+        // or an epoch 2 envelope forged from the revoked device must be governed consistently:
+        // Specifically, rotating to epoch 3 must NOT allow epoch 2 messages from the device revoked at epoch 2.
+        val tamperedEpoch2Env = org.json.JSONObject(envEpoch1.removePrefix(AyraE2eeEngine.ENVELOPE_PREFIX)).apply {
+            put("epoch", 2)
+        }.let { "${AyraE2eeEngine.ENVELOPE_PREFIX}$it" }
+
+        val decryptEpoch2FromRevokedAt2 = runCatching {
+            AyraE2eeEngine.decryptEnvelope(context, tamperedEpoch2Env, "uid|m1|text", enforceReplayProtection = false)
+        }
+        assertTrue(
+            "Revoked device must remain blocked across subsequent epoch rotations",
+            decryptEpoch2FromRevokedAt2.isFailure
+        )
+        assertTrue(decryptEpoch2FromRevokedAt2.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun encryptedVaultStorage_materializeTempDecryptedFileConfinesPathTraversalNames() {
+        val secretBytes = "Vault containment verification payload".toByteArray()
+        val vaultFile = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "documents",
+            originalName = "../../outside_escape.pdf",
+            mimeType = "application/pdf",
+            plaintextBytes = secretBytes
+        )
+
+        val exported = EncryptedVaultStorage.materializeTempDecryptedFile(context, vaultFile)
+        val exportsRoot = File(context.cacheDir, "exports").canonicalPath
+        assertTrue(
+            "Temp export must remain confined inside cacheDir/exports",
+            exported.canonicalPath.startsWith("$exportsRoot${File.separator}")
+        )
+        assertFalse(
+            "Traversal target outside cacheDir must never exist",
+            File(context.cacheDir.parentFile, "outside_escape.pdf").exists()
+        )
+        assertArrayEquals(secretBytes, exported.readBytes())
+        EncryptedVaultStorage.wipeTempShareFiles(context)
+        assertFalse(exported.exists())
+    }
 }

@@ -245,4 +245,73 @@ class MasterIntegrityUpgradeTest {
         }
         assertTrue("Coroutines must propagate CancellationException", threwCancellation)
     }
+
+    @Test
+    fun testComfyUiClientConfinesTraversalFilenameInsideOutputDir() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"prompt_id":"job_123"}"""))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "job_123": {
+                    "outputs": {
+                      "9": {
+                        "images": [
+                          {"filename": "../../escaped_evil.png", "subfolder": "", "type": "output"}
+                        ]
+                      }
+                    }
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("PNG_BINARY_BYTES"))
+
+        val rootTmp = File(context.cacheDir, "comfy_test_${System.nanoTime()}").apply { mkdirs() }
+        val outputDir = File(rootTmp, "outputs").apply { mkdirs() }
+        try {
+            val client = com.ayra.ai.app.ai.studios.ComfyUiClient(
+                httpClient = okhttp3.OkHttpClient(),
+                context = context
+            )
+            val result = client.generateImage(
+                baseUrl = server.url("/").toString().trimEnd('/'),
+                prompt = "aurora skyline",
+                outputDir = outputDir
+            )
+            assertTrue("Expected ImageSuccess, got $result", result is com.ayra.ai.app.ai.studios.ComfyUiResult.ImageSuccess)
+            val downloaded = (result as com.ayra.ai.app.ai.studios.ComfyUiResult.ImageSuccess).file
+            assertTrue(
+                "Downloaded file must be confined inside outputDir",
+                downloaded.canonicalPath.startsWith("${outputDir.canonicalPath}${File.separator}")
+            )
+            assertFalse("Traversal file in parent dir must not exist", File(rootTmp, "escaped_evil.png").exists())
+        } finally {
+            rootTmp.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testLocalOnlyPrivacyModeBlocksCveWikiLookupAndDynamicModelDiscovery() = runBlocking {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
+        AyraPreferences.setExternalAiConsent(context, false)
+        try {
+            val plinius = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context)
+            val grounding = plinius.buildSecurityGrounding("Analyze CVE-2024-12345 and OWASP top 10")
+            assertFalse("Local-Only mode must skip external CVE lookup", grounding.contains("[LIVE CVE INTEL"))
+            assertTrue("Local offline OWASP handbook still grounds cleanly", grounding.contains("[OWASP SECURITY REFERENCE]"))
+
+            val externalProviders = com.ayra.ai.app.ai.providers.ExternalAiProviders(
+                context = context,
+                customHttpClient = null
+            )
+            val models = externalProviders.discoverDynamicModels(com.ayra.ai.app.ai.providers.AiProviderType.OPENAI)
+            assertTrue(models.isNotEmpty())
+            assertEquals(0, server.requestCount)
+        } finally {
+            AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+            AyraPreferences.setExternalAiConsent(context, true)
+        }
+    }
 }

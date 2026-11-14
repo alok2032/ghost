@@ -100,6 +100,8 @@ class GoogleAuthManager(
             GoogleSignInResult.Error(
                 "No Google account is configured on this device. Please add a Google account in device settings and retry."
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Google sign-in failed", e)
             GoogleSignInResult.Error(e.localizedMessage ?: "Google Sign-In failed. Please try again.")
@@ -135,6 +137,8 @@ class GoogleAuthManager(
                 val firebaseCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
                 auth.signInWithCredential(firebaseCredential).awaitResult().user
             } else null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             null
         }

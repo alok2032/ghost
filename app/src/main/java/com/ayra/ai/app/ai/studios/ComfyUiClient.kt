@@ -32,6 +32,21 @@ class ComfyUiClient @JvmOverloads constructor(
         return com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, cleanUrl)
     }
 
+    private fun resolveConfinedOutputFile(outputDir: File, prefix: String, remoteFilename: String): File {
+        if (!outputDir.exists()) outputDir.mkdirs()
+        val leaf = File(remoteFilename).name
+            .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            .trimStart('.')
+            .ifBlank { "output.bin" }
+        val outFile = File(outputDir, "${prefix}_${System.currentTimeMillis()}_$leaf")
+        val dirCanonical = outputDir.canonicalPath
+        val outCanonical = outFile.canonicalPath
+        if (outCanonical != dirCanonical && !outCanonical.startsWith("$dirCanonical${File.separator}")) {
+            throw SecurityException("Path traversal blocked for ComfyUI filename '$remoteFilename'")
+        }
+        return outFile
+    }
+
     suspend fun isServerReachable(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
         val clean = baseUrl.trim().trimEnd('/')
         if (!validateEndpoint(clean).allowed) return@withContext false
@@ -325,8 +340,7 @@ class ComfyUiClient @JvmOverloads constructor(
 
             val viewUrl = "$cleanBase/view?filename=${java.net.URLEncoder.encode(filename, "UTF-8")}&subfolder=${java.net.URLEncoder.encode(subfolder, "UTF-8")}&type=$folderType"
             val viewReq = Request.Builder().url(viewUrl).get().build()
-            if (!outputDir.exists()) outputDir.mkdirs()
-            val outFile = File(outputDir, "comfy_${System.currentTimeMillis()}_$filename")
+            val outFile = resolveConfinedOutputFile(outputDir, "comfy", filename)
             httpClient.newCall(viewReq).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download output file $filename (HTTP ${resp.code})")
@@ -341,6 +355,8 @@ class ComfyUiClient @JvmOverloads constructor(
                 promptId = promptId,
                 elapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             ComfyUiResult.Failure("ComfyUI request failed: ${e.message ?: "connection error"}")
         }
@@ -418,8 +434,7 @@ class ComfyUiClient @JvmOverloads constructor(
 
             val viewUrl = "$cleanBase/view?filename=${java.net.URLEncoder.encode(filename, "UTF-8")}&subfolder=${java.net.URLEncoder.encode(subfolder, "UTF-8")}&type=$folderType"
             val viewReq = Request.Builder().url(viewUrl).get().build()
-            if (!outputDir.exists()) outputDir.mkdirs()
-            val outFile = File(outputDir, "comfy_vid_${System.currentTimeMillis()}_$filename")
+            val outFile = resolveConfinedOutputFile(outputDir, "comfy_vid", filename)
             httpClient.newCall(viewReq).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download video $filename (HTTP ${resp.code})")
@@ -434,6 +449,8 @@ class ComfyUiClient @JvmOverloads constructor(
                 promptId = promptId,
                 elapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             ComfyUiResult.Failure("ComfyUI video request failed: ${e.message ?: "connection error"}")
         }
@@ -549,8 +566,7 @@ class ComfyUiClient @JvmOverloads constructor(
 
             val viewUrl = "$cleanBase/view?filename=${java.net.URLEncoder.encode(filename, "UTF-8")}&subfolder=${java.net.URLEncoder.encode(subfolder, "UTF-8")}&type=$folderType"
             val viewReq = Request.Builder().url(viewUrl).get().build()
-            if (!outputDir.exists()) outputDir.mkdirs()
-            val outFile = File(outputDir, "comfy_i2i_${System.currentTimeMillis()}_$filename")
+            val outFile = resolveConfinedOutputFile(outputDir, "comfy_i2i", filename)
             httpClient.newCall(viewReq).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download output file $filename (HTTP ${resp.code})")
@@ -565,6 +581,8 @@ class ComfyUiClient @JvmOverloads constructor(
                 promptId = promptId,
                 elapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             ComfyUiResult.Failure("ComfyUI img2img request failed: ${e.message ?: "connection error"}")
         }

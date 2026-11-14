@@ -1850,6 +1850,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(1L)
             AiUsageTracker.recordCall(context, provider, true, elapsed)
             elapsed
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
             throw e
@@ -1943,6 +1945,14 @@ class ExternalAiProviders @JvmOverloads constructor(
      */
     suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> = withContext(Dispatchers.IO) {
         dynamicModelCache[provider]?.let { if (it.isNotEmpty()) return@withContext it }
+        if (baseUrlOverrides.isEmpty() &&
+            channelKeyOverrides.isEmpty() &&
+            customHttpClient == null &&
+            provider != AiProviderType.LOCAL_OLLAMA &&
+            !com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed
+        ) {
+            return@withContext CURATED_MODELS.filter { it.provider == provider }
+        }
         val key = getProviderKey(provider)
         val discovered = mutableListOf<AiModelInfo>()
         try {
@@ -2053,6 +2063,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 }
                 else -> {}
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {}
 
         if (discovered.isNotEmpty()) {
@@ -2112,6 +2124,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                     }
                     AiUsageTracker.recordCall(context, provider, false, latency)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
             }

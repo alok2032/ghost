@@ -92,3 +92,28 @@
   - `gradle :app:testDebugUnitTest --rerun-tasks`: **121 tests run, 121 passed, 0 skipped, 0 failed** across 21 test suites (including `AlokUpgradeVerificationTest` covering CSV stats, OOXML + FlateDecode PDF, key-free backup, 3D `.OBJ`, SSRF/HTML reader, MockWebServer ComfyUI Wan MP4, Project reload/edit/rezip, and Whisper `/audio/transcriptions` + `AiUsageTracker`).
   - `gradle :app:testDebugUnitTest :app:assembleDebug`: **BUILD SUCCESSFUL** (`app/build/outputs/apk/debug/app-debug.apk` and `output-metadata.json` verified present).
 
+### Phase 21: Final Enterprise Hardening, Play Policy, R8 Release Verification & Emulator Suite (2026-11-14)
+- **Status:** Completed & Verified
+- **Changes:**
+  - **Build, Variant Isolation, R8 & CI (`.github/workflows/security-ci.yml`, `app/build.gradle.kts`, `app/proguard-rules.pro`):**
+    - Made `gradlew` executable (`-rwxr-xr-x`); updated CI to Java 21 + `chmod +x gradlew` + `./gradlew :app:assembleDebug :app:assembleRelease`.
+    - Enabled `isMinifyEnabled = true` and `isShrinkResources = true` in `buildTypes.release` (keeping `signingConfigs` intact per environment build policy); commented out unused `libs.logging.interceptor` and `libs.accompanist.permissions`; added R8 keep rules for Retrofit/OkHttp, Firebase AI Logic, App Check, Play Integrity, and Coroutines.
+    - Isolated `firebase-appcheck-debug` to `debugImplementation` and moved `DebugAppCheckProviderFactory` out of `src/main` into `src/debug/.../AppCheckDebugBridge.kt` with a no-op release stub in `src/release/.../AppCheckDebugBridge.kt`. Verified zero `DebugAppCheckProviderFactory` / `com.google.firebase.appcheck.debug` classes remain in `app-release.apk`.
+  - **Google Play Policy & Permission Minimization (`AndroidManifest.xml`, `ChatScreen.kt`, `DeviceAutomationController.kt`):**
+    - Removed restricted `CALL_PHONE` and `SEND_SMS` permissions, `ACTION_CALL` query, and dead direct call/SMS helper methods; retained safe zero-permission `ACTION_DIAL` (`actionType = "DIAL_PHONE"`) and `ACTION_SENDTO` (`smsto:`) composer intents gated behind `ActionConfirmationCard`.
+  - **Cryptographic, Path Confinement & Storage Durability (`AyraE2eeEngine.kt`, `EncryptedVaultStorage.kt`, `EncryptedPreferences.kt`, `ComfyUiClient.kt`):**
+    - Fixed multi-epoch E2EE revocation bypass by persisting `revokedAtEpoch` on `TrustedE2eeDevice` and rejecting envelopes with `epoch >= revokedFrom || epoch == currentEpoch`.
+    - Enforced canonical path confinement and leaf filename sanitization in `EncryptedVaultStorage.materializeTempDecryptedFile` (`cacheDir/exports/`) and `ComfyUiClient.resolveConfinedOutputFile` (`outputDir/`).
+    - Switched `EncryptedPreferences.putString` and `remove` to synchronous atomic `.commit()`.
+  - **AI Local-Only Consent Gating & Coroutine Cancellation (`EnterpriseCognitiveEngine.kt`, `GodModePliniusEngine.kt`, `GeminiCliEngine.kt`, `OmniRouteEngine.kt`, `OpenHiggsfieldEngine.kt`, `ExternalAiProviders.kt`, `GoogleAuthManager.kt`):**
+    - Gated external wiki/CVE grounding, Google Search grounding, and live model discovery (`discoverDynamicModels`) behind `allowExternalWikiGrounding` / `SecureAiGatewayClient.evaluateProviderAccess`.
+    - Propagated `kotlinx.coroutines.CancellationException` across `try/catch` and `runCatching` blocks cleanly.
+  - **Regression Tests Added (`AyraSecurityRegressionTest.kt`, `MasterIntegrityUpgradeTest.kt`):**
+    - Multi-epoch E2EE revocation enforcement, `EncryptedVaultStorage.materializeTempDecryptedFile` path traversal confinement, `ComfyUiClient` path traversal confinement via `MockWebServer`, and `Local-Only` CVE/model discovery blocking.
+- **Verification:**
+  - Android Unit, Robolectric & Firebase Emulator Tests: **155 / 155 passed, 0 skipped, 0 failed** across **24 test suites**.
+  - Firestore Rules Unit Tests (`firestore.test.js`): **6 / 6 passed**.
+  - Zero-Trust Node/TS Backend (`backend/`): **8 / 8 passed**.
+  - Release R8 APK (`27,533,706` bytes, 1 DEX) & Debug APK (`52,877,120` bytes, 20 DEX) built and verified.
+
+

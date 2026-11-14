@@ -152,6 +152,8 @@ class OmniRouteEngine(private val context: Context? = null) {
                     modelUsed = resp.modelUsed
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {}
 
         AiResponse(text = "", modelUsed = "OmniRoute")

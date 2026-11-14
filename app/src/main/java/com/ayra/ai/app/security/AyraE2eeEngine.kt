@@ -31,7 +31,8 @@ data class TrustedE2eeDevice(
     val fingerprintSha256: String,
     val epochAdded: Int,
     val isRevoked: Boolean = false,
-    val registeredAtMs: Long = System.currentTimeMillis()
+    val registeredAtMs: Long = System.currentTimeMillis(),
+    val revokedAtEpoch: Int = 0
 )
 
 data class E2eeDeviceKeyBundle(
@@ -198,7 +199,8 @@ object AyraE2eeEngine {
                         fingerprintSha256 = o.optString("fingerprintSha256", ""),
                         epochAdded = o.optInt("epochAdded", 1),
                         isRevoked = o.optBoolean("isRevoked", false),
-                        registeredAtMs = o.optLong("registeredAtMs", 0L)
+                        registeredAtMs = o.optLong("registeredAtMs", 0L),
+                        revokedAtEpoch = o.optInt("revokedAtEpoch", 0)
                     )
                 )
             }
@@ -224,6 +226,7 @@ object AyraE2eeEngine {
                 put("epochAdded", d.epochAdded)
                 put("isRevoked", d.isRevoked)
                 put("registeredAtMs", d.registeredAtMs)
+                put("revokedAtEpoch", d.revokedAtEpoch)
             })
         }
         e2eePrefs(context).putString(KEY_TRUSTED_DEVICES_ENC, arr.toString())
@@ -325,13 +328,18 @@ object AyraE2eeEngine {
      */
     @Synchronized
     fun revokeDeviceAndRotateEpoch(context: Context, targetDeviceId: String): Int {
+        val nextEpoch = getCurrentEpoch(context) + 1
         val current = getTrustedDevices(context)
         val updated = current.map {
-            if (it.deviceId == targetDeviceId) it.copy(isRevoked = true) else it
+            if (it.deviceId == targetDeviceId) {
+                val effectiveRevokedEpoch = if (it.revokedAtEpoch > 0) it.revokedAtEpoch else nextEpoch
+                it.copy(isRevoked = true, revokedAtEpoch = effectiveRevokedEpoch)
+            } else {
+                it
+            }
         }
         saveTrustedDevices(context, updated)
 
-        val nextEpoch = getCurrentEpoch(context) + 1
         e2eePrefs(context).putLong(KEY_CURRENT_EPOCH, nextEpoch.toLong())
         ensureEpochRootKey(context, nextEpoch).fill(0)
 
@@ -415,8 +423,11 @@ object AyraE2eeEngine {
         val devices = getTrustedDevices(context)
         val senderDevice = devices.find { it.deviceId == senderDeviceId }
             ?: throw SecurityException("Unknown E2EE sender device '$senderDeviceId'")
-        if (senderDevice.isRevoked && epoch >= senderDevice.epochAdded && epoch == getCurrentEpoch(context)) {
-            throw SecurityException("Sender device '$senderDeviceId' is revoked")
+        if (senderDevice.isRevoked) {
+            val revokedFrom = if (senderDevice.revokedAtEpoch > 0) senderDevice.revokedAtEpoch else senderDevice.epochAdded
+            if (epoch >= revokedFrom || epoch == getCurrentEpoch(context)) {
+                throw SecurityException("Sender device '$senderDeviceId' is revoked (epoch $epoch >= $revokedFrom)")
+            }
         }
 
         val fullAad = "$senderDeviceId|$epoch|$seq|$aadContext"

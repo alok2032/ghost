@@ -80,11 +80,17 @@ class EnterpriseCognitiveEngine(private val context: Context? = null) {
             }.getOrDefault("")
         } else ""
 
-        val wikiContext = withTimeoutOrNull(1500L) {
-            runCatching {
-                AutonomousKnowledgeEngine.queryMultiLayerWiki(prompt, isBengali)
-            }.getOrDefault("")
-        }.orEmpty()
+        val wikiContext = if (externalProviders.allowExternalWikiGrounding) {
+            withTimeoutOrNull(1500L) {
+                try {
+                    AutonomousKnowledgeEngine.queryMultiLayerWiki(prompt, isBengali)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    ""
+                }
+            }.orEmpty()
+        } else ""
 
         val systemDirective = buildString {
             append("You are the ECC (Enterprise Cognitive Computing) Engine.\n")
@@ -109,11 +115,13 @@ class EnterpriseCognitiveEngine(private val context: Context? = null) {
                     systemPromptOverride = systemDirective
                 )
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             externalProviders.generateChatResponse(
                 prompt = prompt,
                 systemPrompt = systemDirective,
-                withSearchGrounding = true
+                withSearchGrounding = externalProviders.allowExternalWikiGrounding
             )
         }
 

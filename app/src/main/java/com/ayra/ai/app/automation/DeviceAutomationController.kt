@@ -223,7 +223,7 @@ class DeviceAutomationController(private val context: Context) {
                     AutomationResult(
                         executed = true,
                         feedbackMessage = "📞 Opened phone dialer for ${action.displayName} (${action.phoneNumber}) / ডায়ালার খোলা হয়েছে।",
-                        actionType = "CALL_PHONE",
+                        actionType = "DIAL_PHONE",
                         extraData = action.phoneNumber
                     )
                 } catch (e: Exception) {
@@ -494,60 +494,6 @@ class DeviceAutomationController(private val context: Context) {
         return isExplicitBengaliCall || isExplicitEnglishCall
     }
 
-    @SuppressLint("MissingPermission")
-    private fun executePhoneCall(input: String): AutomationResult {
-        val numberMatcher = Pattern.compile("(\\+?[0-9]{3,14})").matcher(input)
-        val target = if (numberMatcher.find()) {
-            numberMatcher.group(1) ?: "100"
-        } else {
-            input.replace(Regex("(?i)^(call|dial|কল করো|ফোন করো)\\s*"), "").trim()
-        }
-
-        // Check if there is a message to speak
-        val sayMatch = Regex("(?i)(?:বলো|বলবে|say|tell)\\s*[:,-]?\\s*(.+)").find(input)
-        val spokenMsg = sayMatch?.groupValues?.get(1)?.trim()
-        if (!spokenMsg.isNullOrBlank()) {
-            val isBengali = spokenMsg.any { it in '\u0980'..'\u09FF' }
-            val announcement = if (isBengali) "হ্যালো $target! আপনার জন্য বার্তা: $spokenMsg" else "Hello $target! Message: $spokenMsg"
-            com.ayra.ai.app.voice.AyraVoiceAnnouncer.speakAloud(context, announcement)
-        }
-
-        val hasCallPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CALL_PHONE
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val intent = if (hasCallPermission && target.matches(Regex("\\+?[0-9]+"))) {
-            Intent(Intent.ACTION_CALL, Uri.parse("tel:$target")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        } else {
-            Intent(Intent.ACTION_DIAL, Uri.parse("tel:$target")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        }
-
-        return try {
-            context.startActivity(intent)
-            val feedback = if (!spokenMsg.isNullOrBlank()) {
-                "📞 Calling $target and speaking: \"$spokenMsg\" / $target কে কল করা হচ্ছে এবং বার্তাটি বলে দেওয়া হচ্ছে..."
-            } else {
-                "📞 Calling $target immediately... / $target কে কল করা হচ্ছে..."
-            }
-            AutomationResult(
-                executed = true,
-                feedbackMessage = feedback,
-                actionType = "CALL_PHONE",
-                extraData = target
-            )
-        } catch (e: Exception) {
-            AutomationResult(
-                executed = false,
-                feedbackMessage = "Unable to start call: ${e.message}"
-            )
-        }
-    }
-
     // --- 4b. Direct SMS Automation ---
     private fun isDirectSmsIntent(text: String): Boolean {
         if (text.contains("kafka") || text.contains("rabbitmq") || text.contains("socket") ||
@@ -558,46 +504,6 @@ class DeviceAutomationController(private val context: Context) {
         }
         return (text.startsWith("sms to ") || text.startsWith("send sms to ") || text.startsWith("send message to ") ||
                 text.contains("মেসেজ পাঠাও") || text.contains("এসএমএস পাঠাও") || text.contains("send text to"))
-    }
-
-    private fun executeDirectSms(input: String): AutomationResult {
-        val numberMatcher = Pattern.compile("(\\+?[0-9]{5,14})").matcher(input)
-        var targetPhone = if (numberMatcher.find()) numberMatcher.group(1) ?: "" else ""
-
-        val msgMatch = Regex("(?i)(?:saying|message|বার্তা|যে)\\s*[:,-]?\\s*(.+)").find(input)
-        val messageText = msgMatch?.groupValues?.get(1)?.trim() ?: "Hello from Ayra AI!"
-
-        val hasSmsPerm = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.SEND_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return if (hasSmsPerm && targetPhone.isNotBlank()) {
-            try {
-                val smsManager = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    context.getSystemService(android.telephony.SmsManager::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    android.telephony.SmsManager.getDefault()
-                }
-                val parts = smsManager.divideMessage(messageText)
-                if (parts.size > 1) {
-                    smsManager.sendMultipartTextMessage(targetPhone, null, parts, null, null)
-                } else {
-                    smsManager.sendTextMessage(targetPhone, null, messageText, null, null)
-                }
-                AutomationResult(
-                    executed = true,
-                    feedbackMessage = "✉️ SMS Sent directly to $targetPhone: \"$messageText\"! / $targetPhone নম্বরে সফলভাবে মেসেজ পাঠানো হয়েছে!",
-                    actionType = "SMS",
-                    extraData = targetPhone
-                )
-            } catch (e: Exception) {
-                openSmsComposer(targetPhone, messageText)
-            }
-        } else {
-            openSmsComposer(targetPhone, messageText)
-        }
     }
 
     private fun openSmsComposer(targetPhone: String, messageText: String): AutomationResult {

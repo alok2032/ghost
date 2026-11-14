@@ -242,7 +242,17 @@ object EncryptedVaultStorage {
         val meta = readMetadata(file)
         val plain = decryptVaultFileBytes(context, file)
         val shareDir = File(context.cacheDir, SHARE_CACHE_SUBDIR).apply { if (!exists()) mkdirs() }
-        val outFile = File(shareDir, meta.originalName)
+        val safeLeaf = File(meta.originalName).name
+            .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            .trimStart('.')
+            .ifBlank { "vault_export.bin" }
+        val outFile = File(shareDir, safeLeaf)
+        val shareCanonical = shareDir.canonicalPath
+        val outCanonical = outFile.canonicalPath
+        if (outCanonical != shareCanonical && !outCanonical.startsWith("$shareCanonical${File.separator}")) {
+            plain.fill(0)
+            throw SecurityException("Path traversal blocked for vault export '${meta.originalName}'")
+        }
         outFile.writeBytes(plain)
         plain.fill(0)
         return outFile

@@ -104,7 +104,7 @@ class OpenHiggsfieldEngine(private val context: Context? = null) {
         if (!hasOnlineAi) return@withContext baseline
 
         val directorJson = withTimeoutOrNull(4500L) {
-            runCatching {
+            try {
                 val resp = ProviderPool(context, providers).executeSync(
                     ChatRequest(
                         prompt = """
@@ -117,7 +117,11 @@ class OpenHiggsfieldEngine(private val context: Context? = null) {
                     )
                 )
                 resp.text
-            }.getOrNull()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
         }.orEmpty()
 
         val startIdx = directorJson.indexOf('{')

@@ -1,22 +1,44 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# AYRA AI (`com.ayra.ai.app`)
 
-# Run and deploy your AI Studio app
+Enterprise-hardened Multi-Model AI Companion, Multimodal Studio, and Local/Cloud Assistant for Android (Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, Firebase AI Logic & Firestore) paired with a Zero-Trust Node.js/TypeScript backend gateway (`backend/`).
 
-This contains everything you need to run your app locally.
+## Architecture Overview
 
-View your app in AI Studio: https://ai.studio/apps/9e1521c1-2440-49ba-a2bd-a3170b1a7789
+- **Android App (`app/`):**
+  - **UI & Navigation:** Single-activity Jetpack Compose M3 (`MainActivity`, `AyraWorkspaceHost`, `AuthScreen`, `VaultLockScreen`, `ChatScreen`, `StudiosScreen`, `ModelsArenaScreen`, `ResearchDocsScreen`, `DiagnosticsToolsScreen`, `SecurityCenterScreen`).
+  - **AI Routing & Local Privacy:** `UnifiedAiEngine`, `ProviderPool` (circuit breaker + bounded LRU cache), `FirebaseAiEngine`, `ExternalAiProviders`, and `SecureAiGatewayClient` enforcing **Local-Only Privacy Mode** and explicit **External AI / Free Pool Consent** across cloud, wiki/CVE, and model discovery paths.
+  - **Zero-Trust Security & Storage:** `AyraKeyManager` (purpose-separated Android Keystore AES-256-GCM / ECDSA P-256 / HMAC-SHA256), `VaultDatabaseKeyManager` + `SQLCipher`, `EncryptedVaultStorage` (`AYRAVLT1` containers with canonical path confinement), `AyraE2eeEngine` (P-256 ECDH + HKDF-SHA256 + multi-epoch revocation), `BiometricAuthManager` + `VaultLockManager`, `NetworkSecurityHelper` (TLS 1.3/1.2 + SSRF guards), and `AiToolSecurityGuard`.
+  - **Variant-Isolated App Check:** `DebugAppCheckProviderFactory` is restricted exclusively to the `debug` build (`src/debug/.../AppCheckDebugBridge.kt` + `debugImplementation`); release builds ship zero debug App Check code and use `RecaptchaAppCheckProviderFactory` when `recaptcha_site_key` is configured.
+- **Zero-Trust Backend (`backend/`):** Express + TypeScript gateway enforcing Firebase ID token verification (`checkRevoked = true`), Firebase App Check, `.strict()` Zod validation, Helmet HSTS/CSP, explicit CORS allowlists, DNS-rebinding SSRF defense, rate limiting, and secret redaction.
+- **Cloud Rules (`firestore.rules`):** Owner-scoped, schema-validated Firestore rules across user profiles, encrypted messages, plugins, creations, E2EE devices, sessions, backups, and append-only security events.
 
-## Run Locally
+## Build & Verification
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+### 1. Android Unit, Robolectric & Firebase Emulator Tests
+```bash
+firebase emulators:exec --project demo-no-project --only firestore,auth "./gradlew :app:testDebugUnitTest --console=plain"
+```
 
+### 2. Android Debug & R8-Minified Release APKs
+```bash
+./gradlew :app:assembleDebug :app:assembleRelease
+```
+> **Note for Play Store Distribution:** Release builds in this repository inherit `debug.keystore` from the template build config for local/container verification. Configure your dedicated Play App Signing / hardware-backed upload keystore in your CI release pipeline before publishing.
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
-7. If you have already published your app in AI Studio, please [request upload key reset](https://support.google.com/googleplay/android-developer/answer/9842756#zippy=%2Crequest-an-upload-key-reset) in Google Play Console.
+### 3. Firestore Rules Verification
+```bash
+firebase emulators:exec --project demo-no-project --only firestore "node --test firestore.test.js"
+```
+
+### 4. Backend Build & Security Suite
+```bash
+npm --prefix backend ci
+npm --prefix backend run build
+npm --prefix backend test
+```
+
+## Further Documentation
+- `SECURITY_ARCHITECTURE.md` — Key hierarchy, SQLCipher, E2EE, and zero-trust planes
+- `SECURITY_AUDIT_REPORT.md` — Complete findings & remediation matrix (`FINDING-01`..`FINDING-10`)
+- `AUDIT.md` — Chronological remediation log (`F01`..`F21`, Phases 0–21)
+- `DEPLOYMENT_AND_RISK_REPORT.md` — Verified test/APK artifacts & production prerequisites

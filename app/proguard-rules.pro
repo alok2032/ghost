@@ -26,3 +26,26 @@
     public static int v(...);
     public static int i(...);
 }
+
+# Retrofit & OkHttp
+-dontwarn retrofit2.**
+-keepattributes Signature,Exceptions,InnerClasses
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-dontwarn okhttp3.**
+-dontwarn okio.**
+
+# Firebase AI Logic, App Check & Play Integrity
+-keep class com.google.firebase.ai.** { *; }
+-dontwarn com.google.firebase.ai.**
+-keep class com.google.firebase.appcheck.** { *; }
+-dontwarn com.google.firebase.appcheck.**
+-keep class com.google.android.play.core.integrity.** { *; }
+-dontwarn com.google.android.play.core.integrity.**
+
+# Kotlin Coroutines
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-dontwarn kotlinx.coroutines.**
+
