@@ -219,4 +219,21 @@ class AiMasterAuditAndUpgradeTest {
         assertTrue(payload.lighting.contains("Neon", ignoreCase = true))
         assertTrue(payload.jsonPayload.contains("\"aspectRatio\":\"16:9\""))
     }
+
+    @Test
+    fun testFirebaseSelectModelUsesFreeFlashByDefaultAndFastLiteForFast() {
+        val fb = FirebaseAiEngine(context)
+        assertEquals(FirebaseAiEngine.MODEL_FLASH, fb.selectModelForTask("auto", "solve math research algorithm", preferReasoning = true))
+        assertEquals(FirebaseAiEngine.MODEL_FLASH, fb.selectModelForTask("best", "prove theorem", preferReasoning = true))
+        assertEquals(FirebaseAiEngine.MODEL_FAST_LITE, fb.selectModelForTask("fast", "hi", preferReasoning = false))
+        assertEquals(FirebaseAiEngine.MODEL_PRO_REASONING, fb.selectModelForTask("gemini_pro", "complex architecture", preferReasoning = true))
+    }
+
+    @Test
+    fun testMainActivityLaunchesDirectlyWithoutForcedGoogleSignIn() {
+        val controller = org.robolectric.Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        val activity = controller.get()
+        assertFalse("MainActivity must not finish or block without Google login", activity.isFinishing)
+        controller.pause().stop().destroy()
+    }
 }

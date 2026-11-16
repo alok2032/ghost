@@ -144,6 +144,98 @@ class AyraOrchestrator(private val context: Context) {
                 emit(AyraEvent.Complete(modelResp))
                 return@flow
             }
+            AyraToolIntent.WIKI -> {
+                val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
+                val isDarkHint = trimmed.startsWith("/darkwiki", ignoreCase = true) || trimmed.startsWith("darkwiki:", ignoreCase = true)
+                val isDeepHint = trimmed.startsWith("/deepwiki", ignoreCase = true) || trimmed.startsWith("deepwiki:", ignoreCase = true)
+                val layerFilter = when {
+                    isDarkHint -> "DARK_WEB"
+                    isDeepHint -> "DEEP_WEB"
+                    else -> null
+                }
+                val topic = trimmed.replace(Regex("(?i)^(/(wiki|deepwiki|darkwiki)|wiki:|deepwiki:|darkwiki:|উইকি:)\\s*"), "").trim()
+                    .ifBlank { trimmed }
+                emit(AyraEvent.Status("Searching Multi-Layer Wiki & Room Vector DB for: $topic..."))
+
+                val lookup = runCatching {
+                    AutonomousKnowledgeEngine.queryMultiLayerWikiWithVectorCache(
+                        context = context,
+                        prompt = if (isDarkHint && !topic.contains("tor", true) && !topic.contains("dark", true)) "$topic dark web tor" else topic,
+                        isBengali = isBengali,
+                        layerFilter = layerFilter,
+                        forceAllLayers = true
+                    )
+                }.getOrElse {
+                    AutonomousKnowledgeEngine.CachedWikiLookupResult(
+                        wikiResult = AutonomousKnowledgeEngine.WikiLayerResult(topic),
+                        usedOfflineVectorCache = true,
+                        cachedNewSourcesCount = 0
+                    )
+                }
+
+                val wikiResult = lookup.wikiResult
+                val wikiMarkdown = wikiResult.toFormattedMarkdown()
+                if (wikiMarkdown.isBlank()) {
+                    emit(AyraEvent.Complete(AiResponse(
+                        text = if (isBengali) "এই বিষয়ে কোনো উইকি বা অফলাইন ভেক্টর তথ্য পাওয়া যায়নি।" else "No Wiki or offline Vector DB entries matched '$topic'.",
+                        modelUsed = "Ayra Multi-Layer Wiki & Vector DB 🌐"
+                    )))
+                    return@flow
+                }
+
+                val provenanceHeader = if (lookup.usedOfflineVectorCache) {
+                    "Offline Room Vector DB Hybrid Search (${lookup.vectorHits.size} semantic matches)"
+                } else {
+                    "Live Multi-Layer Wiki (+${lookup.cachedNewSourcesCount} cached offline)"
+                }
+
+                var completed = false
+                val wikiSysPrompt = """
+                    You are Ayra AI Multi-Layer Wiki Synthesizer ($provenanceHeader).
+                    Synthesize a crisp, encyclopedic, verified response on "$topic" using the provided Wiki / Vector DB sources.
+                    Preserve factual accuracy, distinguish Surface Wiki, Deep Web Academic/CVE insights, and Dark Web Technical/Tor notes cleanly, and cite the verified URLs returned.
+                    Respond in ${if (isBengali) "Bengali (বাংলা)" else "English"}.
+                """.trimIndent()
+
+                providerPool.streamChat(
+                    ChatRequest(
+                        prompt = "Synthesize verified multi-layer Wiki encyclopedia report for: $topic",
+                        persona = persona,
+                        mode = ProviderPoolMode.FAST,
+                        history = history,
+                        documentText = wikiMarkdown,
+                        systemPromptOverride = wikiSysPrompt
+                    )
+                ).collect { streamEvent ->
+                    when (streamEvent) {
+                        is AyraStreamEvent.Thinking -> emit(AyraEvent.Status("Synthesizing Wiki via ${streamEvent.model}..."))
+                        is AyraStreamEvent.Token -> emit(AyraEvent.Token(streamEvent.text))
+                        is AyraStreamEvent.Draft -> {}
+                        is AyraStreamEvent.Complete -> {
+                            completed = true
+                            val cites = if (wikiResult.citations.isNotEmpty() && !streamEvent.response.text.contains("http")) {
+                                "\n\n### Verified Sources ($provenanceHeader)\n" + wikiResult.citations.distinctBy { it.url }.take(6)
+                                    .joinToString("\n") { "• [${it.layer}] ${it.title}: ${it.url}" }
+                            } else ""
+                            emit(AyraEvent.Complete(AiResponse(
+                                text = streamEvent.response.text + cites,
+                                modelUsed = "Ayra Wiki (${streamEvent.response.modelUsed}) 🌐"
+                            )))
+                        }
+                        is AyraStreamEvent.Error -> {}
+                    }
+                }
+                if (!completed) {
+                    val directBanner = if (lookup.usedOfflineVectorCache) {
+                        "*[Serving fast offline results from Local Room Vector Database]*\n\n"
+                    } else ""
+                    emit(AyraEvent.Complete(AiResponse(
+                        text = "$directBanner$wikiMarkdown",
+                        modelUsed = if (lookup.usedOfflineVectorCache) "Ayra Offline Vector DB ⚡" else "Ayra Multi-Layer Wiki Direct 🌐"
+                    )))
+                }
+                return@flow
+            }
             AyraToolIntent.DEEP_RESEARCH -> {
                 val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
                 val topic = trimmed.replace(Regex("(?i)^(deep research|ডিপ রিসার্চ|গভীর গবেষণা|research on|গবেষণা করো|research:)\\s*"), "").trim()
@@ -163,7 +255,12 @@ class AyraOrchestrator(private val context: Context) {
                 }
                 if (liveGrounding.isBlank()) {
                     liveGrounding = runCatching {
-                        AutonomousKnowledgeEngine.queryMultiLayerWiki(topic, isBengali)
+                        AutonomousKnowledgeEngine.queryMultiLayerWikiWithVectorCache(
+                            context = context,
+                            prompt = topic,
+                            isBengali = isBengali,
+                            forceAllLayers = true
+                        ).wikiResult.toFormattedMarkdown()
                     }.getOrDefault("")
                 }
 
@@ -179,7 +276,7 @@ class AyraOrchestrator(private val context: Context) {
                 ).joinToString("\n\n").ifBlank { null }
 
                 var completed = false
-                var failed = false
+                var lastStreamError: AyraError? = null
                 providerPool.streamChat(
                     ChatRequest(
                         prompt = trimmed,
@@ -204,11 +301,11 @@ class AyraOrchestrator(private val context: Context) {
                             emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ayra Deep Research (${streamEvent.response.modelUsed}) 🔬")))
                         }
                         is AyraStreamEvent.Error -> {
-                            failed = true
+                            lastStreamError = streamEvent.error
                         }
                     }
                 }
-                if (!completed && failed) {
+                if (!completed) {
                     if (liveGrounding.isNotBlank()) {
                         val fallbackText = if (isBengali) {
                             "# 🔬 ডিপ রিসার্চ: $topic\n\n*(এআই সিন্থেসিস সাময়িকভাবে অনুপলব্ধ; নিচে যাচাইকৃত লাইভ তথ্য দেখানো হলো)*\n\n$liveGrounding"
@@ -217,7 +314,7 @@ class AyraOrchestrator(private val context: Context) {
                         }
                         emit(AyraEvent.Complete(AiResponse(text = fallbackText, craftType = "RESEARCH", modelUsed = "Verified Web Evidence 🌐")))
                     } else {
-                        emit(AyraEvent.Error(AyraError.NoNetwork("Deep Research providers and network grounding unavailable.")))
+                        emit(AyraEvent.Error(lastStreamError ?: AyraError.NoNetwork("Deep Research providers and network grounding unavailable.")))
                     }
                 }
                 return@flow
@@ -299,15 +396,22 @@ class AyraOrchestrator(private val context: Context) {
                 }
 
                 val externalProviders = com.ayra.ai.app.ai.providers.ExternalAiProviders(context)
+                val wsCtx = WorkspaceContextBuilder.resolve(context, persona, tier)
+                val effectiveTier = wsCtx.effectiveTier
+                val effectivePersona = wsCtx.effectivePersona
 
                 // Main CHAT & Coding execution through Unified Multi-AI ProviderPool
-                val poolMode = when (tier) {
+                val poolMode = when (effectiveTier) {
                     "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" -> ProviderPoolMode.BEST
                     "fast", "gemini_flash" -> ProviderPoolMode.FAST
-                    else -> ProviderPoolMode.AUTO
+                    else -> when (wsCtx.effectiveThinkingMode) {
+                        "fast" -> ProviderPoolMode.FAST
+                        "deep_analysis", "reasoning", "research" -> ProviderPoolMode.BEST
+                        else -> ProviderPoolMode.AUTO
+                    }
                 }
 
-                val (prefProvider, prefModel) = when (tier) {
+                val (prefProvider, prefModel) = when (effectiveTier) {
                     "gemini_flash" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL
                     "gemini_pro" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL
                     "deepseek_harness", "deepseek_r1" -> {
@@ -337,11 +441,11 @@ class AyraOrchestrator(private val context: Context) {
                     else -> null to null
                 }
 
-                val godModeGrounding = if (tier == "godmode") {
+                val godModeGrounding = if (effectiveTier == "godmode") {
                     com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(trimmed)
                 } else ""
 
-                val sysOverride = when (tier) {
+                val sysOverride = when (effectiveTier) {
                     "qwen_uncensored" -> com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK
                     "godmode" -> buildString {
                         append("You are G0DM0D3 Security Research Engine (Plinius Architecture). Analyze technical, architectural, and security topics rigorously and directly in the user's language.")
@@ -363,20 +467,27 @@ class AyraOrchestrator(private val context: Context) {
                     gitHubPluginEngine.buildActiveContextForPrompt(trimmed, enabledPlugins)
                 } else null
 
-                // Retrieve persistent Room Knowledge Base RAG citations when indexed documents exist
+                // Retrieve persistent Room Knowledge Base RAG citations + Dark/Deep Web Vector DB grounding
+                val db = ChatDatabase.getDatabase(context)
                 val ragContext = runCatching {
-                    val dao = ChatDatabase.getDatabase(context).knowledgeDocumentDao()
-                    val (formatted, hits) = DocumentRagEngine(dao).buildCitedContext(trimmed, topK = 4)
+                    val (formatted, hits) = DocumentRagEngine(db.knowledgeDocumentDao(), context).buildCitedContext(trimmed, topK = 4)
                     if (hits.isNotEmpty()) formatted else ""
+                }.getOrDefault("")
+                val vectorContext = runCatching {
+                    val minThreshold = if (GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(trimmed)) 0.25 else 0.44
+                    val vecRepo = com.ayra.ai.app.ai.rag.VectorKnowledgeRepository(db.vectorKnowledgeDao(), context)
+                    val (formattedVec, vecHits) = vecRepo.buildCitedVectorContext(trimmed, topK = 3, minScore = minThreshold)
+                    if (vecHits.isNotEmpty()) formattedVec else ""
                 }.getOrDefault("")
                 val combinedDocText = listOfNotNull(
                     documentText?.takeIf { it.isNotBlank() },
-                    ragContext.takeIf { it.isNotBlank() }
+                    ragContext.takeIf { it.isNotBlank() },
+                    vectorContext.takeIf { it.isNotBlank() }
                 ).joinToString("\n\n").ifBlank { null }
 
                 val request = ChatRequest(
                     prompt = trimmed,
-                    persona = persona,
+                    persona = effectivePersona,
                     mode = poolMode,
                     history = history,
                     imageBase64 = imageBase64,
@@ -385,9 +496,12 @@ class AyraOrchestrator(private val context: Context) {
                     preferredProvider = prefProvider,
                     preferredModelId = prefModel,
                     activePluginContext = activePluginCtx?.systemPromptInjection,
-                    activePluginNames = activePluginCtx?.activePluginNames ?: emptyList()
+                    activePluginNames = activePluginCtx?.activePluginNames ?: emptyList(),
+                    thinkingMode = wsCtx.effectiveThinkingMode,
+                    workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null }
                 )
 
+                var terminalEmitted = false
                 providerPool.streamChat(request).collect { streamEvent ->
                     when (streamEvent) {
                         is AyraStreamEvent.Thinking -> {
@@ -400,6 +514,7 @@ class AyraOrchestrator(private val context: Context) {
                             emit(AyraEvent.Status("Consensus draft received from ${streamEvent.model}"))
                         }
                         is AyraStreamEvent.Complete -> {
+                            terminalEmitted = true
                             emit(AyraEvent.Complete(
                                 AiResponse(
                                     text = streamEvent.response.text,
@@ -408,9 +523,13 @@ class AyraOrchestrator(private val context: Context) {
                             ))
                         }
                         is AyraStreamEvent.Error -> {
+                            terminalEmitted = true
                             emit(AyraEvent.Error(streamEvent.error))
                         }
                     }
+                }
+                if (!terminalEmitted) {
+                    emit(AyraEvent.Error(AyraError.ProviderDown(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, 502, "No response received from AI stream.")))
                 }
             }
         }

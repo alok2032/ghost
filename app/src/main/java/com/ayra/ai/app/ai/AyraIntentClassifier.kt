@@ -11,7 +11,8 @@ enum class AyraToolIntent {
     PDF,
     TERMINAL,
     DEEP_RESEARCH,
-    GITHUB_PLUGIN
+    GITHUB_PLUGIN,
+    WIKI
 }
 
 /**
@@ -32,6 +33,7 @@ object AyraIntentClassifier {
     private val PDF_PREFIX_PATTERN = Pattern.compile("^(/(pdf|document)|pdf:|doc:|পিডিএফ:)\\s+.+", Pattern.CASE_INSENSITIVE)
     private val TERMINAL_PREFIX_PATTERN = Pattern.compile("^(/(terminal|term|cmd|shell|exec)|terminal:|টার্মিনাল:)\\s+.+", Pattern.CASE_INSENSITIVE)
     private val RESEARCH_PREFIX_PATTERN = Pattern.compile("^(/(research|deepresearch)|research:|গবেষণা:)\\s+.+", Pattern.CASE_INSENSITIVE)
+    private val WIKI_PREFIX_PATTERN = Pattern.compile("^(/(wiki|deepwiki|darkwiki)|wiki:|deepwiki:|darkwiki:|উইকি:)\\s+.+", Pattern.CASE_INSENSITIVE)
     private val PLUGIN_PREFIX_PATTERN = Pattern.compile("^(/(plugin|github)|plugin:|প্লাগইন:)\\s+.+", Pattern.CASE_INSENSITIVE)
 
     // Educational or inquiry questions that must NEVER be hijacked to media or tools
@@ -57,6 +59,7 @@ object AyraIntentClassifier {
         if (MODEL_3D_PREFIX_PATTERN.matcher(trimmed).find()) return AyraToolIntent.MODEL_3D
         if (PDF_PREFIX_PATTERN.matcher(trimmed).find()) return AyraToolIntent.PDF
         if (TERMINAL_PREFIX_PATTERN.matcher(trimmed).find()) return AyraToolIntent.TERMINAL
+        if (WIKI_PREFIX_PATTERN.matcher(trimmed).find()) return AyraToolIntent.WIKI
         if (RESEARCH_PREFIX_PATTERN.matcher(trimmed).find()) return AyraToolIntent.DEEP_RESEARCH
 
         // 1b. Explicit GitHub repository plugin install / connect requests (URL or owner/repo + install verb)

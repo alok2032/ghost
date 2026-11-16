@@ -51,7 +51,7 @@ class AiComparisonEngine(
 
     fun getAvailableTargets(): List<ArenaTarget> {
         val list = mutableListOf<ArenaTarget>()
-        if (context != null && FirebaseAiEngine.isAvailable(context)) {
+        if (firebaseEngine != null && context != null && FirebaseAiEngine.isAvailable(context)) {
             list.add(
                 ArenaTarget(
                     id = "fb_gemini_3_8_flash",
@@ -206,8 +206,8 @@ class AiComparisonEngine(
 
         // Try Firebase AI Logic first for zero-key synthesis, else first working external channel
         val fbSynthesis = runCatching {
-            if (context != null && FirebaseAiEngine.isAvailable(context)) {
-                firebaseEngine?.generateText(
+            if (firebaseEngine != null && context != null && FirebaseAiEngine.isAvailable(context)) {
+                firebaseEngine.generateText(
                     prompt = debatePrompt,
                     systemPrompt = "You are an impartial multi-model verification arbiter.",
                     modelName = FirebaseAiEngine.MODEL_FLASH

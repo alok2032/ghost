@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,7 +13,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -38,8 +42,9 @@ import kotlinx.coroutines.launch
 /**
  * Production MainActivity for Ayra AI.
  * Extends FragmentActivity to host hardware-backed BiometricPrompt CryptoObject verification,
- * configures Firebase App Check before ViewModels/Compose, enforces Google Sign-In gating,
- * applies FLAG_SECURE / tapjacking hardening, and manages lifecycle vault auto-lock & temp wiping.
+ * configures Firebase App Check before ViewModels/Compose, keeps optional Google Sign-In/Cloud Sync
+ * gated behind an authenticated FirebaseUser, applies FLAG_SECURE / tapjacking hardening,
+ * and manages lifecycle vault auto-lock & temp wiping.
  */
 class MainActivity : FragmentActivity() {
 
@@ -85,11 +90,30 @@ class MainActivity : FragmentActivity() {
             AyraPreferences.isScreenCaptureBlocked(applicationContext)
         )
         VaultLockManager.initialize(applicationContext)
+        AyraPreferences.refreshUiFlows(applicationContext)
         lifecycle.addObserver(vaultLifecycleObserver)
 
         setContent {
             val themeMode by AyraPreferences.themeModeFlow.collectAsStateWithLifecycle(
                 initialValue = AyraPreferences.getThemeMode(applicationContext)
+            )
+            val accentPreset by AyraPreferences.accentPresetFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getAccentPreset(applicationContext)
+            )
+            val customAccentHex by AyraPreferences.customAccentHexFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getCustomAccentHex(applicationContext)
+            )
+            val fontScale by AyraPreferences.fontScaleFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getFontScale(applicationContext)
+            )
+            val bubbleCornerDp by AyraPreferences.bubbleCornerDpFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getBubbleCornerDp(applicationContext)
+            )
+            val uiDensity by AyraPreferences.uiDensityFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.getUiDensity(applicationContext)
+            )
+            val reducedMotion by AyraPreferences.reducedMotionFlow.collectAsStateWithLifecycle(
+                initialValue = AyraPreferences.isReducedMotionEnabled(applicationContext)
             )
             val blockScreenCapture by AyraPreferences.screenCaptureBlockedFlow.collectAsStateWithLifecycle(
                 initialValue = AyraPreferences.isScreenCaptureBlocked(applicationContext)
@@ -100,34 +124,54 @@ class MainActivity : FragmentActivity() {
 
             val useDark = when (themeMode) {
                 "light" -> false
-                "dark" -> true
+                "dark", "high_contrast", "custom" -> true
+                "auto" -> {
+                    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                    hour !in 6..18
+                }
                 else -> isSystemInDarkTheme()
             }
-            AyraTheme(darkTheme = useDark) {
+            AyraTheme(
+                darkTheme = useDark,
+                themeMode = themeMode,
+                accentPreset = accentPreset,
+                customAccentHex = customAccentHex,
+                fontScale = fontScale,
+                bubbleCornerDp = bubbleCornerDp,
+                uiDensity = uiDensity,
+                reducedMotion = reducedMotion
+            ) {
                 val currentUser by authManager.authStateFlow.collectAsStateWithLifecycle(
                     initialValue = authManager.currentUser
                 )
                 val isVaultLocked by VaultLockManager.isVaultLocked.collectAsStateWithLifecycle()
                 val vaultLockReason by VaultLockManager.lockReason.collectAsStateWithLifecycle()
+                var showOptionalAuthScreen by rememberSaveable { mutableStateOf(false) }
 
                 val user = currentUser
-                if (user == null) {
-                    AuthScreen(
-                        authManager = authManager,
-                        onSignedIn = { /* authStateFlow updates UI automatically */ }
-                    )
-                } else {
-                    LaunchedEffect(user.uid) {
-                        launch(Dispatchers.IO) {
-                            runCatching {
-                                AyraCloudRepository.create(applicationContext)
-                                    .registerCurrentDeviceAndSession(user.uid)
-                            }
+                LaunchedEffect(user?.uid) {
+                    val uid = user?.uid ?: return@LaunchedEffect
+                    showOptionalAuthScreen = false
+                    launch(Dispatchers.IO) {
+                        runCatching {
+                            AyraCloudRepository.create(applicationContext)
+                                .registerCurrentDeviceAndSession(uid)
                         }
                     }
+                }
 
-                    key(user.uid) {
-                        val activeDb = remember(user.uid) { ChatDatabase.getDatabase(applicationContext) }
+                BackHandler(enabled = showOptionalAuthScreen && user == null) {
+                    showOptionalAuthScreen = false
+                }
+
+                if (showOptionalAuthScreen && user == null) {
+                    AuthScreen(
+                        authManager = authManager,
+                        onSignedIn = { showOptionalAuthScreen = false }
+                    )
+                } else {
+                    key(user?.uid ?: "guest") {
+                        val activeDb = remember { ChatDatabase.getDatabase(applicationContext) }
                         val activeRepo = remember(activeDb) {
                             ChatRepository(
                                 context = applicationContext,

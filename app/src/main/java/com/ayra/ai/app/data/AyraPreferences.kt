@@ -43,11 +43,78 @@ object AyraPreferences {
     private const val KEY_BIOMETRIC_FOR_EXPORT = "sec_biometric_for_export"
     private const val KEY_DEVICE_ID = "sec_device_uuid"
 
+    private const val KEY_ACCENT_PRESET = "ui_accent_preset"
+    private const val KEY_CUSTOM_ACCENT_HEX = "ui_custom_accent_hex"
+    private const val KEY_FONT_SCALE = "ui_font_scale"
+    private const val KEY_BUBBLE_CORNER_DP = "ui_bubble_corner_dp"
+    private const val KEY_UI_DENSITY = "ui_density_mode"
+    private const val KEY_REDUCED_MOTION = "ui_reduced_motion"
+    private const val KEY_THINKING_MODE = "ai_thinking_mode"
+    private const val KEY_ACTIVE_PROJECT_ID = "workspace_active_project_id"
+    private const val KEY_ACTIVE_ASSISTANT_ID = "workspace_active_assistant_id"
+
+    // Response Characteristics & Structured Instructions
+    private const val KEY_FORMALITY_LEVEL = "ai_char_formality"
+    private const val KEY_DETAIL_LEVEL = "ai_char_detail"
+    private const val KEY_TECHNICAL_DEPTH = "ai_char_tech_depth"
+    private const val KEY_USE_EXAMPLES = "ai_char_use_examples"
+    private const val KEY_USE_STRUCTURED = "ai_char_use_structured"
+    private const val KEY_EMOJI_FREQ = "ai_char_emoji_freq"
+    private const val KEY_RESPONSE_LENGTH = "ai_char_response_length"
+
+    private const val KEY_STRUCT_ROLE = "ai_struct_role"
+    private const val KEY_STRUCT_ABOUT_USER = "ai_struct_about_user"
+    private const val KEY_STRUCT_HOW_RESPOND = "ai_struct_how_respond"
+    private const val KEY_STRUCT_OUTPUT_FORMAT = "ai_struct_output_format"
+    private const val KEY_STRUCT_INTERESTS = "ai_struct_interests"
+    private const val KEY_STRUCT_RESTRICTIONS = "ai_struct_restrictions"
+
     private val _themeModeFlow = kotlinx.coroutines.flow.MutableStateFlow("dark")
     val themeModeFlow: kotlinx.coroutines.flow.StateFlow<String> = _themeModeFlow
 
+    private val _accentPresetFlow = kotlinx.coroutines.flow.MutableStateFlow("cyan")
+    val accentPresetFlow: kotlinx.coroutines.flow.StateFlow<String> = _accentPresetFlow
+
+    private val _customAccentHexFlow = kotlinx.coroutines.flow.MutableStateFlow("#00F0FF")
+    val customAccentHexFlow: kotlinx.coroutines.flow.StateFlow<String> = _customAccentHexFlow
+
+    private val _fontScaleFlow = kotlinx.coroutines.flow.MutableStateFlow(1.0f)
+    val fontScaleFlow: kotlinx.coroutines.flow.StateFlow<Float> = _fontScaleFlow
+
+    private val _bubbleCornerDpFlow = kotlinx.coroutines.flow.MutableStateFlow(18)
+    val bubbleCornerDpFlow: kotlinx.coroutines.flow.StateFlow<Int> = _bubbleCornerDpFlow
+
+    private val _uiDensityFlow = kotlinx.coroutines.flow.MutableStateFlow("balanced")
+    val uiDensityFlow: kotlinx.coroutines.flow.StateFlow<String> = _uiDensityFlow
+
+    private val _reducedMotionFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val reducedMotionFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _reducedMotionFlow
+
+    private val _thinkingModeFlow = kotlinx.coroutines.flow.MutableStateFlow("balanced")
+    val thinkingModeFlow: kotlinx.coroutines.flow.StateFlow<String> = _thinkingModeFlow
+
+    private val _activeProjectIdFlow = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val activeProjectIdFlow: kotlinx.coroutines.flow.StateFlow<Long> = _activeProjectIdFlow
+
+    private val _activeAssistantIdFlow = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val activeAssistantIdFlow: kotlinx.coroutines.flow.StateFlow<Long> = _activeAssistantIdFlow
+
     private val _screenCaptureBlockedFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
     val screenCaptureBlockedFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _screenCaptureBlockedFlow
+
+    fun refreshUiFlows(context: Context) {
+        getThemeMode(context)
+        getAccentPreset(context)
+        getCustomAccentHex(context)
+        getFontScale(context)
+        getBubbleCornerDp(context)
+        getUiDensity(context)
+        isReducedMotionEnabled(context)
+        getThinkingMode(context)
+        getActiveProjectId(context)
+        getActiveAssistantId(context)
+        isScreenCaptureBlocked(context)
+    }
 
     fun getThemeMode(context: Context): String {
         val mode = getPrefs(context).getString(KEY_THEME_MODE, "dark") ?: "dark"
@@ -59,12 +126,149 @@ object AyraPreferences {
 
     fun setThemeMode(context: Context, mode: String) {
         val clean = when (mode.lowercase()) {
-            "light", "dark", "system" -> mode.lowercase()
+            "light", "dark", "system", "auto", "high_contrast", "custom" -> mode.lowercase()
             else -> "dark"
         }
         getPrefs(context).edit().putString(KEY_THEME_MODE, clean).apply()
         _themeModeFlow.value = clean
     }
+
+    fun getAccentPreset(context: Context): String {
+        val preset = getPrefs(context).getString(KEY_ACCENT_PRESET, "cyan") ?: "cyan"
+        if (_accentPresetFlow.value != preset) _accentPresetFlow.value = preset
+        return preset
+    }
+
+    fun setAccentPreset(context: Context, preset: String) {
+        val clean = when (preset.lowercase()) {
+            "cyan", "blue", "purple", "green", "orange", "pink", "red", "custom" -> preset.lowercase()
+            else -> "cyan"
+        }
+        getPrefs(context).edit().putString(KEY_ACCENT_PRESET, clean).apply()
+        _accentPresetFlow.value = clean
+    }
+
+    fun getCustomAccentHex(context: Context): String {
+        val hex = getPrefs(context).getString(KEY_CUSTOM_ACCENT_HEX, "#00F0FF") ?: "#00F0FF"
+        if (_customAccentHexFlow.value != hex) _customAccentHexFlow.value = hex
+        return hex
+    }
+
+    fun setCustomAccentHex(context: Context, hex: String) {
+        val clean = hex.trim().let { if (it.startsWith("#")) it else "#$it" }
+        val valid = if (Regex("^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$").matches(clean)) clean else "#00F0FF"
+        getPrefs(context).edit().putString(KEY_CUSTOM_ACCENT_HEX, valid).apply()
+        _customAccentHexFlow.value = valid
+    }
+
+    fun getFontScale(context: Context): Float {
+        val scale = getPrefs(context).getFloat(KEY_FONT_SCALE, 1.0f).coerceIn(0.85f, 1.35f)
+        if (_fontScaleFlow.value != scale) _fontScaleFlow.value = scale
+        return scale
+    }
+
+    fun setFontScale(context: Context, scale: Float) {
+        val clamped = scale.coerceIn(0.85f, 1.35f)
+        getPrefs(context).edit().putFloat(KEY_FONT_SCALE, clamped).apply()
+        _fontScaleFlow.value = clamped
+    }
+
+    fun getBubbleCornerDp(context: Context): Int {
+        val dp = getPrefs(context).getInt(KEY_BUBBLE_CORNER_DP, 18).coerceIn(6, 28)
+        if (_bubbleCornerDpFlow.value != dp) _bubbleCornerDpFlow.value = dp
+        return dp
+    }
+
+    fun setBubbleCornerDp(context: Context, dp: Int) {
+        val clamped = dp.coerceIn(6, 28)
+        getPrefs(context).edit().putInt(KEY_BUBBLE_CORNER_DP, clamped).apply()
+        _bubbleCornerDpFlow.value = clamped
+    }
+
+    fun getUiDensity(context: Context): String {
+        val density = getPrefs(context).getString(KEY_UI_DENSITY, "balanced") ?: "balanced"
+        if (_uiDensityFlow.value != density) _uiDensityFlow.value = density
+        return density
+    }
+
+    fun setUiDensity(context: Context, density: String) {
+        val clean = when (density.lowercase()) {
+            "compact", "balanced", "spacious" -> density.lowercase()
+            else -> "balanced"
+        }
+        getPrefs(context).edit().putString(KEY_UI_DENSITY, clean).apply()
+        _uiDensityFlow.value = clean
+    }
+
+    fun isReducedMotionEnabled(context: Context): Boolean {
+        val reduced = getPrefs(context).getBoolean(KEY_REDUCED_MOTION, false)
+        if (_reducedMotionFlow.value != reduced) _reducedMotionFlow.value = reduced
+        return reduced
+    }
+
+    fun setReducedMotionEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_REDUCED_MOTION, enabled).apply()
+        _reducedMotionFlow.value = enabled
+    }
+
+    fun getThinkingMode(context: Context): String {
+        val mode = getPrefs(context).getString(KEY_THINKING_MODE, "balanced") ?: "balanced"
+        if (_thinkingModeFlow.value != mode) _thinkingModeFlow.value = mode
+        return mode
+    }
+
+    fun setThinkingMode(context: Context, mode: String) {
+        val clean = when (mode.lowercase()) {
+            "fast", "balanced", "deep_analysis", "reasoning", "research", "coding", "creative", "custom" -> mode.lowercase()
+            else -> "balanced"
+        }
+        getPrefs(context).edit().putString(KEY_THINKING_MODE, clean).apply()
+        _thinkingModeFlow.value = clean
+    }
+
+    fun getActiveProjectId(context: Context): Long {
+        val id = getPrefs(context).getLong(KEY_ACTIVE_PROJECT_ID, 0L)
+        if (_activeProjectIdFlow.value != id) _activeProjectIdFlow.value = id
+        return id
+    }
+
+    fun setActiveProjectId(context: Context, id: Long) {
+        getPrefs(context).edit().putLong(KEY_ACTIVE_PROJECT_ID, id).apply()
+        _activeProjectIdFlow.value = id
+    }
+
+    fun getActiveAssistantId(context: Context): Long {
+        val id = getPrefs(context).getLong(KEY_ACTIVE_ASSISTANT_ID, 0L)
+        if (_activeAssistantIdFlow.value != id) _activeAssistantIdFlow.value = id
+        return id
+    }
+
+    fun setActiveAssistantId(context: Context, id: Long) {
+        getPrefs(context).edit().putLong(KEY_ACTIVE_ASSISTANT_ID, id).apply()
+        _activeAssistantIdFlow.value = id
+    }
+
+    // Response Characteristics
+    fun getFormalityLevel(context: Context): Int = getPrefs(context).getInt(KEY_FORMALITY_LEVEL, 2).coerceIn(0, 4)
+    fun setFormalityLevel(context: Context, level: Int) = getPrefs(context).edit().putInt(KEY_FORMALITY_LEVEL, level.coerceIn(0, 4)).apply()
+
+    fun getDetailLevel(context: Context): Int = getPrefs(context).getInt(KEY_DETAIL_LEVEL, 3).coerceIn(0, 4)
+    fun setDetailLevel(context: Context, level: Int) = getPrefs(context).edit().putInt(KEY_DETAIL_LEVEL, level.coerceIn(0, 4)).apply()
+
+    fun getTechnicalDepth(context: Context): Int = getPrefs(context).getInt(KEY_TECHNICAL_DEPTH, 2).coerceIn(0, 4)
+    fun setTechnicalDepth(context: Context, level: Int) = getPrefs(context).edit().putInt(KEY_TECHNICAL_DEPTH, level.coerceIn(0, 4)).apply()
+
+    fun getUseExamples(context: Context): Boolean = getPrefs(context).getBoolean(KEY_USE_EXAMPLES, true)
+    fun setUseExamples(context: Context, enabled: Boolean) = getPrefs(context).edit().putBoolean(KEY_USE_EXAMPLES, enabled).apply()
+
+    fun getUseStructuredFormatting(context: Context): Boolean = getPrefs(context).getBoolean(KEY_USE_STRUCTURED, true)
+    fun setUseStructuredFormatting(context: Context, enabled: Boolean) = getPrefs(context).edit().putBoolean(KEY_USE_STRUCTURED, enabled).apply()
+
+    fun getEmojiFrequency(context: Context): String = getPrefs(context).getString(KEY_EMOJI_FREQ, "low") ?: "low"
+    fun setEmojiFrequency(context: Context, freq: String) = getPrefs(context).edit().putString(KEY_EMOJI_FREQ, freq).apply()
+
+    fun getResponseLength(context: Context): String = getPrefs(context).getString(KEY_RESPONSE_LENGTH, "medium") ?: "medium"
+    fun setResponseLength(context: Context, len: String) = getPrefs(context).edit().putString(KEY_RESPONSE_LENGTH, len).apply()
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -460,6 +664,63 @@ object AyraPreferences {
         getPrefs(context).edit().remove(KEY_USER_CUSTOM_INSTRUCTIONS).apply()
     }
 
+    data class StructuredInstructions(
+        val rolePrompt: String = "",
+        val aboutUser: String = "",
+        val howToRespond: String = "",
+        val preferredOutputFormat: String = "",
+        val interests: String = "",
+        val restrictions: String = ""
+    )
+
+    fun getStructuredInstructions(context: Context): StructuredInstructions {
+        val enc = getSensitivePrefs(context)
+        return StructuredInstructions(
+            rolePrompt = enc.getString(KEY_STRUCT_ROLE, ""),
+            aboutUser = enc.getString(KEY_STRUCT_ABOUT_USER, ""),
+            howToRespond = enc.getString(KEY_STRUCT_HOW_RESPOND, ""),
+            preferredOutputFormat = enc.getString(KEY_STRUCT_OUTPUT_FORMAT, ""),
+            interests = enc.getString(KEY_STRUCT_INTERESTS, ""),
+            restrictions = enc.getString(KEY_STRUCT_RESTRICTIONS, "")
+        )
+    }
+
+    fun saveStructuredInstructions(context: Context, instructions: StructuredInstructions) {
+        val enc = getSensitivePrefs(context)
+        enc.putString(KEY_STRUCT_ROLE, instructions.rolePrompt.trim())
+        enc.putString(KEY_STRUCT_ABOUT_USER, instructions.aboutUser.trim())
+        enc.putString(KEY_STRUCT_HOW_RESPOND, instructions.howToRespond.trim())
+        enc.putString(KEY_STRUCT_OUTPUT_FORMAT, instructions.preferredOutputFormat.trim())
+        enc.putString(KEY_STRUCT_INTERESTS, instructions.interests.trim())
+        enc.putString(KEY_STRUCT_RESTRICTIONS, instructions.restrictions.trim())
+    }
+
+    fun buildCombinedPersonalizationBlock(context: Context): String {
+        val freeform = getUserCustomInstructions(context).trim()
+        val s = getStructuredInstructions(context)
+        val formality = listOf("Very Casual", "Casual", "Balanced", "Formal", "Academic/Executive")[getFormalityLevel(context)]
+        val detail = listOf("Minimal", "Brief", "Balanced", "Detailed", "Exhaustive")[getDetailLevel(context)]
+        val tech = listOf("Layperson", "Beginner", "Intermediate", "Advanced", "Expert")[getTechnicalDepth(context)]
+        val useExamples = getUseExamples(context)
+        val useStructured = getUseStructuredFormatting(context)
+        val emojiFreq = getEmojiFrequency(context)
+        val lengthPref = getResponseLength(context)
+
+        return buildString {
+            if (freeform.isNotBlank()) append(freeform).append("\n")
+            if (s.rolePrompt.isNotBlank()) append("AI Role Directive: ${s.rolePrompt}\n")
+            if (s.aboutUser.isNotBlank()) append("About User: ${s.aboutUser}\n")
+            if (s.howToRespond.isNotBlank()) append("Response Style: ${s.howToRespond}\n")
+            if (s.preferredOutputFormat.isNotBlank()) append("Preferred Output Format: ${s.preferredOutputFormat}\n")
+            if (s.interests.isNotBlank()) append("User Interests & Stack: ${s.interests}\n")
+            if (s.restrictions.isNotBlank()) append("Avoid / Restrictions: ${s.restrictions}\n")
+            append(
+                "Response Calibration: Tone=$formality, Detail=$detail, TechnicalDepth=$tech, Length=$lengthPref, " +
+                    "Examples=${if (useExamples) "Yes" else "Minimal"}, StructuredMarkdown=${if (useStructured) "Yes" else "PlainProse"}, Emojis=$emojiFreq."
+            )
+        }.trim()
+    }
+
     fun getRememberedFacts(context: Context): Set<String> {
         val enc = getSensitivePrefs(context)
         val jsonStr = enc.getString(KEY_REMEMBERED_FACTS, "")
@@ -665,6 +926,15 @@ object AyraPreferences {
         getSensitivePrefs(context).clear()
         getPrefs(context).edit().clear().commit()
         _themeModeFlow.value = "dark"
+        _accentPresetFlow.value = "cyan"
+        _customAccentHexFlow.value = "#00F0FF"
+        _fontScaleFlow.value = 1.0f
+        _bubbleCornerDpFlow.value = 18
+        _uiDensityFlow.value = "balanced"
+        _reducedMotionFlow.value = false
+        _thinkingModeFlow.value = "balanced"
+        _activeProjectIdFlow.value = 0L
+        _activeAssistantIdFlow.value = 0L
         _screenCaptureBlockedFlow.value = false
     }
 }

@@ -14,5 +14,7 @@ data class ChatSession(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val messageCount: Int = 0,
-    val lastMessagePreview: String = ""
+    val lastMessagePreview: String = "",
+    val projectId: Long? = null,
+    val assistantId: Long? = null
 )

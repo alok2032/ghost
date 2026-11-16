@@ -65,8 +65,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -153,6 +155,7 @@ fun ChatScreen(
     currentUser: com.google.firebase.auth.FirebaseUser? = null,
     onSignOut: () -> Unit = {},
     onOpenSecurityCenter: () -> Unit = {},
+    onOpenDrawer: (() -> Unit)? = null,
     embeddedInWorkspace: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -611,73 +614,103 @@ fun ChatScreen(
                     base64Image = docBase64Image
                 }
 
-                val history = viewModel.getRecentHistory(15)
+                val rawHistory = viewModel.getRecentHistory(15)
+                val history = if (rawHistory.lastOrNull()?.role == "user" && rawHistory.lastOrNull()?.content == userContent) {
+                    rawHistory.dropLast(1)
+                } else {
+                    rawHistory
+                }
+                var receivedTerminalEvent = false
                 val orchestratorJob = scope.launch {
-                    orchestrator.handle(
-                        prompt = trimmed,
-                        persona = currentPersona,
-                        tier = selectedModelTier,
-                        history = history,
-                        imageBase64 = base64Image,
-                        documentText = docText,
-                        documentName = docName
-                    ).collect { event ->
-                        when (event) {
-                            is com.ayra.ai.app.ai.AyraEvent.Status -> {
-                                viewModel.setThinkingStatus(event.message)
-                            }
-                            is com.ayra.ai.app.ai.AyraEvent.Token -> {
-                                viewModel.appendStreamingToken(event.text)
-                            }
-                            is com.ayra.ai.app.ai.AyraEvent.ActionRequired -> {
-                                viewModel.setPendingAction(event.action)
-                            }
-                            is com.ayra.ai.app.ai.AyraEvent.Complete -> {
-                                val assistantMsg = ChatMessage(
-                                    role = "assistant",
-                                    content = event.response.text,
-                                    craftType = event.response.craftType,
-                                    craftPayload = event.response.craftPayload,
-                                    actionCommand = event.response.modelUsed
-                                )
-                                val insertedAssistantId = viewModel.persistMessage(assistantMsg)
-                                cloudRepo?.let { repo ->
-                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                        runCatching {
-                                            repo.syncMessageToCloud(assistantMsg.copy(id = insertedAssistantId))
-                                            val cType = event.response.craftType
-                                            if (cType in listOf("IMAGE", "VIDEO", "SONG", "3D", "PDF_DOWNLOAD")) {
-                                                repo.logCreation(
-                                                    creationType = if (cType == "PDF_DOWNLOAD") "PDF" else cType!!,
-                                                    title = trimmed.take(120),
-                                                    prompt = trimmed,
-                                                    summary = event.response.text.take(800),
-                                                    modelUsed = event.response.modelUsed ?: "Ayra AI"
-                                                )
+                    try {
+                        orchestrator.handle(
+                            prompt = trimmed,
+                            persona = currentPersona,
+                            tier = selectedModelTier,
+                            history = history,
+                            imageBase64 = base64Image,
+                            documentText = docText,
+                            documentName = docName
+                        ).collect { event ->
+                            when (event) {
+                                is com.ayra.ai.app.ai.AyraEvent.Status -> {
+                                    viewModel.setThinkingStatus(event.message)
+                                }
+                                is com.ayra.ai.app.ai.AyraEvent.Token -> {
+                                    viewModel.appendStreamingToken(event.text)
+                                }
+                                is com.ayra.ai.app.ai.AyraEvent.ActionRequired -> {
+                                    receivedTerminalEvent = true
+                                    viewModel.setPendingAction(event.action)
+                                }
+                                is com.ayra.ai.app.ai.AyraEvent.Complete -> {
+                                    receivedTerminalEvent = true
+                                    val assistantMsg = ChatMessage(
+                                        role = "assistant",
+                                        content = event.response.text,
+                                        craftType = event.response.craftType,
+                                        craftPayload = event.response.craftPayload,
+                                        actionCommand = event.response.modelUsed
+                                    )
+                                    val insertedAssistantId = viewModel.persistMessage(assistantMsg)
+                                    cloudRepo?.let { repo ->
+                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            runCatching {
+                                                repo.syncMessageToCloud(assistantMsg.copy(id = insertedAssistantId))
+                                                val cType = event.response.craftType
+                                                if (cType in listOf("IMAGE", "VIDEO", "SONG", "3D", "PDF_DOWNLOAD")) {
+                                                    repo.logCreation(
+                                                        creationType = if (cType == "PDF_DOWNLOAD") "PDF" else cType!!,
+                                                        title = trimmed.take(120),
+                                                        prompt = trimmed,
+                                                        summary = event.response.text.take(800),
+                                                        modelUsed = event.response.modelUsed ?: "Ayra AI"
+                                                    )
+                                                }
                                             }
                                         }
                                     }
+                                    voiceManager.speak(event.response.text, overrideSentiment = detectedSentiment)
                                 }
-                                voiceManager.speak(event.response.text, overrideSentiment = detectedSentiment)
-                            }
-                            is com.ayra.ai.app.ai.AyraEvent.Error -> {
-                                val err = event.error.userFriendlyMessage
-                                viewModel.persistMessage(
-                                    ChatMessage(
-                                        role = "assistant",
-                                        content = "⚠️ $err"
+                                is com.ayra.ai.app.ai.AyraEvent.Error -> {
+                                    receivedTerminalEvent = true
+                                    val err = event.error.userFriendlyMessage
+                                    viewModel.persistMessage(
+                                        ChatMessage(
+                                            role = "assistant",
+                                            content = "⚠️ $err"
+                                        )
                                     )
-                                )
-                                if (event.error is com.ayra.ai.app.ai.providers.AyraError.NoProviderConfigured) {
-                                    viewModel.setShowKeyOnboarding(true)
+                                    if (event.error is com.ayra.ai.app.ai.providers.AyraError.NoProviderConfigured) {
+                                        viewModel.setShowKeyOnboarding(true)
+                                    }
                                 }
                             }
                         }
+                        if (!receivedTerminalEvent) {
+                            viewModel.persistMessage(
+                                ChatMessage(
+                                    role = "assistant",
+                                    content = "⚠️ কোনো উত্তর পাওয়া যায়নি। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
+                                )
+                            )
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        val safeErr = e.localizedMessage ?: e::class.java.simpleName
+                        viewModel.persistMessage(
+                            ChatMessage(
+                                role = "assistant",
+                                content = "⚠️ Error processing request: $safeErr"
+                            )
+                        )
                     }
                 }
                 viewModel.setInFlightJob(orchestratorJob)
                 orchestratorJob.join()
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 val err = "Error processing request: ${e.message}"
                 viewModel.persistMessage(
                     ChatMessage(
@@ -695,16 +728,21 @@ fun ChatScreen(
         dispatchPromptRef = { prompt: String -> dispatchPrompt(prompt) }
     }
 
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
+    val activeThinkingMode by com.ayra.ai.app.data.AyraPreferences.thinkingModeFlow.collectAsState()
+    val activeProjectId by com.ayra.ai.app.data.AyraPreferences.activeProjectIdFlow.collectAsState()
+    val activeAssistantId by com.ayra.ai.app.data.AyraPreferences.activeAssistantIdFlow.collectAsState()
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CosmicBackground)
+            .background(if (uiConfig.isDark) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.background)
     ) {
-        // 1. 3D Moving Solar System in the background (isolated on RenderNode layer)
-        SolarSystem3DCanvas(modifier = Modifier.fillMaxSize().graphicsLayer { })
-
-        // 2. Ambient animated corner neon flares (isolated on RenderNode layer)
-        AmbientCornerGlow(modifier = Modifier.fillMaxSize().graphicsLayer { })
+        // 1. 3D Moving Solar System in the background (when Dark & Motion enabled)
+        if (uiConfig.isDark && !uiConfig.reducedMotion && !uiConfig.isHighContrast) {
+            SolarSystem3DCanvas(modifier = Modifier.fillMaxSize().graphicsLayer { })
+            AmbientCornerGlow(modifier = Modifier.fillMaxSize().graphicsLayer { })
+        }
 
         // 3. Foreground Chat Content
         Column(
@@ -714,20 +752,29 @@ fun ChatScreen(
                 .imePadding()
                 .then(if (embeddedInWorkspace) Modifier else Modifier.navigationBarsPadding())
         ) {
-            // Top App Bar
+            // Top App Bar (no bottom navigation tiles)
             GlassHeaderBar(
                 isListening = isListening,
                 isSpeaking = isSpeaking,
                 currentPersona = currentPersona,
                 currentSentiment = currentSentiment,
                 activeSessionTitle = activeSession?.title,
+                activeThinkingMode = activeThinkingMode,
+                hasActiveWorkspaceContext = activeProjectId > 0L || activeAssistantId > 0L,
+                onMenuClick = onOpenDrawer ?: { showSessionsSheet = true },
                 onLogoClick = { showControlCenterSheet = true },
                 onSessionsClick = { showSessionsSheet = true },
                 onNewSessionClick = { viewModel.createNewSession() },
                 onClearChat = {
                     showClearChatDialog = true
                 },
-                onStopVoice = { voiceManager.stopSpeaking() }
+                onStopVoice = { voiceManager.stopSpeaking() },
+                onCycleThinkingMode = {
+                    val modes = listOf("balanced", "fast", "deep_analysis", "reasoning", "research", "coding", "creative")
+                    val next = modes[(modes.indexOf(activeThinkingMode) + 1) % modes.size]
+                    com.ayra.ai.app.data.AyraPreferences.setThinkingMode(context, next)
+                    Toast.makeText(context, "Thinking Mode: $next", Toast.LENGTH_SHORT).show()
+                }
             )
 
             // Message List
@@ -753,6 +800,12 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         items(messages, key = { it.id }) { msg ->
+                            val msgIndex = messages.indexOf(msg)
+                            val precedingUserPrompt = remember(messages, msgIndex) {
+                                if (msg.role == "assistant") {
+                                    messages.take(msgIndex).lastOrNull { it.role == "user" }?.content
+                                } else null
+                            }
                             GlassMessageBubble(
                                 message = msg,
                                 onImageClick = { expandedImageUri = it },
@@ -773,6 +826,16 @@ fun ChatScreen(
                                 onEdit = { contentToEdit ->
                                     viewModel.updateInputText(contentToEdit)
                                     Toast.makeText(context, "Loaded into editor to edit / এডিট করতে লোড হয়েছে", Toast.LENGTH_SHORT).show()
+                                },
+                                onRegenerate = precedingUserPrompt?.let { prevPrompt ->
+                                    {
+                                        if (!isGenerating) dispatchPrompt(prevPrompt)
+                                    }
+                                },
+                                onContinue = {
+                                    if (!isGenerating) {
+                                        dispatchPrompt("Continue from where you stopped and expand concisely:\n\n${msg.content.takeLast(500)}")
+                                    }
                                 },
                                 onRunPluginPrompt = { pluginPrompt ->
                                     dispatchPrompt(pluginPrompt)
@@ -1832,17 +1895,21 @@ private fun GlassHeaderBar(
     currentPersona: String,
     currentSentiment: UserSentiment = UserSentiment.NEUTRAL_CARING,
     activeSessionTitle: String? = null,
+    activeThinkingMode: String = "balanced",
+    hasActiveWorkspaceContext: Boolean = false,
+    onMenuClick: () -> Unit = {},
     onLogoClick: () -> Unit,
     onSessionsClick: () -> Unit = {},
     onNewSessionClick: () -> Unit = {},
     onClearChat: () -> Unit,
-    onStopVoice: () -> Unit
+    onStopVoice: () -> Unit,
+    onCycleThinkingMode: () -> Unit = {}
 ) {
-    // Dynamic continuous glowing animation for header title and subtitle
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
     val infiniteTransition = rememberInfiniteTransition(label = "header_text_anim")
     val animOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 700f,
+        targetValue = if (uiConfig.reducedMotion) 0f else 700f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 3200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -1851,41 +1918,50 @@ private fun GlassHeaderBar(
     )
 
     val animatedGradient = Brush.linearGradient(
-        colors = listOf(NeonCyan, NeonPurple, NeonRose, NeonCyan),
+        colors = listOf(uiConfig.accentColor, uiConfig.secondaryAccentColor, NeonRose, uiConfig.accentColor),
         start = Offset(animOffset, 0f),
         end = Offset(animOffset + 350f, 150f)
     )
 
+    val headerBg = if (uiConfig.isDark) GlassSurfaceDark else MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 4.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 4.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
+            .background(headerBg)
             .border(
                 1.dp,
                 Brush.linearGradient(
                     if (currentPersona == "GF_COMPANION")
-                        listOf(NeonRose.copy(alpha = 0.6f), NeonPurple.copy(alpha = 0.4f), NeonCyan.copy(alpha = 0.3f))
+                        listOf(NeonRose.copy(alpha = 0.6f), uiConfig.secondaryAccentColor.copy(alpha = 0.4f), uiConfig.accentColor.copy(alpha = 0.3f))
                     else
-                        listOf(NeonCyan.copy(alpha = 0.6f), NeonPurple.copy(alpha = 0.4f))
+                        listOf(uiConfig.accentColor.copy(alpha = 0.6f), uiConfig.secondaryAccentColor.copy(alpha = 0.4f))
                 ),
                 RoundedCornerShape(16.dp)
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(
+            onClick = onMenuClick,
+            modifier = Modifier.size(48.dp).testTag("open_workspace_drawer_button")
+        ) {
+            Icon(Icons.Default.Menu, contentDescription = "Open Workspace Menu", tint = uiConfig.accentColor)
+        }
+
         // Glowing Ayra Indicator / Control Center Button
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
                         if (currentPersona == "GF_COMPANION")
-                            listOf(NeonRose, NeonPurple, Color.Black)
+                            listOf(NeonRose, uiConfig.secondaryAccentColor, Color.Black)
                         else
-                            listOf(NeonCyan, NeonPurple, Color.Black)
+                            listOf(uiConfig.accentColor, uiConfig.secondaryAccentColor, Color.Black)
                     )
                 )
                 .clickable { onLogoClick() }
@@ -1896,7 +1972,7 @@ private fun GlassHeaderBar(
                 imageVector = Icons.Default.AutoAwesome,
                 contentDescription = "Ayra Control Center & Settings",
                 tint = Color.Black,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
 
@@ -1909,7 +1985,7 @@ private fun GlassHeaderBar(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Text(
                     text = "Ayra AI",
@@ -1917,29 +1993,23 @@ private fun GlassHeaderBar(
                         brush = animatedGradient
                     ),
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp
+                    fontSize = 15.sp
                 )
 
-                // "by Alok" custom badge as requested by user
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF131B2E).copy(alpha = 0.85f))
-                        .border(
-                            1.dp,
-                            animatedGradient,
-                            RoundedCornerShape(8.dp)
-                        )
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(uiConfig.accentColor.copy(alpha = 0.14f))
+                        .border(0.8.dp, uiConfig.accentColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                        .clickable { onCycleThinkingMode() }
                         .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .testTag("header_thinking_mode_chip")
                 ) {
                     Text(
-                        text = "by Alok",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            brush = animatedGradient
-                        ),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
+                        text = (if (hasActiveWorkspaceContext) "● " else "") + activeThinkingMode.replace("_", " "),
+                        color = uiConfig.accentColor,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -1956,9 +2026,7 @@ private fun GlassHeaderBar(
                     currentPersona == "GF_COMPANION" -> "${currentSentiment.emoji} ${currentSentiment.bengaliName} Voice • Ready"
                     else -> "Voice Trigger Ready (Say 'Ayra')"
                 },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    brush = animatedGradient
-                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.5.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1
@@ -1966,27 +2034,20 @@ private fun GlassHeaderBar(
         }
 
         if (isSpeaking) {
-            IconButton(onClick = onStopVoice) {
+            IconButton(onClick = onStopVoice, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Mute voice", tint = NeonRose)
             }
         }
 
         IconButton(
-            onClick = onSessionsClick,
-            modifier = Modifier.testTag("chat_sessions_button")
-        ) {
-            Icon(Icons.Default.History, contentDescription = "Chat history sessions", tint = NeonCyan)
-        }
-
-        IconButton(
             onClick = onNewSessionClick,
-            modifier = Modifier.testTag("new_chat_session_button")
+            modifier = Modifier.size(48.dp).testTag("new_chat_session_button")
         ) {
-            Icon(Icons.Default.AddComment, contentDescription = "New conversation", tint = NeonPurple)
+            Icon(Icons.Default.AddComment, contentDescription = "New conversation", tint = uiConfig.secondaryAccentColor)
         }
 
-        IconButton(onClick = onClearChat) {
-            Icon(Icons.Default.Delete, contentDescription = "Clear Chat", tint = TextSecondary)
+        IconButton(onClick = onClearChat, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Default.Delete, contentDescription = "Clear Chat", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1998,10 +2059,20 @@ private fun GlassMessageBubble(
     onCopy: () -> Unit,
     onSpeak: () -> Unit,
     onEdit: (String) -> Unit,
+    onRegenerate: (() -> Unit)? = null,
+    onContinue: (() -> Unit)? = null,
     onRunPluginPrompt: (String) -> Unit = {}
 ) {
     val isUser = message.role == "user"
     val context = LocalContext.current
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
+    val bubbleShape = RoundedCornerShape(uiConfig.bubbleCornerDp.dp)
+    val bubbleBg = when {
+        uiConfig.isDark && isUser -> UserBubble
+        uiConfig.isDark -> GlassSurfaceDark
+        isUser -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surface
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -2009,19 +2080,19 @@ private fun GlassMessageBubble(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(if (isUser) 0.82f else 1f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(if (isUser) UserBubble else GlassSurfaceDark)
+                .fillMaxWidth(if (isUser) 0.84f else 1f)
+                .clip(bubbleShape)
+                .background(bubbleBg)
                 .border(
-                    1.2.dp,
+                    1.1.dp,
                     if (isUser) {
-                        Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.5f), Color(0x3300FFFF)))
+                        Brush.linearGradient(listOf(uiConfig.accentColor.copy(alpha = 0.5f), uiConfig.accentColor.copy(alpha = 0.2f)))
                     } else {
-                        Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.7f), NeonPurple.copy(alpha = 0.5f), NeonRose.copy(alpha = 0.6f)))
+                        Brush.linearGradient(listOf(uiConfig.accentColor.copy(alpha = 0.65f), uiConfig.secondaryAccentColor.copy(alpha = 0.45f), NeonRose.copy(alpha = 0.45f)))
                     },
-                    RoundedCornerShape(18.dp)
+                    bubbleShape
                 )
-                .padding(14.dp)
+                .padding(uiConfig.bubblePaddingDp)
         ) {
             Column {
                 // Sender label & Auto-Selected AI Badge
@@ -2260,10 +2331,13 @@ private fun GlassMessageBubble(
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF0B132B).copy(alpha = 0.85f))
+                                .background(
+                                    if (uiConfig.isDark) Color(0xFF0B132B).copy(alpha = 0.85f)
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
                                 .border(
                                     1.dp,
-                                    Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.7f), NeonPurple.copy(alpha = 0.5f))),
+                                    Brush.linearGradient(listOf(uiConfig.accentColor.copy(alpha = 0.7f), uiConfig.secondaryAccentColor.copy(alpha = 0.5f))),
                                     RoundedCornerShape(10.dp)
                                 )
                                 .clickable { onEdit(message.content) }
@@ -2275,12 +2349,12 @@ private fun GlassMessageBubble(
                             Icon(
                                 Icons.Default.Edit,
                                 contentDescription = "Edit Question / প্রশ্ন এডিট",
-                                tint = NeonCyan,
+                                tint = uiConfig.accentColor,
                                 modifier = Modifier.size(13.dp)
                             )
                             Text(
                                 text = "Edit Question / প্রশ্ন এডিট",
-                                color = NeonCyan,
+                                color = uiConfig.accentColor,
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -2290,19 +2364,29 @@ private fun GlassMessageBubble(
 
                 // Bottom Action Bar for assistant responses
                 if (!isUser) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onCopy, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = onSpeak, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Listen", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Listen", tint = uiConfig.accentColor, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = { onEdit(message.content) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit Note / নোট এডিট", tint = NeonPurple, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Note", tint = uiConfig.secondaryAccentColor, modifier = Modifier.size(18.dp))
+                        }
+                        if (onRegenerate != null) {
+                            IconButton(onClick = onRegenerate, modifier = Modifier.size(48.dp).testTag("regenerate_message_button")) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Regenerate Response", tint = uiConfig.accentColor, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        if (onContinue != null) {
+                            IconButton(onClick = onContinue, modifier = Modifier.size(48.dp).testTag("continue_message_button")) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Continue Response", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                            }
                         }
                     }
                 }
@@ -2324,6 +2408,10 @@ private fun GlassInputRow(
     onMicClick: () -> Unit,
     onAttachClick: () -> Unit
 ) {
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
+    val inputBg = if (uiConfig.isDark) GlassSurfaceDark else MaterialTheme.colorScheme.surface
+    val attachBg = if (uiConfig.isDark) listOf(Color(0xFF1E1035), GlassSurfaceDark) else listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2336,14 +2424,10 @@ private fun GlassInputRow(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        listOf(Color(0xFF1E1035), GlassSurfaceDark)
-                    )
-                )
+                .background(Brush.radialGradient(attachBg))
                 .border(
                     1.4.dp,
-                    Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonRose)),
+                    Brush.linearGradient(listOf(uiConfig.accentColor, uiConfig.secondaryAccentColor, NeonRose)),
                     CircleShape
                 )
                 .clickable { onAttachClick() }
@@ -2353,29 +2437,35 @@ private fun GlassInputRow(
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "Attach & Super-App Tools Hub",
-                tint = NeonCyan,
+                tint = uiConfig.accentColor,
                 modifier = Modifier.size(22.dp)
             )
         }
 
-        // Text Field (High Contrast & Visible Input)
+        // Text Field (High Contrast & Theme-Adaptive Input)
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
-            placeholder = { Text("Ask Ayra, generate photo, open apps...", color = TextSecondary, fontSize = 13.sp) },
+            placeholder = {
+                Text(
+                    "Ask Ayra, /wiki, generate photo, or command...",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
+            },
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(GlassSurfaceDark)
+                .background(inputBg)
                 .testTag("chat_input_text_field"),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = NeonCyan,
-                unfocusedBorderColor = Color(0x3300FFFF),
-                cursorColor = NeonCyan,
-                focusedContainerColor = GlassSurfaceDark,
-                unfocusedContainerColor = GlassSurfaceDark
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = uiConfig.accentColor,
+                unfocusedBorderColor = uiConfig.accentColor.copy(alpha = 0.28f),
+                cursorColor = uiConfig.accentColor,
+                focusedContainerColor = inputBg,
+                unfocusedContainerColor = inputBg
             ),
             shape = RoundedCornerShape(24.dp),
             maxLines = 4
@@ -2386,8 +2476,8 @@ private fun GlassInputRow(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(if (isRecordingAudio) NeonRose else GlassSurfaceDark)
-                .border(1.2.dp, if (isRecordingAudio) NeonRose else NeonPurple, CircleShape)
+                .background(if (isRecordingAudio) NeonRose else inputBg)
+                .border(1.2.dp, if (isRecordingAudio) NeonRose else uiConfig.secondaryAccentColor, CircleShape)
                 .clickable { onAudioTranscribeClick() }
                 .testTag("gemini_audio_transcribe_button"),
             contentAlignment = Alignment.Center
@@ -2395,18 +2485,18 @@ private fun GlassInputRow(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = "AI Audio Transcribe",
-                tint = if (isRecordingAudio) Color.Black else NeonPurple,
+                tint = if (isRecordingAudio) Color.Black else uiConfig.secondaryAccentColor,
                 modifier = Modifier.size(20.dp)
             )
         }
 
-        // Mic Button with sweet glowing state (48dp touch target)
+        // Mic Button with glowing state (48dp touch target)
         Box(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(if (isListening) NeonRose else GlassSurfaceDark)
-                .border(1.2.dp, if (isListening) NeonRose else NeonCyan, CircleShape)
+                .background(if (isListening) NeonRose else inputBg)
+                .border(1.2.dp, if (isListening) NeonRose else uiConfig.accentColor, CircleShape)
                 .clickable { onMicClick() }
                 .testTag("voice_mic_button"),
             contentAlignment = Alignment.Center
@@ -2414,7 +2504,7 @@ private fun GlassInputRow(
             Icon(
                 imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
                 contentDescription = "Voice",
-                tint = if (isListening) Color.Black else NeonCyan
+                tint = if (isListening) Color.Black else uiConfig.accentColor
             )
         }
 
@@ -2425,7 +2515,7 @@ private fun GlassInputRow(
                 .clip(CircleShape)
                 .background(
                     if (isGenerating) Brush.linearGradient(listOf(Color(0xFFFF1744), Color(0xFFD50000)))
-                    else Brush.linearGradient(listOf(NeonCyan, NeonPurple))
+                    else Brush.linearGradient(listOf(uiConfig.accentColor, uiConfig.secondaryAccentColor))
                 )
                 .clickable {
                     if (isGenerating) onStop()
@@ -2458,10 +2548,11 @@ private fun EmptyCosmicState(
     currentPersona: String,
     onSuggestionClick: (String) -> Unit = {}
 ) {
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
     val infiniteTransition = rememberInfiniteTransition(label = "empty_cosmic_anim")
     val shimmerOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 900f,
+        targetValue = if (uiConfig.reducedMotion) 0f else 900f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 3600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -2471,12 +2562,12 @@ private fun EmptyCosmicState(
 
     val animatedGradient = Brush.linearGradient(
         colors = listOf(
-            NeonCyan,
-            NeonPurple,
+            uiConfig.accentColor,
+            uiConfig.secondaryAccentColor,
             NeonRose,
             Color(0xFFFFD700),
             NeonGreen,
-            NeonCyan
+            uiConfig.accentColor
         ),
         start = Offset(shimmerOffset, 0f),
         end = Offset(shimmerOffset + 450f, 200f)
@@ -2507,7 +2598,10 @@ private fun EmptyCosmicState(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0F172A).copy(alpha = 0.85f))
+                    .background(
+                        if (uiConfig.isDark) Color(0xFF0F172A).copy(alpha = 0.85f)
+                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                    )
                     .border(
                         1.2.dp,
                         animatedGradient,
@@ -2532,37 +2626,15 @@ private fun EmptyCosmicState(
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = if (currentPersona == "GF_COMPANION") "Sweet Companion & All-in-One Autonomous AI Master" else "Next-Gen Frontier AI • Multi-Model Unified (Gemini 3.8/4.0 + Groq + DeepSeek R1 + Claude 3.7)",
-            color = TextSecondary,
+            text = if (currentPersona == "GF_COMPANION") {
+                "Sweet Companion & All-in-One Prompt AI"
+            } else {
+                "Prompt anything below — Q&A, /wiki, Code, Images, Research, PDF & Voice"
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Medium
         )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Subtle glowing pill pointing to the top and bottom '+' quick tools
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceDark.copy(alpha = 0.6f))
-                .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp, vertical = 7.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(NeonCyan)
-            )
-            Text(
-                text = "Tap Top or Bottom '+' for Cyber Lab, Studios, Research & Tools",
-                color = NeonCyan,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
     }
 }
 
@@ -2571,12 +2643,14 @@ private fun AssistantGeneratingIndicator(
     statusText: String? = null,
     streamingText: String? = null
 ) {
+    val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
+    val bgColor = if (uiConfig.isDark) GlassSurfaceDark else MaterialTheme.colorScheme.surface
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
-            .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(uiConfig.bubbleCornerDp.dp))
+            .background(bgColor)
+            .border(1.dp, uiConfig.accentColor.copy(alpha = 0.5f), RoundedCornerShape(uiConfig.bubbleCornerDp.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -2587,12 +2661,12 @@ private fun AssistantGeneratingIndicator(
             CircularProgressIndicator(
                 modifier = Modifier.size(16.dp),
                 strokeWidth = 2.dp,
-                color = NeonCyan
+                color = uiConfig.accentColor
             )
             Text(
                 text = statusText ?: "Ayra is thinking & synthesizing...",
                 style = MaterialTheme.typography.bodySmall,
-                color = NeonCyan,
+                color = uiConfig.accentColor,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -2601,7 +2675,7 @@ private fun AssistantGeneratingIndicator(
             Text(
                 text = streamingText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
                 lineHeight = 20.sp
             )
         }
@@ -2763,117 +2837,10 @@ fun MarkdownCodeContentView(
     content: String,
     onCopyCode: (String) -> Unit
 ) {
-    if (!content.contains("```")) {
-        Text(
-            text = content,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary,
-            fontSize = 14.5.sp,
-            lineHeight = 22.sp
-        )
-        return
-    }
-
-    val parts = remember(content) {
-        val list = mutableListOf<Pair<Boolean, String>>()
-        val regex = Regex("```([a-zA-Z0-9_+-]*)\n?([\\s\\S]*?)```")
-        var lastIndex = 0
-        regex.findAll(content).forEach { match ->
-            if (match.range.first > lastIndex) {
-                val textChunk = content.substring(lastIndex, match.range.first).trim()
-                if (textChunk.isNotBlank()) list.add(false to textChunk)
-            }
-            val lang = match.groupValues[1].ifBlank { "code" }
-            val codeBody = match.groupValues[2]
-            list.add(true to "$lang\n$codeBody")
-            lastIndex = match.range.last + 1
-        }
-        if (lastIndex < content.length) {
-            val trailingText = content.substring(lastIndex).trim()
-            if (trailingText.isNotBlank()) list.add(false to trailingText)
-        }
-        list
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        parts.forEach { (isCode, partContent) ->
-            if (!isCode) {
-                Text(
-                    text = partContent,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextPrimary,
-                    fontSize = 14.5.sp,
-                    lineHeight = 22.sp
-                )
-            } else {
-                val firstLineBreak = partContent.indexOf('\n')
-                val langTag = if (firstLineBreak != -1) partContent.substring(0, firstLineBreak).trim() else "code"
-                val rawCode = if (firstLineBreak != -1) partContent.substring(firstLineBreak + 1) else partContent
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF090D18))
-                        .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                ) {
-                    Column {
-                        // Code Header Bar
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF111827))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Default.Code, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-                                Text(
-                                    text = langTag.uppercase(),
-                                    color = NeonCyan,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF1E293B))
-                                    .clickable { onCopyCode(rawCode) }
-                                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", tint = TextPrimary, modifier = Modifier.size(13.dp))
-                                Text("Copy Code", color = TextPrimary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        // Code Body with horizontal scrolling
-                        val scrollState = rememberScrollState()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp)
-                                .horizontalScroll(scrollState)
-                        ) {
-                            Text(
-                                text = rawCode,
-                                color = Color(0xFFE2E8F0),
-                                fontSize = 12.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 18.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+    com.ayra.ai.app.ui.components.RichMarkdownView(
+        content = content,
+        onCopyCode = onCopyCode
+    )
 }
 
 

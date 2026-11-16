@@ -45,7 +45,9 @@ class ChatRepository(
     suspend fun createNewSession(
         title: String = "New Conversation",
         personaMode: String = AyraPreferences.getSavedPersona(context),
-        modelTier: String = AyraPreferences.getSavedModelTier(context)
+        modelTier: String = AyraPreferences.getSavedModelTier(context),
+        projectId: Long? = null,
+        assistantId: Long? = null
     ): ChatSession {
         val now = System.currentTimeMillis()
         val insertedId = sessionDao.insertSession(
@@ -56,7 +58,9 @@ class ChatRepository(
                 createdAt = now,
                 updatedAt = now,
                 messageCount = 0,
-                lastMessagePreview = ""
+                lastMessagePreview = "",
+                projectId = projectId,
+                assistantId = assistantId
             )
         )
         AyraPreferences.setLastActiveSessionId(context, insertedId)
@@ -66,7 +70,9 @@ class ChatRepository(
             personaMode = personaMode,
             modelTier = modelTier,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            projectId = projectId,
+            assistantId = assistantId
         )
     }
 

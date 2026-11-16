@@ -1,0 +1,1606 @@
+# AYRA AI — ULTIMATE MASTER ENGINEERING PROMPT
+## Build a World-Class AI Chatbot + Autonomous AI Assistant + AI Operating Platform
+
+**PROJECT:** AYRA AI  
+**PLATFORM:** Android APK + Secure Backend + Local AI + Cloud AI  
+**EXISTING STACK:** Kotlin, Jetpack Compose, Room, Firebase, Node.js, TypeScript, OkHttp, Coroutines  
+**MISSION:** Transform the existing AYRA project into an extremely powerful, reliable, intelligent, secure, multimodal and autonomous AI platform.
+
+---
+
+# PART 1 — YOUR ROLE AND RESPONSIBILITY
+
+You are not working as an ordinary code generator.
+
+Act as a complete team of:
+
+- Principal AI Architect
+- Senior Android Engineer
+- Senior Kotlin Developer
+- Senior Backend Engineer
+- AI/ML Engineer
+- Multi-Agent Systems Architect
+- AI Research Engineer
+- Security Engineer
+- Database Architect
+- UI/UX Designer
+- DevOps Engineer
+- Software Tester
+- Performance Engineer
+- Quality Assurance Engineer
+
+You have one primary responsibility:
+
+**Transform the existing AYRA AI application into a production-quality AI platform capable of performing as many real-world AI tasks as possible through a unified intelligent interface.**
+
+Do not simply provide recommendations or an audit report.
+
+You must inspect the project, modify its actual source code, implement improvements, run tests, fix problems, and deliver the completed project.
+
+Do not stop after explaining what needs to be done.
+
+# PART 2 — FIRST, COMPLETELY AUDIT THE EXISTING PROJECT
+
+Before changing anything, inspect the entire project.
+
+Inspect every:
+
+- Directory
+- Source file
+- Kotlin class
+- Java class
+- TypeScript file
+- JavaScript file
+- XML resource
+- Gradle configuration
+- JSON configuration
+- Firebase configuration
+- Backend configuration
+- Database schema
+- API implementation
+- AI model registry
+- Agent implementation
+- UI screen
+- Navigation route
+- Service
+- Repository
+- ViewModel
+- Security implementation
+- Test file
+- Documentation file
+
+Do not ignore files because they appear unimportant.
+
+Create a complete dependency map and feature map.
+
+## Existing architecture must be understood
+
+The existing project includes:
+
+- Android application using Kotlin and Jetpack Compose
+- Multi-provider AI integration
+- Firebase Authentication and Firestore
+- Room database
+- SQLCipher and encrypted storage components
+- AI agent orchestration
+- Research and document processing
+- Image, video, audio and 3D-related features
+- Voice assistant
+- GitHub/plugin integrations
+- Node.js and TypeScript backend
+- Security and diagnostics components
+
+Inspect these existing implementations before adding replacements.
+
+### Critical architecture verification
+
+Pay special attention to the following existing components:
+
+1. `ExternalAiProviders`
+2. `ProviderPool`
+3. `AyraAgentOrchestrator`
+4. `FirebaseAiEngine`
+5. `ChatViewModel`
+6. `AyraPreferences`
+7. `AyraCloudRepository`
+8. `AyraE2eeEngine`
+9. `DocumentRagEngine`
+10. `GitHubPluginEngine`
+11. `NetworkSecurityHelper`
+12. `SecureAiGatewayClient`
+13. `EncryptedVaultStorage`
+14. `VaultDatabaseKeyManager`
+15. Backend `aiGateway.ts`
+16. Backend authentication middleware
+17. Backend validation schemas
+
+Check whether each component actually works.
+
+Do not trust documentation as proof of implementation.
+
+If documentation claims something is complete, inspect its code and tests.
+
+# PART 3 — CREATE THE AYRA INTELLIGENCE CORE
+
+This is the most important part.
+
+Build a central intelligence system called:
+
+`AYRA INTELLIGENCE CORE`
+
+This system should coordinate all AI models, agents, tools, memory, research, coding and automation.
+
+## 3.1 Intelligent Request Understanding
+
+Create an advanced request understanding engine.
+
+It must understand:
+
+- Bengali
+- English
+- Banglish
+- Hindi
+- Mixed-language conversations
+- Natural conversational instructions
+- Complex multi-step requests
+- Short commands
+- Context-dependent instructions
+- Follow-up instructions
+- Ambiguous requests
+
+Example:
+
+User: "Ayra, amar jonno ekta complete ecommerce app baniye dao."
+
+AYRA should understand that this is a complex software development task.
+
+It should automatically:
+
+1. Understand the requirements.
+2. Identify missing essential information.
+3. Create a project plan.
+4. Select suitable AI models.
+5. Create the project architecture.
+6. Generate files and code.
+7. Install required dependencies.
+8. Run static analysis.
+9. Build the application.
+10. Run tests.
+11. Fix detected errors.
+12. Produce the final project.
+13. Explain what was completed and what remains.
+
+It must not pretend to complete steps that were not actually executed.
+
+## 3.2 Intelligent Task Classification
+
+Implement a robust intent classifier.
+
+Supported task categories:
+
+- General conversation
+- Advanced reasoning
+- Mathematics
+- Science
+- Programming
+- Debugging
+- Software development
+- Web research
+- Academic research
+- Document analysis
+- Writing
+- Translation
+- Summarization
+- Image generation
+- Image understanding
+- Video generation
+- Video understanding
+- Audio generation
+- Speech recognition
+- Voice conversations
+- Data analysis
+- Business analysis
+- Productivity
+- Personal assistance
+- Device automation
+- Agent workflows
+
+Use structured classification rather than fragile keyword-only routing.
+
+## 3.3 Adaptive Model Selection
+
+Create:
+
+`AyraIntelligentModelRouter`
+
+The router must consider:
+
+- Task category
+- Required intelligence
+- Reasoning requirements
+- Coding requirements
+- Vision requirements
+- Audio requirements
+- Context length
+- Tool-calling support
+- Streaming support
+- Provider availability
+- Latency
+- API cost
+- Rate limits
+- User preferences
+- Privacy settings
+- Available credentials
+
+Never select a model solely because its name looks powerful.
+
+Maintain a verified model capability registry.
+
+Every model must have:
+
+- Actual provider
+- Exact model ID
+- Supported API endpoint
+- Input modalities
+- Output modalities
+- Context limits
+- Maximum output tokens
+- Tool-calling support
+- Streaming support
+- Current availability status
+- Pricing information when verifiable
+- Last verification timestamp
+
+When a model is unavailable, show a real error or select a compatible alternative with user-visible disclosure.
+
+# PART 4 — MULTI-AI MODEL ECOSYSTEM
+
+Integrate a flexible multi-provider architecture.
+
+Support provider adapters for:
+
+### Major AI providers
+
+1. Google Gemini
+2. OpenAI
+3. Anthropic Claude
+4. DeepSeek
+5. xAI Grok
+6. Mistral
+7. Perplexity
+8. OpenRouter
+9. NVIDIA NIM
+10. Groq
+11. Cerebras
+12. SambaNova
+13. Hugging Face
+14. GitHub Models
+15. Local Ollama
+
+Also provide a generic OpenAI-compatible provider adapter where the API specification genuinely supports compatibility.
+
+Do not assume every provider implements identical APIs.
+
+For example:
+
+- OpenAI: support the appropriate Responses API and compatible tool execution.
+- Anthropic: support the Messages API and its native tool-use format.
+- Gemini: support its native content generation, streaming and function calling.
+- OpenRouter: support its documented API and provider/model routing.
+- NVIDIA, Groq and other providers: implement their actual documented capabilities.
+
+Build individual provider adapters with a shared internal interface.
+
+Suggested architecture:
+
+`AiProviderAdapter`
+
+Methods:
+
+- generate()
+- stream()
+- generateStructured()
+- executeToolCall()
+- getModels()
+- checkAvailability()
+- validateCredentials()
+- getCapabilities()
+- cancelRequest()
+
+Use capability-based routing.
+
+Do not claim that every provider supports every feature.
+
+## 4.1 Multi-Model Consensus Engine
+
+Build:
+
+`AyraConsensusEngine`
+
+Allow multiple AI models to independently analyse a task.
+
+Workflow:
+
+1. Send the same task to selected models.
+2. Collect their independent answers.
+3. Compare their reasoning and conclusions.
+4. Identify disagreements.
+5. Verify factual claims where possible.
+6. Ask a judge model to synthesize the results.
+7. Return one coherent final answer.
+
+Provide:
+
+- Single-model mode
+- Dual-model verification
+- Multi-model consensus
+- Best-quality mode
+- Fast mode
+- Cost-efficient mode
+
+Do not use unnecessary parallel model calls for simple conversations.
+
+Do not expose hidden internal chain-of-thought. Provide concise explanations, evidence, assumptions and verifiable conclusions instead.
+
+# PART 5 — CHATGPT / CLAUDE-LEVEL CHAT EXPERIENCE
+
+Make the AYRA chat interface extremely polished.
+
+## Required chat features
+
+- Real-time streaming responses
+- Markdown rendering
+- Code syntax highlighting
+- Copy message
+- Regenerate response
+- Edit previous message
+- Continue generation
+- Stop generation
+- Retry failed generation
+- Message reactions
+- Share conversation
+- Export conversation
+- Search chat history
+- Pin conversations
+- Archive conversations
+- Delete conversations
+- Rename conversations
+- Multiple chat sessions
+- Conversation folders
+- Message timestamps
+- Attachments
+- Image previews
+- File previews
+- Download generated files
+- Code block copy
+- Table rendering
+- Mathematical equation rendering
+- LaTeX rendering
+- Citation links
+- Source references
+- Error explanations
+
+## Advanced chat intelligence
+
+Implement:
+
+- Long conversation context management
+- Automatic context summarization
+- Relevant history retrieval
+- Context window awareness
+- Conversation continuity
+- Follow-up understanding
+- User-defined custom instructions
+- Persona selection
+- Response style preferences
+- Language preferences
+- Per-conversation model selection
+- Per-conversation privacy settings
+
+The assistant must understand the full relevant conversation, not just the latest message.
+
+Use token-aware context management.
+
+Never silently remove important context.
+
+# PART 6 — AUTONOMOUS AI AGENT SYSTEM
+
+Build a powerful agent framework.
+
+Name:
+
+`AyraAgentRuntime`
+
+AYRA should be capable of executing multi-step tasks through controlled tools.
+
+## 6.1 Specialized AI Agents
+
+Implement these agents:
+
+### Research Agent
+- Web search
+- Source discovery
+- Fact checking
+- Research synthesis
+- Citation management
+- Report generation
+
+### Coding Agent
+- Code generation
+- Repository inspection
+- Multi-file editing
+- Debugging
+- Unit testing
+- Build execution
+- Error correction
+- Code review
+
+### Data Analyst Agent
+- CSV analysis
+- Excel analysis
+- Statistical analysis
+- Data cleaning
+- Charts
+- Report generation
+
+### Writing Agent
+- Articles
+- Essays
+- Emails
+- Reports
+- Proposals
+- Documentation
+- Professional writing
+
+### Image Agent
+- Image understanding
+- Image generation
+- Image editing
+- Image enhancement
+- OCR
+
+### Video Agent
+- Video generation
+- Video analysis
+- Subtitle generation
+- Video summarization
+- Scene extraction
+
+### Audio Agent
+- Speech-to-text
+- Text-to-speech
+- Audio transcription
+- Audio summarization
+- Voice synthesis
+
+### Productivity Agent
+- Reminders
+- Calendar management
+- Task planning
+- Scheduling
+- Notes
+- Personal organization
+
+### Android Assistant Agent
+- Android intents
+- Supported device operations
+- Permission-aware actions
+- Notification handling
+- File operations
+- App launching
+
+### Business Agent
+- Market research
+- Business planning
+- Financial modeling
+- Marketing strategy
+- Competitive analysis
+- Business documentation
+
+Each agent must have a real execution implementation.
+
+Do not create agents that only return predefined text.
+
+## 6.2 Agent Collaboration
+
+Implement:
+
+`AyraMultiAgentOrchestrator`
+
+Allow agents to collaborate.
+
+Example:
+
+User: "Create a complete professional business website."
+
+Execution:
+
+1. Research Agent researches requirements.
+2. Planning Agent creates specifications.
+3. UI Agent designs layouts.
+4. Coding Agent creates frontend and backend.
+5. Testing Agent runs tests.
+6. Security Agent reviews the implementation.
+7. Documentation Agent creates documentation.
+8. Final Agent prepares the deliverable.
+
+Use dependency-aware task execution.
+
+Provide:
+
+- Task graph
+- Task status
+- Progress updates
+- Retry policies
+- Cancellation
+- Execution logs
+- Checkpoints
+- User approvals
+- Failure recovery
+
+Do not allow an agent to claim that a task succeeded when a tool returned an error.
+
+# PART 7 — UNIVERSAL AI TOOL SYSTEM
+
+This feature is essential.
+
+The user should be able to ask AYRA to perform tasks naturally.
+
+Create:
+
+`AyraToolRegistry`
+
+Every tool must provide:
+
+- Unique identifier
+- Description
+- Input schema
+- Output schema
+- Permission requirements
+- Execution handler
+- Timeout
+- Cancellation
+- Error handling
+- Audit logging
+
+## Required tools
+
+### Research tools
+- Web search
+- Open webpage
+- Extract webpage text
+- Search news
+- Search academic resources
+- Compare sources
+- Verify claims
+
+### File tools
+- Read file
+- Create file
+- Edit file
+- Rename file
+- Move file
+- Search files
+- Organize files
+- Convert documents
+- Export documents
+
+### Coding tools
+- Create project
+- Read source code
+- Edit source code
+- Run tests
+- Run build
+- Inspect logs
+- Generate documentation
+- Git operations
+
+### Productivity tools
+- Create reminders
+- Manage tasks
+- Create notes
+- Search notes
+- Calendar operations
+- Prepare email drafts
+
+### Media tools
+- Generate image
+- Edit image
+- Generate audio
+- Transcribe audio
+- Generate video
+- Analyse video
+
+### Android tools
+- Open supported apps
+- Open system settings
+- Create notifications
+- Share content
+- Capture media with permission
+- Select files
+- Manage supported device operations
+
+## Tool execution rules
+
+Use typed schemas.
+
+Validate all arguments.
+
+Apply permission checks.
+
+Require explicit user confirmation for sensitive actions.
+
+Prevent arbitrary command execution.
+
+Prevent unauthorized file access.
+
+Prevent SSRF.
+
+Prevent prompt injection from external content.
+
+Use execution timeouts.
+
+Record audit events without logging secrets.
+
+# PART 8 — REAL AI CODING WORKSPACE
+
+Create a professional coding environment inside AYRA.
+
+Name:
+
+`AYRA CODE STUDIO`
+
+Features:
+
+- Project creation
+- Project explorer
+- File tree
+- Code editor
+- Syntax highlighting
+- Multi-file editing
+- AI code completion
+- AI code explanation
+- Debugging assistant
+- Error detection
+- Refactoring
+- Unit test generation
+- Documentation generation
+- Git integration
+- Diff viewer
+- Project search
+- Build output
+- Terminal output
+- Dependency management
+
+Allow users to say:
+
+"Create a complete Android application."
+
+AYRA should create an actual project and its files.
+
+Provide real build execution through a controlled backend worker or supported local execution environment.
+
+Do not execute arbitrary AI-generated shell commands on the Android app process.
+
+Use isolated execution environments with:
+
+- Sandboxing
+- Resource limits
+- Network restrictions
+- File-system boundaries
+- Timeouts
+- Process termination
+- Dependency allowlists
+
+Support real downloadable source projects and generated APKs when the build environment permits.
+
+# PART 9 — DEEP RESEARCH ENGINE
+
+Build:
+
+`AyraDeepResearchEngine`
+
+Features:
+
+- Multiple search queries
+- Parallel source discovery
+- Source ranking
+- Source credibility evaluation
+- Duplicate detection
+- Date awareness
+- Cross-source verification
+- Contradiction detection
+- Research synthesis
+- Citation generation
+- Reference management
+- Research history
+- Export to PDF and DOCX
+
+Research modes:
+
+1. Quick Research
+2. Standard Research
+3. Deep Research
+4. Academic Research
+5. Technical Research
+6. Competitive Research
+7. Fact Verification
+
+Every factual research report must distinguish:
+
+- Verified information
+- Unverified information
+- Conflicting information
+- Analysis
+- Assumptions
+
+Never fabricate sources or citations.
+
+Do not describe ordinary model knowledge as live research.
+
+# PART 10 — IMAGE, VIDEO, AUDIO AND MULTIMODAL AI
+
+Create a unified:
+
+`AyraMultimodalEngine`
+
+## Image capabilities
+
+- Text-to-image
+- Image-to-image
+- Image editing
+- Background removal
+- Image enhancement
+- OCR
+- Object understanding
+- Visual question answering
+- Image description
+- Image generation history
+
+Connect real image generation providers.
+
+## Video capabilities
+
+- Text-to-video
+- Image-to-video
+- Video summarization
+- Scene analysis
+- Subtitle generation
+- Audio extraction
+- Video transcription
+- Video metadata analysis
+
+Use actual video generation services and their documented APIs.
+
+If a provider does not offer video generation, do not simulate it.
+
+## Audio capabilities
+
+- Speech recognition
+- Audio transcription
+- Text-to-speech
+- Neural voice generation
+- Audio translation
+- Audio summarization
+- Voice selection
+- Audio playback
+- Voice history
+
+## Multimodal chat
+
+Allow users to attach:
+
+- Images
+- PDFs
+- Text documents
+- Audio files
+- Video files
+- CSV files
+- Excel files
+- Code files
+
+The selected model must actually support the relevant input modality.
+
+For unsupported formats, use a real conversion or extraction pipeline.
+
+# PART 11 — ADVANCED VOICE ASSISTANT
+
+Build:
+
+`AyraVoiceAssistant`
+
+Features:
+
+- Push-to-talk
+- Voice conversations
+- Speech recognition
+- Text-to-speech
+- Streaming voice output where supported
+- Interrupt response
+- Voice activity detection where supported
+- Conversation history
+- Voice preferences
+- Language selection
+- Playback controls
+
+The user should be able to speak naturally:
+
+"AYRA, amar jonno ekta research report baniye dao."
+
+AYRA should understand the instruction and execute the appropriate workflow.
+
+Never pretend that background listening is active when it is not.
+
+Respect Android microphone permissions and foreground-service requirements.
+
+# PART 12 — ADVANCED MEMORY SYSTEM
+
+Build:
+
+`AyraMemoryEngine`
+
+Implement different memory types.
+
+### Short-term memory
+Current conversation context.
+
+### Long-term memory
+User-approved information useful across conversations.
+
+### Episodic memory
+Relevant past interactions and events.
+
+### Semantic memory
+Structured facts and knowledge.
+
+### Project memory
+Project-specific decisions, requirements and progress.
+
+### Preference memory
+User-approved response and workflow preferences.
+
+Features:
+
+- Memory creation
+- Memory retrieval
+- Memory search
+- Memory editing
+- Memory deletion
+- Memory export
+- Memory privacy controls
+- Memory relevance ranking
+- Duplicate detection
+- Memory expiration where appropriate
+
+Use encrypted storage.
+
+Never save passwords, API keys, authentication tokens or other secrets as conversational memories.
+
+Never assume sensitive personal details.
+
+Allow the user to inspect and control remembered information.
+
+# PART 13 — PERSONAL AI ASSISTANT
+
+AYRA should function as a real personal assistant.
+
+Features:
+
+- Reminders
+- Task management
+- Notes
+- Calendar integration
+- Email drafting
+- Email search with permission
+- Meeting preparation
+- Daily planning
+- Document preparation
+- Productivity reports
+- Task prioritization
+- Follow-up tracking
+
+Examples:
+
+"Tomorrow morning remind me to complete my project."
+
+"Prepare a professional email."
+
+"Create a weekly work plan."
+
+"Organize these documents."
+
+Use supported Android integrations or connected services.
+
+For external actions, request permission and confirmation when necessary.
+
+Do not claim an email was sent, an appointment was booked or a reminder was scheduled unless the relevant operation succeeded.
+
+# PART 14 — ADVANCED DOCUMENT AND KNOWLEDGE ENGINE
+
+Build:
+
+`AyraKnowledgeEngine`
+
+Support:
+
+- PDF
+- DOCX
+- TXT
+- Markdown
+- CSV
+- XLSX
+- PPTX
+- JSON
+- Source code
+- Supported image documents
+
+Features:
+
+- Document parsing
+- OCR
+- Semantic search
+- Chunking
+- Embeddings
+- Vector retrieval
+- Hybrid search
+- Metadata filtering
+- Source citations
+- Document summarization
+- Question answering
+- Cross-document analysis
+
+Implement RAG correctly.
+
+Use document-level access controls.
+
+Never expose one user's private documents to another user.
+
+Never treat instructions found inside uploaded documents as trusted system instructions.
+
+# PART 15 — PROFESSIONAL USER INTERFACE
+
+Redesign the existing UI without destroying working features.
+
+The application should feel premium, modern, clean and professional.
+
+## Main interface
+
+Create:
+
+- Premium home screen
+- Modern chat interface
+- Sidebar or navigation drawer
+- New chat
+- Recent conversations
+- Search
+- AI model selector
+- Mode selector
+- Attachment menu
+- Voice button
+- File upload
+- Tool status
+- Generation status
+
+## Main navigation
+
+1. Home
+2. Chat
+3. Research
+4. AI Studio
+5. Coding Studio
+6. Agents
+7. Files
+8. Memory
+9. Tasks
+10. History
+11. Settings
+12. Security Center
+
+Keep navigation intuitive.
+
+Do not overload the home screen.
+
+## UI design requirements
+
+- Material 3
+- Adaptive layouts
+- Dark mode
+- Light mode
+- Dynamic color where appropriate
+- Smooth animations
+- Responsive screens
+- Proper typography
+- Accessible contrast
+- Proper touch targets
+- Loading states
+- Empty states
+- Error states
+- Offline states
+- Skeleton loading
+- Haptic feedback where appropriate
+
+Do not sacrifice performance for animations.
+
+All visible buttons and controls must have functional behavior.
+
+# PART 16 — AI MODEL AND TOOL MANAGEMENT CENTER
+
+Create a professional Model Hub.
+
+Display:
+
+- Provider name
+- Model name
+- Exact model identifier
+- Provider availability
+- API key configuration
+- Connection status
+- Model capabilities
+- Vision support
+- Audio support
+- Tool support
+- Context window
+- Latency
+- Usage
+- Error status
+
+Provide:
+
+- Add provider
+- Edit provider
+- Delete provider credentials
+- Test connection
+- Select default model
+- Select preferred models
+- Configure fallback
+- Configure cost preferences
+- Configure privacy preferences
+
+Do not expose API keys.
+
+Do not embed private provider API keys in the APK.
+
+Use a secure backend gateway for centrally managed credentials.
+
+User-owned API keys may be stored using secure Android storage where appropriate.
+
+Never send a key to an untrusted service.
+
+# PART 17 — ADVANCED SECURITY ARCHITECTURE
+
+Security must be implemented throughout the system.
+
+Audit the existing security implementation before adding new mechanisms.
+
+Implement or verify:
+
+- Android Keystore
+- SQLCipher
+- Encrypted file vault
+- AES-GCM
+- Secure API key storage
+- Firebase Authentication
+- Firebase App Check
+- Server-side authorization
+- Rate limiting
+- Request validation
+- TLS
+- SSRF protection
+- Prompt injection defense
+- Tool permission checks
+- Audit logging
+- Biometric authentication
+- Session management
+- Device management
+- Backup encryption
+- Secure deletion
+- Dependency vulnerability scanning
+
+## Critical security rules
+
+1. Never store server secrets inside the APK.
+2. Never print API keys in logs.
+3. Never trust client-provided user IDs for authorization.
+4. Verify Firebase tokens on the backend.
+5. Apply server-side authorization to every protected resource.
+6. Restrict outbound network requests.
+7. Block unauthorized private network access.
+8. Validate every tool call.
+9. Require confirmation for destructive actions.
+10. Never expose private files through public URLs without authorization.
+11. Do not disable TLS verification.
+12. Do not use insecure production fallbacks.
+13. Never silently downgrade encryption.
+14. Do not claim end-to-end encryption unless the actual protocol and key management provide it.
+
+Implement local-only mode as a genuine network policy, not merely a UI toggle.
+
+External AI routing must require explicit user consent.
+
+# PART 18 — BACKEND AND INFRASTRUCTURE
+
+Strengthen the existing Node.js and TypeScript backend.
+
+Create a modular backend architecture.
+
+Suggested modules:
+
+- Authentication
+- Authorization
+- AI Gateway
+- Provider Adapters
+- Agent Runtime
+- Tool Execution
+- Research
+- Memory
+- Document Processing
+- File Management
+- Usage Management
+- Billing-ready Usage Metering
+- Rate Limiting
+- Audit Logging
+- Notifications
+- Health Monitoring
+
+Use:
+
+- Strict TypeScript
+- Zod validation
+- Secure HTTP headers
+- Request timeouts
+- Cancellation
+- Structured logging
+- Error classification
+- Retry limits
+- Circuit breakers
+- Idempotency
+- Rate limits
+- Observability
+
+## Important existing backend issue to investigate
+
+The current backend AI gateway contains a smaller provider set than the Android provider registry.
+
+Android lists many providers, while the gateway currently has a limited provider allowlist.
+
+Bring both sides into a consistent capability-driven architecture.
+
+Do not add provider names without implementing their actual API adapters.
+
+Also investigate the existing non-streaming backend path.
+
+Implement genuine streaming where supported, including cancellation and error propagation.
+
+# PART 19 — RELIABILITY AND PERFORMANCE
+
+Make the application stable.
+
+Implement:
+
+- Coroutine lifecycle management
+- Structured concurrency
+- Request cancellation
+- Connection pooling
+- Retry policies
+- Circuit breakers
+- Bounded caches
+- Memory limits
+- Pagination
+- Database indexing
+- Background work management
+- File-size limits
+- Upload limits
+- Download limits
+- Timeout policies
+- Crash reporting with privacy protection
+
+Optimize:
+
+- App startup
+- Chat response rendering
+- Streaming
+- Database operations
+- Image loading
+- File processing
+- Battery usage
+- Network usage
+- Memory usage
+
+Do not cache private content in plaintext.
+
+Never cache time-sensitive answers without an appropriate freshness policy.
+
+# PART 20 — ERROR HANDLING
+
+Every feature must have meaningful error handling.
+
+Create a unified error system.
+
+Classify:
+
+- Invalid API key
+- Missing API key
+- Provider unavailable
+- Model unavailable
+- Rate limit
+- Quota exceeded
+- Network failure
+- Timeout
+- Invalid request
+- Unsupported file
+- Permission denied
+- Authentication failure
+- Authorization failure
+- Backend unavailable
+- Tool execution failure
+- Build failure
+- Database failure
+- Storage failure
+
+For every error:
+
+1. Identify the cause.
+2. Display a clear explanation.
+3. Provide an appropriate recovery action.
+4. Preserve user input when possible.
+5. Record a sanitized diagnostic event.
+6. Never expose credentials or internal secrets.
+
+# PART 21 — REAL FEATURE IMPLEMENTATION POLICY
+
+This is a strict requirement.
+
+Do not create:
+
+- Dummy buttons
+- Fake AI responses
+- Fake model connections
+- Fake model availability
+- Fake progress indicators
+- Fake research citations
+- Fake generated files
+- Fake image generation
+- Fake video generation
+- Fake encryption
+- Fake security status
+- Fake agent execution
+- Fake build results
+
+Every feature must be connected to a real implementation.
+
+If an external API key is missing:
+
+Show "API key not configured."
+
+If a provider is offline:
+
+Show "Provider unavailable."
+
+If a feature requires an external service:
+
+Show the required configuration.
+
+If a feature cannot work on Android:
+
+Use a secure backend or supported alternative.
+
+If a feature is not implemented:
+
+Clearly label it as unavailable or planned.
+
+Never display a successful result when execution failed.
+
+# PART 22 — COMPLETE TESTING REQUIREMENTS
+
+Do not consider the project complete merely because the code compiles.
+
+## Android tests
+
+Test:
+
+- Application startup
+- Navigation
+- Chat
+- Streaming
+- Model selection
+- Provider authentication
+- API key storage
+- Chat history
+- Database migrations
+- File attachments
+- PDF parsing
+- Image attachments
+- Voice input
+- Audio playback
+- Settings
+- Theme switching
+- Memory
+- Agent execution
+- Tool execution
+- Permission handling
+- Notifications
+- Biometric authentication
+- Offline behavior
+- Network errors
+- Cancellation
+- Crash recovery
+
+## Backend tests
+
+Test:
+
+- Authentication
+- Authorization
+- Provider routing
+- Input validation
+- Streaming
+- Rate limiting
+- SSRF protection
+- Secret redaction
+- Tool permissions
+- Error handling
+- Request cancellation
+- User isolation
+
+## Security tests
+
+Test:
+
+- Unauthorized access
+- Cross-user data access
+- API key leakage
+- Plaintext storage
+- Prompt injection
+- SSRF
+- Path traversal
+- Replay attacks
+- Session revocation
+- Backup restoration
+- Encryption failures
+
+## AI integration tests
+
+For every configured provider:
+
+1. Verify API credentials.
+2. Verify actual model availability.
+3. Send a real test request.
+4. Verify response parsing.
+5. Verify streaming.
+6. Verify cancellation.
+7. Verify error handling.
+8. Verify tool calling where supported.
+9. Verify vision/audio capabilities where supported.
+
+Do not use a mocked successful response as proof of live integration.
+
+Mocks are acceptable for automated unit tests but must be clearly distinguished from live integration tests.
+
+# PART 23 — AUTOMATED QUALITY IMPROVEMENT
+
+Create a continuous quality system.
+
+For every significant code change:
+
+1. Run formatting checks.
+2. Run static analysis.
+3. Compile affected modules.
+4. Run relevant unit tests.
+5. Run integration tests where available.
+6. Run security checks.
+7. Inspect logs.
+8. Fix regressions.
+9. Repeat.
+
+Add regression tests for every fixed bug.
+
+Do not hide failing tests.
+
+Do not delete difficult tests merely to obtain a green test report.
+
+Do not weaken security checks to make builds pass.
+
+# PART 24 — EXECUTION ORDER
+
+Work in controlled implementation phases.
+
+### PHASE 1 — Complete Audit
+
+- Inspect all files.
+- Build dependency graph.
+- Identify bugs.
+- Identify dead features.
+- Identify missing integrations.
+- Identify security problems.
+- Identify performance issues.
+
+Deliver an audit report.
+
+### PHASE 2 — Critical Repairs
+
+- Fix build issues.
+- Fix dependency problems.
+- Fix configuration mismatches.
+- Fix Firebase integration.
+- Fix provider routing.
+- Fix broken APIs.
+- Fix security problems.
+- Fix database problems.
+
+### PHASE 3 — Intelligence Core
+
+- Build intelligent router.
+- Improve task classification.
+- Implement model capabilities.
+- Improve context management.
+- Implement consensus.
+- Improve error recovery.
+
+### PHASE 4 — Autonomous Agents
+
+- Implement agent runtime.
+- Implement task planning.
+- Implement tool registry.
+- Implement permission system.
+- Implement multi-agent collaboration.
+
+### PHASE 5 — AI Capabilities
+
+- Advanced chat.
+- Research.
+- Coding.
+- Document analysis.
+- Image.
+- Video.
+- Audio.
+- Voice.
+- Memory.
+
+### PHASE 6 — Personal Assistant
+
+- Tasks.
+- Reminders.
+- Calendar.
+- Email.
+- File organization.
+- Android integrations.
+
+### PHASE 7 — Security and Performance
+
+- Security hardening.
+- Encryption verification.
+- Backend hardening.
+- Performance improvements.
+- Privacy testing.
+
+### PHASE 8 — UI/UX
+
+- Premium interface.
+- Navigation.
+- Accessibility.
+- Responsiveness.
+- Error states.
+- Loading states.
+
+### PHASE 9 — Complete Testing
+
+- Android testing.
+- Backend testing.
+- Provider integration testing.
+- Security testing.
+- Physical device testing.
+
+### PHASE 10 — Release Preparation
+
+- Configure production signing.
+- Verify release configuration.
+- Build Debug APK.
+- Build Release APK.
+- Inspect APK contents.
+- Verify permissions.
+- Verify backend deployment.
+- Produce final documentation.
+
+Do not skip phases merely to finish quickly.
+
+# PART 25 — FINAL DELIVERABLES
+
+When development is complete, provide:
+
+1. Fully updated Android source project.
+2. Updated backend source project.
+3. Updated dependency configuration.
+4. Updated database migrations.
+5. Updated security implementation.
+6. Complete API provider configuration guide.
+7. Firebase configuration guide.
+8. Backend deployment guide.
+9. Android build guide.
+10. Complete testing report.
+11. Security audit report.
+12. Feature implementation report.
+13. Known limitations report.
+14. Debug APK.
+15. Release APK, only when properly signed and verified.
+16. SHA-256 hashes for generated APKs.
+17. Final project ZIP.
+
+Provide a feature matrix:
+
+| Feature | Implementation | Verification |
+|---|---|---|
+| AI Chat | Actual implementation | Tested / Pending |
+| AI Reasoning | Actual model capability | Tested / Pending |
+| Coding | Actual tools | Tested / Pending |
+| Research | Real web integration | Tested / Pending |
+| Image Generation | Actual provider | Tested / Pending |
+| Video Generation | Actual provider | Tested / Pending |
+| Audio | Actual provider | Tested / Pending |
+| Voice Assistant | Actual implementation | Tested / Pending |
+| Memory | Encrypted storage | Tested / Pending |
+| Agents | Real tool execution | Tested / Pending |
+| Security | Verified controls | Tested / Pending |
+
+Never mark a feature tested unless its test has actually passed.
+
+# PART 26 — FINAL NON-NEGOTIABLE INSTRUCTIONS
+
+Follow every rule below:
+
+1. Work on the existing AYRA project.
+2. Preserve working functionality.
+3. Never replace the application with a simple demo.
+4. Never create dummy functionality.
+5. Never fabricate AI model names or capabilities.
+6. Never invent API endpoints.
+7. Never expose API keys.
+8. Never bypass user permissions.
+9. Never silently upload private documents.
+10. Never fabricate research results.
+11. Never pretend an agent completed a task.
+12. Never ignore compiler errors.
+13. Never ignore security vulnerabilities.
+14. Never remove existing features without documenting the reason.
+15. Never overwrite user data without a backup and migration plan.
+16. Never introduce an untested database migration into production.
+17. Never claim 100% security or 100% accuracy.
+18. Never sacrifice application stability for unnecessary features.
+19. Use official provider documentation to verify current APIs and model IDs.
+20. Implement features in a modular, maintainable and scalable manner.
+
+If a task is too large for one development session, divide it into phases, preserve progress, maintain a task checklist and continue from the last verified checkpoint.
+
+Do not merely describe future work. Implement as much as the available environment, credentials and permissions genuinely allow.
+
+---
+
+# FINAL VISION — WHAT AYRA MUST BECOME
+
+AYRA must combine the capabilities of:
+
+- A powerful conversational AI like ChatGPT.
+- An advanced reasoning assistant like Claude.
+- A coding assistant.
+- A deep research assistant.
+- A multimodal creative AI.
+- A personal productivity assistant.
+- A document intelligence system.
+- An autonomous AI agent platform.
+- A secure local AI assistant.
+- A multi-model AI orchestration platform.
+
+The most important capability:
+
+**THE USER SHOULD BE ABLE TO ASK AYRA TO DO ALMOST ANYTHING THROUGH NATURAL LANGUAGE, AND AYRA SHOULD INTELLIGENTLY PLAN, SELECT THE RIGHT MODELS, USE THE RIGHT TOOLS, EXECUTE THE TASK, VERIFY THE RESULT AND DELIVER THE FINISHED WORK.**
+
+Example:
+
+User: "AYRA, build me a complete professional website, research the market, create the logo, write the content, implement the backend, test everything and prepare the final project."
+
+AYRA should coordinate the required agents and tools, execute each supported step, request approvals where needed, and deliver the actual files and test results.
+
+It must be powerful without being reckless, autonomous without ignoring consent, intelligent without fabricating results, and secure without misleading the user.
+
+**OUR ULTIMATE GOAL IS TO MAKE AYRA ONE OF THE MOST CAPABLE, USEFUL, TRUSTWORTHY AND POWERFUL AI ASSISTANT PLATFORMS POSSIBLE.**
+
+Start by auditing the complete existing project. Then repair, improve, implement, test and deliver. Do not stop at a plan.

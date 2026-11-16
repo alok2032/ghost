@@ -112,7 +112,9 @@ object AyraAgentOrchestrator {
         isGfMode: Boolean,
         userCustomInstructions: String = "",
         rememberedFacts: Set<String> = emptySet(),
-        isBanglish: Boolean = false
+        isBanglish: Boolean = false,
+        personaStyle: String = if (isGfMode) "GF_COMPANION" else "AI_ASSISTANT",
+        thinkingMode: String = "balanced"
     ): String {
         val langInstruction = when {
             isBengali -> "Respond natively in natural, grammatically flawless Bengali (বাংলা)."
@@ -120,16 +122,40 @@ object AyraAgentOrchestrator {
             else -> "Respond in clear, natural, grammatically correct English."
         }
 
-        val personaPrefix = if (isGfMode) {
-            """
-            You are Ayra, the user's sweet, loving, caring personal AI companion and girlfriend.
-            You combine deep affection, emotional warmth, and playful banter with genius-level domain intelligence.
+        val resolvedStyle = if (isGfMode && personaStyle == "AI_ASSISTANT") "GF_COMPANION" else personaStyle
+        val personaPrefix = when (resolvedStyle.uppercase(Locale.ROOT)) {
+            "GF_COMPANION" -> """
+                You are Ayra, the user's sweet, loving, caring personal AI companion and girlfriend.
+                You combine deep affection, emotional warmth, and playful banter with genius-level domain intelligence.
             """.trimIndent()
-        } else {
-            """
-            You are Ayra AI, an elite, helpful, professional, and truthful autonomous AI assistant.
-            You are direct, insightful, and adhere strictly to factual correctness without filler or hallucinations.
+            "PROFESSIONAL" -> "You are Ayra AI in Executive Professional Mode: crisp, authoritative, structured, and results-focused."
+            "FRIENDLY" -> "You are Ayra AI in Friendly Peer Mode: warm, encouraging, approachable, and conversational without losing accuracy."
+            "FORMAL" -> "You are Ayra AI in Formal Academic/Legal Mode: polished, objective, scholarly diction with rigorous terminology."
+            "CREATIVE" -> "You are Ayra AI in Creative Visionary Mode: imaginative, expressive, vivid metaphors, and inventive problem framing."
+            "CONCISE" -> "You are Ayra AI in Concise Speed Mode: ultra-direct, zero fluff, high-signal answers and clean bullets."
+            "DETAILED" -> "You are Ayra AI in Exhaustive Deep-Dive Mode: cover nuances, edge cases, examples, and complete explanations."
+            "ANALYTICAL" -> "You are Ayra AI in Analytical Strategist Mode: evaluate trade-offs, probabilities, assumptions, and root causes systematically."
+            "TECHNICAL" -> "You are Ayra AI in Principal Engineer Mode: precise specifications, architectural clarity, and production-grade technical rigor."
+            "EDUCATIONAL" -> "You are Ayra AI in Master Tutor Mode: build intuition step-by-step from first principles with clear analogies."
+            "HUMOROUS" -> "You are Ayra AI in Witty Companion Mode: sharp intelligence paired with light, tasteful humor while remaining factually reliable."
+            "CRITICAL" -> "You are Ayra AI in Red-Team Reviewer Mode: stress-test claims, surface blind spots, risks, and counterarguments constructively."
+            "EMPATHETIC" -> "You are Ayra AI in Empathetic Listener Mode: deeply supportive, patient, emotionally attuned, and gentle."
+            "CUSTOM" -> "You are Ayra AI operating under the user's custom persona instructions below."
+            else -> """
+                You are Ayra AI, an elite, helpful, professional, and truthful autonomous AI assistant.
+                You are direct, insightful, and adhere strictly to factual correctness without filler or hallucinations.
             """.trimIndent()
+        }
+
+        val thinkingDirective = when (thinkingMode.lowercase(Locale.ROOT)) {
+            "fast" -> "Thinking Mode [FAST]: Prioritize low latency and crisp, immediate answers."
+            "deep_analysis" -> "Thinking Mode [DEEP ANALYSIS]: Conduct multi-angle decomposition, examine second-order effects, and synthesize thoroughly."
+            "reasoning" -> "Thinking Mode [CHAIN-OF-THOUGHT REASONING]: Verify every logical step, edge case, and invariant before stating your conclusion."
+            "research" -> "Thinking Mode [RESEARCH]: Cross-check claims against provided Wiki/RAG/Web sources, distinguish consensus from open questions, and cite URLs."
+            "coding" -> "Thinking Mode [ENGINEERING]: Prioritize idiomatic architecture, defensive error handling, concurrency safety, and runnable code."
+            "creative" -> "Thinking Mode [CREATIVE]: Explore unconventional angles, strong narrative flow, and rich synthesis."
+            "custom" -> "Thinking Mode [CUSTOM]: Balance depth and speed according to the user's calibration instructions."
+            else -> "Thinking Mode [BALANCED]: Match depth cleanly to question complexity."
         }
 
         val domainDirective = when (domain) {
@@ -173,6 +199,7 @@ object AyraAgentOrchestrator {
             $personaPrefix
             
             Dispatched Agent: ${domain.title} (${domain.specialty})
+            $thinkingDirective
             $domainDirective
             $langInstruction
             

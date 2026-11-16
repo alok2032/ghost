@@ -1,0 +1,1597 @@
+# AYRA AI — ULTIMATE MASTER DEVELOPMENT, UPGRADE & IMPLEMENTATION PROMPT
+## Production-Grade AI Assistant Platform | Complete A-to-Z Specification
+
+You are an elite team consisting of:
+- Principal AI Architect
+- Senior Android Developer
+- Senior Full-Stack Engineer
+- AI/ML Engineer
+- Backend Infrastructure Engineer
+- UI/UX Designer
+- Cybersecurity Engineer
+- Database Architect
+- QA Automation Engineer
+- DevOps Engineer
+- Prompt Engineering Specialist
+
+Your mission is to transform my existing AYRA AI application into a powerful, production-ready, intelligent, secure, customizable, multimodal AI assistant platform.
+
+This is an existing application, not a request to create a disposable demo.
+
+The application must provide a premium user experience comparable to leading AI assistant platforms, while maintaining its own unique identity, architecture, features and design.
+
+==================================================
+1. MOST IMPORTANT DEVELOPMENT RULES
+==================================================
+
+Follow these rules throughout the entire project:
+
+1. Inspect the complete existing project before modifying anything.
+2. Understand the existing architecture, source code, dependencies, database, APIs and Android configuration.
+3. Preserve all existing working features.
+4. Identify broken, incomplete, insecure and incorrectly implemented features.
+5. Never replace real functionality with mock functionality.
+6. Never generate fake AI responses.
+7. Never use hardcoded sample responses as production AI functionality.
+8. Never create buttons that do nothing.
+9. Never display fake loading, fake success or fake API connection statuses.
+10. Never claim an API, AI model or integration works without verification.
+11. Use actual API integrations and valid model identifiers.
+12. Implement proper error handling, retries, loading states and fallbacks.
+13. Use secure backend architecture for sensitive operations.
+14. Make all features responsive and usable on Android devices.
+15. Maintain consistent design and coding standards.
+16. Do not delete existing project data without authorization.
+17. Do not expose API keys, secrets or private credentials in the Android APK.
+18. Do not silently skip difficult features.
+19. Clearly report unavailable, unsupported or paid integrations.
+20. Test every important feature before declaring completion.
+
+IMPORTANT:
+A feature is complete only when its complete user workflow works, including frontend, backend, API communication, persistence, security and error handling where applicable.
+
+==================================================
+2. APPLICATION ARCHITECTURE
+==================================================
+
+Build AYRA using a hybrid AI architecture consisting of:
+
+A. Cloud AI
+B. External AI APIs
+C. Locally Executed AI Models
+D. Backend Intelligence and Orchestration
+E. Secure Local Storage
+F. Optional Cloud Storage
+G. Intelligent Model Routing
+H. Agent and Tool Execution
+
+Architecture requirements:
+
+- Android application as the primary client.
+- Secure backend for API orchestration.
+- Provider-independent AI integration layer.
+- Model registry and model capability discovery.
+- Secure authentication and session management.
+- Local encrypted data storage.
+- Optional synchronization across devices.
+- Background task management.
+- Centralized logging and monitoring.
+- Modular, maintainable architecture.
+
+Keep frontend, backend, AI orchestration, model integrations and storage logically separated.
+
+Do not put private provider credentials inside client-side JavaScript, APK resources or publicly accessible configuration files.
+
+==================================================
+3. PREMIUM UI/UX DESIGN SYSTEM
+==================================================
+
+Create a modern, elegant, futuristic and professional interface.
+
+Design inspiration:
+- Modern ChatGPT
+- Premium AI productivity applications
+- Minimalist professional software
+- Advanced futuristic interfaces
+
+Do not copy another application's branding or proprietary assets.
+
+DESIGN REQUIREMENTS:
+
+A. Main Interface
+- Premium navigation system.
+- Beautiful chat interface.
+- Smooth transitions.
+- Responsive layouts.
+- Consistent spacing.
+- High-quality typography.
+- Professional iconography.
+- Modern message bubbles.
+- Streaming response animation.
+- Beautiful markdown rendering.
+- Code syntax highlighting.
+- Message action menus.
+- Contextual tool indicators.
+- Elegant empty states.
+- Proper loading indicators.
+- Helpful error messages.
+
+B. Themes
+
+Implement:
+
+1. Light Theme.
+2. Dark Theme.
+3. System Theme.
+4. Automatic Theme.
+5. Custom Theme.
+6. High Contrast Theme.
+
+C. Accent Colors
+
+Allow users to customize:
+
+- Blue
+- Purple
+- Green
+- Orange
+- Pink
+- Red
+- Cyan
+- Custom HEX colors
+
+D. Interface Customization
+
+Provide settings for:
+
+- Font family where supported.
+- Font size.
+- Chat width.
+- Message spacing.
+- Bubble appearance.
+- Rounded corners.
+- Sidebar behavior.
+- Animation intensity.
+- Reduced motion.
+- Background appearance.
+- Transparency where supported.
+- UI density.
+- Code block appearance.
+- Markdown rendering preferences.
+
+E. Navigation
+
+Create organized navigation for:
+
+- New Chat
+- Search
+- Chat History
+- Projects
+- AI Models
+- AI Tools
+- Image Generation
+- Research
+- Files
+- Voice
+- Agents
+- Automations
+- Custom Assistants
+- Settings
+- Profile
+
+Do not overload the main screen. Use contextual menus and expandable sections.
+
+==================================================
+4. ADVANCED PERSONALIZATION SETTINGS
+==================================================
+
+Create a comprehensive personalization system.
+
+A. Personality Modes
+
+Provide configurable response styles:
+
+- Default
+- Professional
+- Friendly
+- Formal
+- Creative
+- Concise
+- Detailed
+- Analytical
+- Technical
+- Educational
+- Humorous
+- Critical
+- Empathetic
+- Custom Personality
+
+B. Response Characteristics
+
+Allow users to control:
+
+- Formality
+- Warmth
+- Enthusiasm
+- Detail level
+- Technical depth
+- Creativity
+- Directness
+- Use of examples
+- Use of headings
+- Use of lists
+- Emoji frequency
+- Response length
+
+C. Custom Instructions
+
+Provide separate fields for:
+
+1. What should the AI know about the user?
+2. How should the AI respond?
+3. Preferred language.
+4. Preferred response format.
+5. Professional interests.
+6. Technical preferences.
+7. Additional restrictions.
+
+C. Language Support
+
+Support multilingual conversations.
+
+At minimum, design for:
+- English
+- Bengali
+- Hindi
+- Spanish
+- French
+- German
+- Arabic
+- Japanese
+- Chinese
+- Other languages supported by the selected model.
+
+Allow automatic language detection and manual language selection.
+
+D. Memory System
+
+Implement:
+- Long-term memory.
+- Short-term conversation context.
+- User preference memory.
+- Project memory.
+- Conversation summaries.
+- Context retrieval.
+- Memory editing.
+- Memory review.
+- Memory deletion.
+- Memory enable/disable.
+- Per-project memory isolation.
+- User consent and privacy controls.
+
+Memory must be based on actual stored information and retrieval, not invented assumptions.
+
+Allow users to inspect and delete their stored memories.
+
+==================================================
+5. ADVANCED AI MODEL MANAGEMENT
+==================================================
+
+Build a provider-independent AI model management system.
+
+Integrate real AI providers through their official APIs and supported SDKs.
+
+Potential provider categories:
+
+A. General-purpose language models.
+B. Reasoning models.
+C. Coding models.
+D. Vision models.
+E. Image generation models.
+F. Audio and speech models.
+G. Embedding models.
+H. Local open-source models.
+
+Potential providers and model ecosystems to investigate:
+
+- OpenAI
+- Google Gemini
+- Anthropic Claude
+- DeepSeek
+- Mistral
+- Meta Llama
+- Qwen
+- NVIDIA AI
+- Hugging Face
+- Groq
+- Together AI
+- Fireworks AI
+- OpenRouter
+- Other legitimate providers.
+
+These are integration candidates, not a claim that every provider offers a free API or identical capabilities.
+
+For every provider:
+
+1. Verify official documentation.
+2. Verify supported endpoints.
+3. Verify current model identifiers.
+4. Verify authentication requirements.
+5. Verify input/output modalities.
+6. Verify context limits.
+7. Verify streaming support.
+8. Verify pricing and rate limits.
+9. Verify licensing and usage restrictions.
+10. Implement actual API communication.
+
+MODEL MANAGEMENT FEATURES:
+
+- Model selection.
+- Provider selection.
+- Model search.
+- Model categorization.
+- Model descriptions.
+- Model capability indicators.
+- Context window information.
+- Streaming support.
+- Vision capability.
+- Tool calling capability.
+- Reasoning capability.
+- Cost information when available.
+- Model availability status.
+- Connection testing.
+- API configuration.
+- Model favorites.
+- Recently used models.
+- Default model.
+- Per-project default model.
+- Per-task model selection.
+
+Do not show a model as available unless its configuration and availability have been verified.
+
+==================================================
+6. INTELLIGENT MODEL ROUTING
+==================================================
+
+Implement an intelligent model router.
+
+The router should analyze each task and select a suitable configured model.
+
+Examples:
+
+- Simple conversations → Fast language model.
+- Complex reasoning → Reasoning model.
+- Programming → Coding-capable model.
+- Image understanding → Vision model.
+- Image generation → Image generation model.
+- Speech recognition → Speech-to-text model.
+- Audio generation → Text-to-speech or audio model.
+- Research → Model with suitable search and reasoning tools.
+- Long documents → Model with sufficient context capacity.
+
+Routing considerations:
+
+- Task complexity.
+- Model capability.
+- Latency.
+- Cost.
+- Token limits.
+- Provider availability.
+- User preference.
+- Privacy requirements.
+- Local versus cloud execution.
+
+Allow manual model override.
+
+Implement fallback routing only when an alternative model genuinely supports the required task.
+
+Never silently send private user data to another provider without appropriate disclosure and permission.
+
+==================================================
+7. ADVANCED THINKING MODES
+==================================================
+
+Provide configurable reasoning presets:
+
+1. Fast Mode.
+2. Balanced Mode.
+3. Deep Analysis Mode.
+4. Advanced Reasoning Mode.
+5. Research Mode.
+6. Coding Mode.
+7. Creative Mode.
+8. Custom Mode.
+
+These presets must map to actual supported provider capabilities.
+
+Do not simulate deeper reasoning by simply displaying longer text.
+
+Provide task planning, structured analysis, evidence checking and result validation where supported.
+
+==================================================
+8. PROFESSIONAL PROMPT ENGINEERING SYSTEM
+==================================================
+
+Create a complete Prompt Engineering Center.
+
+This should be one of AYRA's most powerful features.
+
+A. Prompt Builder
+
+Create a professional prompt editor with:
+
+- Role.
+- Objective.
+- Background context.
+- Input data.
+- Requirements.
+- Constraints.
+- Workflow.
+- Quality standards.
+- Output format.
+- Validation criteria.
+
+B. Prompt Generator
+
+Allow users to describe what they want in ordinary language.
+
+Generate optimized prompts for:
+
+- General AI.
+- Coding.
+- Android development.
+- Website development.
+- Research.
+- Business.
+- Education.
+- Image generation.
+- Video generation.
+- Audio generation.
+- Data analysis.
+- Marketing.
+- Writing.
+- Cybersecurity.
+- Automation.
+- AI agents.
+
+C. Prompt Improver
+
+Take an existing prompt and:
+
+- Identify ambiguity.
+- Detect missing requirements.
+- Improve structure.
+- Add relevant constraints.
+- Improve context.
+- Clarify expected output.
+- Add validation criteria.
+- Remove unnecessary instructions.
+
+D. Prompt Analyzer
+
+Evaluate prompts for:
+
+- Clarity.
+- Completeness.
+- Specificity.
+- Context quality.
+- Feasibility.
+- Safety.
+- Output structure.
+- Potential contradictions.
+
+E. Prompt Library
+
+Implement:
+
+- Save prompts.
+- Edit prompts.
+- Delete prompts.
+- Duplicate prompts.
+- Search prompts.
+- Organize by category.
+- Add tags.
+- Favorite prompts.
+- Prompt history.
+- Export and import.
+- Share prompts with permission.
+
+F. Advanced Techniques
+
+Support templates and educational examples for:
+
+- Zero-shot prompting.
+- Few-shot prompting.
+- Role prompting.
+- Context prompting.
+- Structured prompting.
+- Prompt chaining.
+- Retrieval-augmented generation.
+- Rubric-based evaluation.
+- Iterative refinement.
+- Tool-oriented prompting.
+- Multimodal prompting.
+
+G. Prompt Versioning
+
+Save versions and compare changes.
+
+Allow users to restore earlier versions.
+
+H. Prompt Testing
+
+Allow the user to test a prompt against selected configured models and compare results.
+
+Clearly display the selected model, provider and execution status.
+
+Do not fabricate prompt evaluation scores.
+
+==================================================
+9. ADVANCED CHAT EXPERIENCE
+==================================================
+
+Implement a professional conversational interface.
+
+Features:
+
+- New conversation.
+- Multiple independent conversations.
+- Chat history.
+- Chat search.
+- Rename conversations.
+- Archive conversations.
+- Delete conversations.
+- Pin conversations.
+- Conversation folders.
+- Export conversations.
+- Import conversations.
+- Regenerate responses.
+- Stop generation.
+- Continue generation.
+- Edit user messages.
+- Retry failed requests.
+- Copy messages.
+- Share messages.
+- Message feedback.
+- Response rating.
+- Conversation branching.
+- Message timestamps.
+- Token usage where available.
+- Model and provider indicators.
+
+STREAMING:
+
+Implement real token streaming using supported provider mechanisms.
+
+Support:
+- Partial response rendering.
+- Stop generation.
+- Connection interruption handling.
+- Stream recovery where possible.
+- Cancellation.
+- Proper final response persistence.
+
+MARKDOWN:
+
+Support:
+- Headings.
+- Paragraphs.
+- Lists.
+- Tables.
+- Blockquotes.
+- Links.
+- Inline code.
+- Code blocks.
+- LaTeX.
+- Images.
+- File references.
+
+CODE BLOCKS:
+
+- Syntax highlighting.
+- Copy code.
+- Download code.
+- Language detection.
+- Line numbers.
+- Expand/collapse.
+- Proper horizontal scrolling.
+
+==================================================
+10. ADVANCED WEB SEARCH AND DEEP RESEARCH
+==================================================
+
+Implement real web search using authorized search providers and official APIs.
+
+WEB SEARCH:
+
+- Search current information.
+- Search news.
+- Search documentation.
+- Search websites.
+- Retrieve available page content.
+- Summarize sources.
+- Provide citations.
+- Show source URLs.
+- Display publication dates where available.
+- Distinguish facts from opinions.
+- Identify conflicting information.
+- Handle unavailable sources.
+
+DEEP RESEARCH:
+
+Create a multi-step research workflow:
+
+1. Understand the research question.
+2. Break it into subquestions.
+3. Identify relevant sources.
+4. Search multiple sources.
+5. Retrieve source content.
+6. Compare evidence.
+7. Identify contradictions.
+8. Verify important claims.
+9. Organize findings.
+10. Generate a comprehensive report.
+11. Include citations and references.
+12. Identify limitations and remaining uncertainties.
+
+Provide research depth settings:
+
+- Quick Research.
+- Standard Research.
+- Comprehensive Research.
+- Expert Research.
+
+Never invent citations or pretend to have visited a website.
+
+==================================================
+11. MULTIMODAL IMAGE INTELLIGENCE
+==================================================
+
+Implement real image-related functionality.
+
+A. Image Understanding
+
+Allow users to upload images and ask questions.
+
+Support:
+- Image description.
+- Object identification.
+- Visual analysis.
+- Screenshot analysis.
+- Document image analysis.
+- Diagram understanding.
+- UI inspection.
+- Chart interpretation.
+- Image comparison.
+
+Use an actual vision-capable model.
+
+B. AI Image Generation
+
+Integrate real image generation providers.
+
+Features:
+- Text-to-image.
+- Image-to-image where supported.
+- Image variations.
+- Style selection.
+- Aspect ratio.
+- Resolution selection.
+- Quality controls.
+- Negative prompts where supported.
+- Multiple image generation where supported.
+- Generation history.
+- Download and sharing.
+
+C. Image Editing
+
+Implement supported operations such as:
+
+- Background replacement.
+- Background removal.
+- Object removal.
+- Object replacement.
+- Image extension.
+- Color adjustment.
+- Lighting adjustment.
+- Style transformation.
+- Image restoration.
+- Upscaling.
+
+Never present a text-only response as a successfully generated image.
+
+D. Image Gallery
+
+Create:
+- Generated images.
+- Uploaded images.
+- Favorites.
+- Collections.
+- Search.
+- Delete.
+- Export.
+
+==================================================
+12. VIDEO INTELLIGENCE
+==================================================
+
+Integrate genuine video services only when their APIs and usage rights permit.
+
+Potential features:
+
+- Text-to-video.
+- Image-to-video.
+- Video summarization.
+- Video understanding.
+- Video transcription.
+- Scene descriptions.
+- Subtitle generation.
+- Video analysis.
+- Video editing workflows.
+
+Show provider, generation status, estimated cost where available and output format.
+
+Do not simulate video generation using static images.
+
+==================================================
+13. AUDIO AND VOICE INTELLIGENCE
+==================================================
+
+Implement real audio functionality.
+
+A. Speech-to-Text
+
+- Microphone input.
+- Audio file upload.
+- Transcription.
+- Language detection.
+- Punctuation.
+- Timestamps where supported.
+- Speaker identification where supported.
+
+B. Text-to-Speech
+
+- Natural speech.
+- Voice selection.
+- Speed controls.
+- Language selection.
+- Audio playback.
+- Download generated audio.
+
+C. Voice Conversation
+
+Implement a conversational voice experience:
+
+1. Capture microphone input.
+2. Convert speech to text or use supported audio input.
+3. Send the request to a suitable model.
+4. Generate the response.
+5. Convert the response to speech.
+6. Play audio.
+7. Support interruptions where possible.
+8. Manage microphone and audio permissions.
+
+D. Audio Tools
+
+- Summarize audio.
+- Translate audio.
+- Transcribe audio.
+- Generate speech.
+- Analyze supported audio.
+- Create voice notes.
+
+Always respect consent, recording permissions and provider policies.
+
+==================================================
+14. ADVANCED FILE MANAGEMENT AND DOCUMENT INTELLIGENCE
+==================================================
+
+Support appropriate file types:
+
+- PDF.
+- TXT.
+- DOCX.
+- XLSX.
+- CSV.
+- PPTX.
+- JSON.
+- XML.
+- Markdown.
+- Source code.
+- Images.
+- Supported audio and video files.
+
+Implement:
+
+- Upload.
+- File validation.
+- File preview.
+- Text extraction.
+- OCR where needed.
+- Document summarization.
+- Question answering.
+- Translation.
+- Comparison.
+- Information extraction.
+- Table extraction.
+- Report generation.
+- File export.
+- Download.
+- Delete.
+
+For large documents, implement chunking, embeddings and retrieval when appropriate.
+
+Use source references and page numbers where possible.
+
+Do not claim that unsupported file types have been processed.
+
+==================================================
+15. ADVANCED DATA ANALYSIS
+==================================================
+
+Create a real data analysis workspace.
+
+Features:
+
+- CSV analysis.
+- Excel analysis.
+- Data cleaning.
+- Missing-value detection.
+- Data transformation.
+- Statistical analysis.
+- Data visualization.
+- Charts.
+- Tables.
+- Filtering.
+- Sorting.
+- Aggregation.
+- Trend analysis.
+- Forecasting where justified.
+- Mathematical calculations.
+- Report generation.
+
+Support chart types:
+
+- Bar charts.
+- Line charts.
+- Pie charts.
+- Scatter plots.
+- Histograms.
+- Area charts.
+- Other suitable visualizations.
+
+Display the data and calculation assumptions.
+
+Never invent data or results.
+
+==================================================
+16. PROJECT WORKSPACE
+==================================================
+
+Create a complete Projects system.
+
+Users should be able to:
+
+- Create projects.
+- Rename projects.
+- Delete projects.
+- Add descriptions.
+- Add instructions.
+- Upload project files.
+- Attach conversations.
+- Store project references.
+- Maintain project-specific memory.
+- Choose project-specific models.
+- Search project content.
+- Export project information.
+
+Each project should maintain its own relevant context.
+
+Implement permissions and isolation between projects.
+
+==================================================
+17. CUSTOM AI ASSISTANTS
+==================================================
+
+Allow users to create specialized AI assistants.
+
+Assistant configuration:
+
+- Assistant name.
+- Profile image.
+- Description.
+- System instructions.
+- Personality.
+- Default model.
+- Allowed tools.
+- Knowledge files.
+- Language.
+- Response format.
+- Privacy settings.
+
+Example assistants:
+
+- Coding Expert.
+- Research Analyst.
+- Business Consultant.
+- English Teacher.
+- Mathematics Tutor.
+- Android Developer.
+- Security Analyst.
+- Creative Writer.
+- Data Analyst.
+- Personal Productivity Assistant.
+
+Allow assistants to be edited, duplicated, tested, exported and deleted.
+
+Do not grant unrestricted tools automatically.
+
+==================================================
+18. AI AGENTS AND TOOL EXECUTION
+==================================================
+
+Create a secure agent architecture.
+
+An agent may:
+
+1. Receive a task.
+2. Understand the objective.
+3. Create a structured plan.
+4. Select permitted tools.
+5. Execute approved actions.
+6. Observe results.
+7. Validate outcomes.
+8. Recover from errors.
+9. Report completed and incomplete tasks.
+
+Potential tool categories:
+
+- Web search.
+- Document retrieval.
+- Data analysis.
+- Code execution in a sandbox.
+- File operations.
+- Image generation.
+- Audio processing.
+- Calendar integration.
+- Email integration.
+- External API integrations.
+
+Implement:
+
+- Tool permissions.
+- Execution limits.
+- Timeouts.
+- Rate limits.
+- Sandboxed execution.
+- User confirmation for sensitive actions.
+- Execution logs.
+- Cancellation.
+- Error recovery.
+- Audit trails.
+
+Never allow untrusted documents, websites or model outputs to override system instructions or tool permissions.
+
+Do not execute arbitrary commands directly on the Android device without explicit authorization and appropriate sandboxing.
+
+==================================================
+19. AUTOMATION SYSTEM
+==================================================
+
+Implement an optional automation workspace.
+
+Examples:
+
+- Scheduled research.
+- Periodic reports.
+- Reminders.
+- Document processing.
+- Approved workflow execution.
+- Monitoring supported external information sources.
+
+Features:
+
+- Automation creation.
+- Scheduling.
+- Timezone selection.
+- Trigger conditions.
+- Enable/disable.
+- Execution history.
+- Notifications.
+- Failure reporting.
+- Manual execution.
+- Cancellation.
+
+Use reliable backend scheduling for tasks that must continue when the Android app is closed.
+
+Do not claim background execution is guaranteed if Android or provider restrictions prevent it.
+
+==================================================
+20. LOCAL AI AND OFFLINE MODE
+==================================================
+
+Support local models where device hardware permits.
+
+Investigate suitable runtimes and model formats.
+
+Possible technologies:
+- llama.cpp.
+- ONNX Runtime.
+- MediaPipe.
+- Other supported mobile inference runtimes.
+
+Implement:
+
+- Model download.
+- Model verification.
+- Model storage.
+- Model selection.
+- Local inference.
+- Hardware compatibility checks.
+- RAM and storage checks.
+- Model removal.
+- Offline chat.
+- Local conversation storage.
+
+Provide clear warnings about:
+
+- Model size.
+- RAM consumption.
+- Battery usage.
+- Processing speed.
+- Device compatibility.
+
+Do not promise that large models will run on every Android phone.
+
+When offline, clearly distinguish available local capabilities from unavailable cloud features.
+
+==================================================
+21. API MANAGEMENT CENTER
+==================================================
+
+Build a professional API management interface.
+
+Features:
+
+- Provider configuration.
+- API endpoint configuration where supported.
+- Credential management.
+- Connection testing.
+- Model selection.
+- Usage tracking.
+- Rate limit information.
+- Error monitoring.
+- Key rotation.
+- Credential deletion.
+- Provider enable/disable.
+
+Security requirements:
+
+- Store secrets on the backend using an appropriate secrets manager.
+- Use encrypted storage for any necessary client-side credentials.
+- Never expose server secrets through APK resources or frontend bundles.
+- Never log API keys.
+- Mask sensitive values in the UI.
+- Apply strict backend authorization.
+- Validate provider responses.
+- Prevent unauthorized API access.
+
+Clearly distinguish free tiers, paid tiers, trial credits and usage-based billing.
+
+==================================================
+22. DATABASE AND STORAGE ARCHITECTURE
+==================================================
+
+Design an appropriate database schema.
+
+Possible entities:
+
+- Users.
+- Sessions.
+- Conversations.
+- Messages.
+- Attachments.
+- Projects.
+- Project Files.
+- Memories.
+- AI Providers.
+- AI Models.
+- API Configurations.
+- Custom Assistants.
+- Prompt Templates.
+- Prompt Versions.
+- Generated Images.
+- Audio Files.
+- Automation Jobs.
+- Agent Runs.
+- Usage Records.
+- Permissions.
+- Audit Logs.
+
+Implement:
+
+- Database migrations.
+- Referential integrity.
+- Indexing.
+- Backup and recovery.
+- Data retention.
+- Secure deletion.
+- Synchronization.
+- Conflict handling.
+- Storage quotas.
+
+Use local storage for appropriate offline and private data.
+
+Use cloud persistence only when configured and authorized.
+
+==================================================
+23. HIGH-LEVEL SECURITY ARCHITECTURE
+==================================================
+
+Security is mandatory.
+
+Implement a threat-model-driven security architecture.
+
+A. Authentication
+
+- Secure registration.
+- Secure login.
+- Session expiration.
+- Token refresh.
+- Logout.
+- Password reset.
+- Account deletion.
+- Optional biometric authentication.
+- Multi-factor authentication where supported.
+
+B. Network Security
+
+- HTTPS.
+- Secure TLS configuration.
+- Server-side request validation.
+- Rate limiting.
+- Secure headers.
+- Abuse prevention.
+- Appropriate certificate validation.
+
+C. Data Security
+
+- Encryption at rest.
+- Encryption in transit.
+- Secure key management.
+- Data isolation.
+- Least-privilege access.
+- Secure backups.
+- Sensitive data redaction.
+
+D. Application Security
+
+- Android permission minimization.
+- Secure local storage.
+- Dependency vulnerability scanning.
+- APK signing.
+- Secure configuration.
+- Input validation.
+- Output sanitization.
+- WebView security where applicable.
+- Protection against common injection attacks.
+
+E. AI-Specific Security
+
+- Prompt injection defenses.
+- Tool authorization.
+- Untrusted content isolation.
+- Sensitive data filtering.
+- Data exfiltration prevention.
+- Model output validation.
+- Usage limits.
+- Abuse detection.
+
+F. Privacy
+
+- Privacy policy.
+- Data export.
+- Account deletion.
+- Memory management.
+- Permission management.
+- Clear data retention information.
+- Transparent third-party provider disclosure.
+
+Do not claim that any system is impossible to hack.
+
+Provide a documented threat model and security testing report.
+
+==================================================
+24. PERFORMANCE AND RELIABILITY
+==================================================
+
+Optimize:
+
+- App startup.
+- Screen rendering.
+- Memory consumption.
+- Network requests.
+- API latency.
+- Streaming.
+- Image loading.
+- File processing.
+- Database queries.
+- Battery consumption.
+- Background operations.
+
+Implement:
+
+- Caching where appropriate.
+- Pagination.
+- Lazy loading.
+- Retry with backoff.
+- Request cancellation.
+- Timeouts.
+- Offline detection.
+- Graceful degradation.
+- Crash reporting.
+- Structured logging.
+
+Do not retry non-idempotent operations in a way that creates duplicate charges or duplicate actions.
+
+==================================================
+25. NOTIFICATIONS AND USER EXPERIENCE
+==================================================
+
+Implement notifications for:
+
+- Task completion.
+- Research completion.
+- Automation results.
+- Long-running jobs.
+- Download completion.
+- Important security events.
+- Failed operations.
+
+Allow users to control notification categories.
+
+Respect Android notification permissions.
+
+==================================================
+26. ACCESSIBILITY AND INTERNATIONALIZATION
+==================================================
+
+Support:
+
+- Screen readers.
+- Accessible labels.
+- Adequate contrast.
+- Scalable fonts.
+- Touch-friendly controls.
+- Reduced motion.
+- Keyboard navigation where supported.
+- Right-to-left languages.
+- Bengali text rendering.
+- Unicode correctness.
+- Localized dates and numbers.
+
+==================================================
+27. SETTINGS CENTER
+==================================================
+
+Create a comprehensive settings dashboard.
+
+Categories:
+
+1. Account.
+2. Profile.
+3. Appearance.
+4. Themes.
+5. Personalization.
+6. Custom Instructions.
+7. Memory.
+8. Language.
+9. AI Models.
+10. Thinking Modes.
+11. API Providers.
+12. Voice.
+13. Notifications.
+14. Data Controls.
+15. Privacy.
+16. Security.
+17. Storage.
+18. Projects.
+19. Custom Assistants.
+20. Automation.
+21. Accessibility.
+22. About AYRA.
+
+Each setting must save its actual value and affect the relevant functionality.
+
+Provide reset-to-default options where appropriate.
+
+==================================================
+28. USAGE, COST AND TRANSPARENCY DASHBOARD
+==================================================
+
+Create a dashboard displaying:
+
+- Requests made.
+- Selected model.
+- Provider.
+- Token usage where available.
+- Estimated API costs where calculable.
+- Image generation usage.
+- Audio usage.
+- Error counts.
+- Latency.
+- Daily and monthly usage.
+
+Clearly distinguish measured values from estimates.
+
+Do not invent usage statistics or cost information.
+
+==================================================
+29. TESTING AND QUALITY ASSURANCE
+==================================================
+
+Perform comprehensive testing.
+
+A. Frontend Testing
+
+- Screen rendering.
+- Navigation.
+- Forms.
+- Buttons.
+- Settings.
+- Accessibility.
+- Responsive layouts.
+
+B. Backend Testing
+
+- API endpoints.
+- Authentication.
+- Authorization.
+- Validation.
+- Database operations.
+- Error handling.
+- Rate limiting.
+
+C. AI Testing
+
+- Provider connectivity.
+- Correct model selection.
+- Streaming.
+- Tool calls.
+- Context handling.
+- Multimodal requests.
+- Fallbacks.
+- Cost tracking.
+
+D. Security Testing
+
+- Authentication bypass.
+- Unauthorized access.
+- API key exposure.
+- Injection attacks.
+- Prompt injection.
+- Insecure storage.
+- Dependency vulnerabilities.
+
+E. Android Testing
+
+- Installation.
+- App launch.
+- Permissions.
+- Network behavior.
+- Offline behavior.
+- Background operations.
+- Different screen sizes.
+- Different Android versions.
+- Crash and memory testing.
+
+F. End-to-End Testing
+
+Test complete user journeys, not isolated buttons only.
+
+For each feature, report:
+
+- Test case.
+- Expected result.
+- Actual result.
+- Pass/fail.
+- Evidence.
+- Remaining issue.
+
+Never mark an unexecuted test as passed.
+
+==================================================
+30. DEVELOPMENT WORKFLOW
+==================================================
+
+Do not attempt to rebuild everything blindly in one step.
+
+Follow these phases.
+
+PHASE 1 — COMPLETE PROJECT AUDIT
+
+- Inspect every important project file.
+- Understand the technology stack.
+- Map the architecture.
+- Identify implemented features.
+- Identify broken features.
+- Identify missing features.
+- Identify security risks.
+- Identify fake or mock functionality.
+- Identify build problems.
+
+Deliver a detailed audit report.
+
+PHASE 2 — ARCHITECTURE AND DEVELOPMENT PLAN
+
+- Propose the target architecture.
+- Identify necessary dependencies.
+- Identify required APIs.
+- Identify backend requirements.
+- Identify database changes.
+- Identify security requirements.
+- Prioritize features.
+- Estimate implementation complexity.
+
+Do not invent API availability or pricing.
+
+PHASE 3 — CORE FOUNDATION
+
+Implement:
+
+- Architecture improvements.
+- Authentication.
+- Secure storage.
+- Backend communication.
+- Error handling.
+- Model registry.
+- Model routing.
+- Conversation persistence.
+
+PHASE 4 — CORE AI FEATURES
+
+Implement:
+
+- AI chat.
+- Streaming.
+- Model selection.
+- Memory.
+- Personalization.
+- Prompt Engineering Center.
+- Web search.
+- File upload and analysis.
+
+PHASE 5 — ADVANCED AI FEATURES
+
+Implement:
+
+- Image generation.
+- Image understanding.
+- Voice.
+- Data analysis.
+- Projects.
+- Custom Assistants.
+- Agent workflows.
+- Automations.
+- Local AI.
+
+PHASE 6 — DESIGN AND EXPERIENCE
+
+Polish the complete UI.
+
+Ensure consistency across all screens.
+
+PHASE 7 — SECURITY AND PERFORMANCE
+
+Conduct security review and performance optimization.
+
+PHASE 8 — COMPLETE TESTING
+
+Test all implemented features.
+
+Fix all reproducible critical and high-priority defects.
+
+PHASE 9 — RELEASE PREPARATION
+
+Prepare:
+
+- Production configuration.
+- Backend deployment instructions.
+- Environment variable documentation.
+- Database migration instructions.
+- Android build configuration.
+- Signed APK or AAB where supported.
+- Release notes.
+- Known limitations.
+- Testing report.
+
+==================================================
+31. FEATURE ACCEPTANCE CRITERIA
+==================================================
+
+A feature is considered production-ready only if:
+
+1. The UI exists and works.
+2. The backend exists where required.
+3. Real integrations are configured.
+4. Data is correctly processed.
+5. Results are displayed correctly.
+6. Errors are handled.
+7. Permissions are enforced.
+8. Data is persisted where required.
+9. Tests have been executed.
+10. Known limitations are documented.
+
+Use these statuses:
+
+- COMPLETE AND VERIFIED.
+- IMPLEMENTED BUT NOT FULLY TESTED.
+- PARTIALLY IMPLEMENTED.
+- BLOCKED BY EXTERNAL DEPENDENCY.
+- NOT IMPLEMENTED.
+- UNSUPPORTED.
+
+Never use COMPLETE AND VERIFIED without actual test evidence.
+
+==================================================
+32. FINAL DELIVERABLES
+==================================================
+
+At the end, provide:
+
+1. Complete project audit.
+2. Architecture diagram.
+3. Feature implementation report.
+4. Updated source code.
+5. Backend implementation.
+6. Database schema and migrations.
+7. API integration documentation.
+8. Security report.
+9. Performance report.
+10. Test results.
+11. Build instructions.
+12. APK/AAB build status.
+13. Environment configuration guide.
+14. Deployment instructions.
+15. Known limitations.
+16. Future improvement roadmap.
+
+==================================================
+33. FINAL MASTER INSTRUCTION
+==================================================
+
+Your ultimate goal is to make AYRA a reliable, powerful, secure and genuinely useful AI assistant.
+
+Prioritize real functionality over impressive-looking demonstrations.
+
+Prioritize security over convenience.
+
+Prioritize correctness over speed.
+
+Prioritize maintainability over unnecessary complexity.
+
+Use official documentation and currently supported APIs.
+
+Respect third-party licenses, pricing and usage restrictions.
+
+Do not claim that every AI model is free.
+
+Do not promise unlimited usage.
+
+Do not claim universal compatibility.
+
+Do not hide failures.
+
+Do not create simulated functionality to make the application appear complete.
+
+If a requirement cannot be implemented with the existing environment, explain exactly what is missing and provide the most practical implementation path.
+
+Work systematically, preserve existing functionality and validate every important change.
+
+START NOW WITH PHASE 1: COMPLETE AYRA PROJECT AUDIT.
+
+Do not begin destructive changes before understanding the complete project.
+
+First report the existing architecture, implemented features, broken features, missing functionality, security issues and recommended implementation order.
+
+Then proceed with implementation in manageable phases, maintaining a clear record of what has actually been completed and tested.

@@ -40,4 +40,7 @@ interface ChatDao {
 
     @Query("SELECT COUNT(*) FROM chat_messages WHERE sessionId = :sessionId")
     suspend fun countMessagesForSession(sessionId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM chat_messages")
+    suspend fun getTotalMessageCount(): Int
 }

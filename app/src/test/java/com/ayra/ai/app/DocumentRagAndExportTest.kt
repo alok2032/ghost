@@ -139,7 +139,12 @@ class DocumentRagAndExportTest {
         helper.writableDatabase.close()
 
         val db = Room.databaseBuilder(context, ChatDatabase::class.java, dbFileName)
-            .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6)
+            .addMigrations(
+                ChatDatabase.MIGRATION_4_5,
+                ChatDatabase.MIGRATION_5_6,
+                ChatDatabase.MIGRATION_6_7,
+                ChatDatabase.MIGRATION_7_8
+            )
             .allowMainThreadQueries()
             .build()
 

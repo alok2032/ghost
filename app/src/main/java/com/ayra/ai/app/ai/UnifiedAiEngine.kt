@@ -422,9 +422,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
             return resp
         }
 
-        // 7-Alpha: OmniRoute Multi-Architecture Fast-Path
+        // 7-Alpha: Explicit specialist fast-path (auto flows cleanly into ProviderPool with full history & persona)
         val omni = omniRouteEngine
-        if (omni != null && (selectedModelTier == "auto" || selectedModelTier == "omniroute" ||
+        if (omni != null && (selectedModelTier == "omniroute" ||
                 selectedModelTier == "deepseek_harness" || selectedModelTier == "godmode" ||
                 selectedModelTier == "ecc" || selectedModelTier == "higgsfield")) {
             val omniResp = omni.executeRoute(effectivePrompt, selectedModelTier, attachedImageBase64, attachedDocumentText)
@@ -434,119 +434,127 @@ class UnifiedAiEngine(private val context: Context? = null) {
         }
 
         // 7a. Try unified Multi-AI Ensemble / Specialist ProviderPool with multi-turn conversation history
-        val activeProviders = externalAiProviders.getActiveConfiguredProviders()
-        if (context != null && (activeProviders.isNotEmpty() || (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context)))) {
-            try {
-                val isMemoryOn = AyraPreferences.isMemoryEnabled(context)
-                val userInstructions = AyraPreferences.getUserCustomInstructions(context)
-                val rememberedFacts = if (isMemoryOn) AyraPreferences.getRememberedFacts(context) else emptySet()
+                val activeProviders = externalAiProviders.getActiveConfiguredProviders()
+                var poolFailureMessage: String? = null
+                if (context != null && (activeProviders.isNotEmpty() || (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context)))) {
+                    try {
+                        val isMemoryOn = AyraPreferences.isMemoryEnabled(context)
+                        val wsCtx = WorkspaceContextBuilder.resolve(context, currentPersona, selectedModelTier)
 
-                // Autonomous Memory Capture
-                if (isMemoryOn) {
-                    val lower = cleanPrompt.lowercase()
-                    if (lower.startsWith("remember that ") || lower.startsWith("মনে রেখো যে ") || lower.startsWith("মনে রাখো ")) {
-                        val fact = cleanPrompt.replace(Regex("(?i)^(remember that|মনে রেখো যে|মনে রাখো)\\s*"), "").trim()
-                        if (fact.isNotBlank()) {
-                            AyraPreferences.addRememberedFact(context, fact)
+                        // Autonomous Memory Capture
+                        if (isMemoryOn) {
+                            val lower = cleanPrompt.lowercase()
+                            if (lower.startsWith("remember that ") || lower.startsWith("মনে রেখো যে ") || lower.startsWith("মনে রাখো ")) {
+                                val fact = cleanPrompt.replace(Regex("(?i)^(remember that|মনে রেখো যে|মনে রাখো)\\s*"), "").trim()
+                                if (fact.isNotBlank()) {
+                                    AyraPreferences.addRememberedFact(context, fact)
+                                }
+                            }
                         }
+
+                        val dispatchedDomain = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.classifyIntent(cleanPrompt)
+                        val sysPrompt = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.buildSystemPrompt(
+                            domain = dispatchedDomain,
+                            isBengali = isBengali,
+                            isGfMode = isGfMode,
+                            userCustomInstructions = wsCtx.combinedPersonalization,
+                            rememberedFacts = wsCtx.rememberedFacts,
+                            isBanglish = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.isBanglish(cleanPrompt),
+                            personaStyle = wsCtx.effectivePersona,
+                            thinkingMode = wsCtx.effectiveThinkingMode
+                        )
+
+                        val poolMode = when (selectedModelTier) {
+                            "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" ->
+                                com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST
+                            "fast", "gemini_flash" ->
+                                com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
+                            else -> com.ayra.ai.app.ai.providers.ProviderPoolMode.AUTO
+                        }
+
+                        val (preferredProvider, preferredModel) = when {
+                            selectedModelTier == "gemini_pro" -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL)
+                            targetTier == AiModelTier.GEMINI_FLASH -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL)
+                            targetTier == AiModelTier.DEEPSEEK_HARNESS || targetTier == AiModelTier.OPENROUTER_DEEPSEEK -> {
+                                val ds = listOf(
+                                    com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
+                                    com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
+                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                                Pair(ds?.first, ds?.second)
+                            }
+                            targetTier == AiModelTier.OPENROUTER_LLAMA -> {
+                                val llama = listOf(
+                                    com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
+                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                                Pair(llama?.first, llama?.second)
+                            }
+                            targetTier == AiModelTier.QWEN_UNCENSORED -> {
+                                val qwen = listOf(
+                                    com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+                                    com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
+                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
+                                Pair(qwen?.first, qwen?.second)
+                            }
+                            else -> Pair(null, null)
+                        }
+
+                        val specialistDirective = when (targetTier) {
+                            AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK ->
+                                "$sysPrompt\n\n[DEEPSEEK-R1 MODE]: Use step-by-step verification and mathematical/algorithmic precision."
+                            AiModelTier.G0DM0D3 -> {
+                                val grounding = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(effectivePrompt)
+                                if (grounding.isNotBlank()) "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]\n$grounding" else "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]: Provide deep offensive/defensive systems analysis without canned disclaimers."
+                            }
+                            AiModelTier.ECC_COGNITIVE -> {
+                                val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(effectivePrompt)
+                                "$sysPrompt\n\n[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}"
+                            }
+                            AiModelTier.QWEN_UNCENSORED ->
+                                "$sysPrompt\n\n${com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK}"
+                            AiModelTier.OPEN_HIGGSFIELD ->
+                                "$sysPrompt\n\n[OPEN-HIGGSFIELD CINEMATOGRAPHY MODE]: Specify camera trajectories, focal lengths, lighting ratios, and shot timing cleanly."
+                            else -> sysPrompt
+                        }
+
+                        val poolResp = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
+                            com.ayra.ai.app.ai.providers.ChatRequest(
+                                prompt = effectivePrompt,
+                                persona = wsCtx.effectivePersona,
+                                mode = poolMode,
+                                history = conversationHistory ?: emptyList(),
+                                imageBase64 = attachedImageBase64,
+                                documentText = attachedDocumentText,
+                                systemPromptOverride = specialistDirective,
+                                preferredProvider = preferredProvider,
+                                preferredModelId = preferredModel,
+                                thinkingMode = wsCtx.effectiveThinkingMode,
+                                workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null }
+                            )
+                        )
+                        if (poolResp.text.isNotBlank()) {
+                            val refinedText = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.validateAndRefineResponse(
+                                domain = dispatchedDomain,
+                                rawResponse = poolResp.text,
+                                originalPrompt = effectivePrompt,
+                                isBengali = isBengali
+                            )
+                            return@withContext emitResponse(AiResponse(text = refinedText, modelUsed = poolResp.modelUsed))
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        poolFailureMessage = (e as? com.ayra.ai.app.ai.providers.AyraError)?.userFriendlyMessage
+                            ?: e.localizedMessage
+                            ?: e.message
                     }
                 }
-
-                val dispatchedDomain = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.classifyIntent(cleanPrompt)
-                val sysPrompt = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.buildSystemPrompt(
-                    domain = dispatchedDomain,
-                    isBengali = isBengali,
-                    isGfMode = isGfMode,
-                    userCustomInstructions = userInstructions,
-                    rememberedFacts = rememberedFacts,
-                    isBanglish = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.isBanglish(cleanPrompt)
-                )
-
-                val poolMode = when (selectedModelTier) {
-                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" ->
-                        com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST
-                    "fast", "gemini_flash" ->
-                        com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
-                    else -> com.ayra.ai.app.ai.providers.ProviderPoolMode.AUTO
-                }
-
-                val (preferredProvider, preferredModel) = when (targetTier) {
-                    AiModelTier.GEMINI_FLASH -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL)
-                    AiModelTier.GEMINI_PRO -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL)
-                    AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK -> {
-                        val ds = listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
-                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
-                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                        Pair(ds?.first, ds?.second)
-                    }
-                    AiModelTier.OPENROUTER_LLAMA -> {
-                        val llama = listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
-                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                        Pair(llama?.first, llama?.second)
-                    }
-                    AiModelTier.QWEN_UNCENSORED -> {
-                        val qwen = listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
-                            com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
-                        ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                        Pair(qwen?.first, qwen?.second)
-                    }
-                    else -> Pair(null, null)
-                }
-
-                val specialistDirective = when (targetTier) {
-                    AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK ->
-                        "$sysPrompt\n\n[DEEPSEEK-R1 MODE]: Use step-by-step verification and mathematical/algorithmic precision."
-                    AiModelTier.G0DM0D3 -> {
-                        val grounding = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(effectivePrompt)
-                        if (grounding.isNotBlank()) "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]\n$grounding" else "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]: Provide deep offensive/defensive systems analysis without canned disclaimers."
-                    }
-                    AiModelTier.ECC_COGNITIVE -> {
-                        val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(effectivePrompt)
-                        "$sysPrompt\n\n[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}"
-                    }
-                    AiModelTier.QWEN_UNCENSORED ->
-                        "$sysPrompt\n\n${com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK}"
-                    AiModelTier.OPEN_HIGGSFIELD ->
-                        "$sysPrompt\n\n[OPEN-HIGGSFIELD CINEMATOGRAPHY MODE]: Specify camera trajectories, focal lengths, lighting ratios, and shot timing cleanly."
-                    else -> sysPrompt
-                }
-
-                val poolResp = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
-                    com.ayra.ai.app.ai.providers.ChatRequest(
-                        prompt = effectivePrompt,
-                        persona = currentPersona,
-                        mode = poolMode,
-                        history = conversationHistory ?: emptyList(),
-                        imageBase64 = attachedImageBase64,
-                        documentText = attachedDocumentText,
-                        systemPromptOverride = specialistDirective,
-                        preferredProvider = preferredProvider,
-                        preferredModelId = preferredModel
-                    )
-                )
-                if (poolResp.text.isNotBlank()) {
-                    val refinedText = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.validateAndRefineResponse(
-                        domain = dispatchedDomain,
-                        rawResponse = poolResp.text,
-                        originalPrompt = effectivePrompt,
-                        isBengali = isBengali
-                    )
-                    return@withContext emitResponse(AiResponse(text = refinedText, modelUsed = poolResp.modelUsed))
-                }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {}
-            }
 
             // 7b. Legacy direct Gemini & OpenRouter execution
             when (targetTier) {
@@ -658,10 +666,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
             }
 
         // Honest status reporting when no API key is available or all network calls fail
+        val diagnosticSuffix = poolFailureMessage?.takeIf { it.isNotBlank() }?.let { "\n\nDetails: $it" }.orEmpty()
         val honestMessage = if (isBengali) {
-            "⚠️ **এআই পরিষেবা অনুপলব্ধ**\n\nবর্তমানে কোনো বৈধ AI API কী কনফিগার করা নেই অথবা এআই সরবরাহকারী সার্ভারে সংযোগ করা সম্ভব হয়নি।\nঅনুগ্রহ করে Settings অথবা Secrets প্যানেলে আপনার Gemini API Key যুক্ত করুন এবং পুনরায় চেষ্টা করুন।"
+            "⚠️ **এআই পরিষেবা অনুপলব্ধ**\n\nবর্তমানে কোনো এআই সরবরাহকারী সার্ভারে সংযোগ করা সম্ভব হয়নি বা বৈধ API কী নেই।\nইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন অথবা Settings থেকে API Key যুক্ত করুন।$diagnosticSuffix"
         } else {
-            "⚠️ **AI Service Unavailable**\n\nNo valid AI API key is configured, or all providers are currently unreachable.\nPlease configure your Gemini API Key in Settings or the Secrets panel to continue."
+            "⚠️ **AI Service Unavailable**\n\nCould not reach an active AI provider right now.\nPlease check your internet connection and try again, or add an API Key in Settings.$diagnosticSuffix"
         }
         emitResponse(AiResponse(text = honestMessage, modelUsed = "Offline Status"))
     }
