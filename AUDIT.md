@@ -105,15 +105,35 @@
     - Fixed multi-epoch E2EE revocation bypass by persisting `revokedAtEpoch` on `TrustedE2eeDevice` and rejecting envelopes with `epoch >= revokedFrom || epoch == currentEpoch`.
     - Enforced canonical path confinement and leaf filename sanitization in `EncryptedVaultStorage.materializeTempDecryptedFile` (`cacheDir/exports/`) and `ComfyUiClient.resolveConfinedOutputFile` (`outputDir/`).
     - Switched `EncryptedPreferences.putString` and `remove` to synchronous atomic `.commit()`.
-  - **AI Local-Only Consent Gating & Coroutine Cancellation (`EnterpriseCognitiveEngine.kt`, `GodModePliniusEngine.kt`, `GeminiCliEngine.kt`, `OmniRouteEngine.kt`, `OpenHiggsfieldEngine.kt`, `ExternalAiProviders.kt`, `GoogleAuthManager.kt`):**
+  - **AI Local-Only Consent Gating & Coroutine Cancellation (`EnterpriseCognitiveEngine.kt`, `SecurityResearchEngine.kt`, `GeminiCliEngine.kt`, `OmniRouteEngine.kt`, `OpenHiggsfieldEngine.kt`, `ExternalAiProviders.kt`, `GoogleAuthManager.kt`):**
     - Gated external wiki/CVE grounding, Google Search grounding, and live model discovery (`discoverDynamicModels`) behind `allowExternalWikiGrounding` / `SecureAiGatewayClient.evaluateProviderAccess`.
     - Propagated `kotlinx.coroutines.CancellationException` across `try/catch` and `runCatching` blocks cleanly.
   - **Regression Tests Added (`AyraSecurityRegressionTest.kt`, `MasterIntegrityUpgradeTest.kt`):**
     - Multi-epoch E2EE revocation enforcement, `EncryptedVaultStorage.materializeTempDecryptedFile` path traversal confinement, `ComfyUiClient` path traversal confinement via `MockWebServer`, and `Local-Only` CVE/model discovery blocking.
-- **Verification:**
-  - Android Unit, Robolectric & Firebase Emulator Tests: **155 / 155 passed, 0 skipped, 0 failed** across **24 test suites**.
+- **Historical Verification (2026-11-14 snapshot):**
+  - Android Unit, Robolectric & Firebase Emulator Tests: **155 / 155 passed** at that baseline commit; later cleanup (`Phase 22` + `Stability & Build Phase 1`) replaced `155` claims with live per-phase command outputs.
   - Firestore Rules Unit Tests (`firestore.test.js`): **6 / 6 passed**.
   - Zero-Trust Node/TS Backend (`backend/`): **8 / 8 passed**.
   - Release R8 APK (`27,533,706` bytes, 1 DEX) & Debug APK (`52,877,120` bytes, 20 DEX) built and verified.
 
+### Phase 22: Master Audit, Ghost AI Rebrand & Play Release Preparation (2026-11-17)
+- **Status:** Completed & Verified
+- **Findings Audited & Fixed:**
+  - **Compose Parameter & Navigation Fix (`ChatScreen.kt`, `AyraWorkspaceHost.kt`):** Added `onOpenDrawer: (() -> Unit)?` parameter to `ChatScreen` and wired an accessible `48.dp` drawer trigger button (`chat_open_drawer_button`) in `GlassHeaderBar`, resolving the navigation host call-site mismatch.
+  - **ViewModel-Scoped Orchestration & UI Telemetry (`ChatViewModel.kt`, `ChatScreen.kt`):** Moved active chat generation into `ChatViewModel.launchOrchestratedInference(...)` so configuration changes preserve in-flight streaming and partial answers on Stop; added `activeCitations` StateFlow and rendered live `agentPlanSteps`, clickable source citations, and an M3 Opt-In Memory Confirmation Banner (`Save to Memory` / `Dismiss`) cleanly above the input bar.
+  - **Blocking I/O & A11y Touch Targets (`ChatScreen.kt`, `CyberTerminalCard.kt`):** Offloaded `galleryLauncher`, `documentLauncher`, `cameraLauncher`, `onExportHistory`, attachment Base64 encoding, and recent Room history loading to `Dispatchers.IO`; upgraded compact `<48.dp` `IconButton` controls to `48.dp` minimum targets.
+  - **Adaptive Light/Dark Material 3 Contrast (`ResearchDocsScreen.kt`, `ModelsArenaScreen.kt`, `DiagnosticsToolsScreen.kt`):** Replaced hardcoded dark-only hex surface/text tokens with semantic `MaterialTheme.colorScheme` roles so cards and typography maintain accessible contrast in both Light and Dark themes.
+  - **Dead Legacy Code Removal & Honesty Compliance (`NoFakeOutputTest`):** Removed unused `GodModePliniusEngine.kt` and `Qwen38UncensoredEngine.kt`, updated chat model-selector tiers (`open_weights` / `security_research`) to honest capability labels, and kept strict non-weaponized defensive boundaries intact.
+  - **Brand Consistency ("Ghost AI" • "By Alok"):** Unified user-facing strings across `metadata.json`, `strings.xml`, `AyraWorkspaceHost.kt`, `ChatViewModel.kt`, `MemoryScreen.kt`, `ProjectsAndAssistantsScreen.kt`, `SettingsDashboardPanels.kt`, `AyraOrchestrator.kt`, `AgentCore.kt`, `AgentToolRegistry.kt`, `SecurityResearchEngine.kt`, `OpenModelEngine.kt`, and OpenRouter headers while preserving `applicationId`, keystore aliases, and Room database identifiers for zero-downtime compatibility.
+  - **Regression Coverage (`ChatViewModelOrchestrationTest.kt`):** Added Robolectric + `MockWebServer` integration tests covering SSE streaming via `launchOrchestratedInference`, opt-in memory confirmation vs dismissal, and Ghost AI engine branding invariants.
+- **Play Store / Public Release Signing Checklist:**
+  - The in-container `release` build configuration keeps `debug.keystore` (`signingConfigs.release` preserved per container build-environment rules) for local verification builds.
+  - **Before uploading an `.aab` / `.apk` to Google Play Console or distributing publicly**, configure a private production upload keystore via encrypted CI secrets / `keystore.properties` (excluded from Git — never commit `.jks` or keystore passwords), add both upload + Play App Signing SHA-1/SHA-256 certificates to `app/google-services.json`, and enroll in Play App Signing.
 
+### Stability & Build Phase 1 (Active Upgrade Baseline)
+- Consolidated `OkHttpClient` creation to `NetworkSecurityHelper` (`hardenedPooledClient`, `localLanClient`, `newClient(...)`).
+- Unified model tiers & legacy aliases into `ModelTier` (`ModelTierSpec.kt`).
+- Added `SCHEDULE_EXACT_ALARM`, exact-alarm permission checks/settings intent, and explicit visible fallback notice in `AyraTaskScheduler` + `ChatScreen`; removed unused `ACCESS_WIFI_STATE` and bulk `"Grant All Permissions"` prompt.
+- Migrated UI collectors across all screens/components to `collectAsStateWithLifecycle`, verified keyed `LazyColumn` `items(key = ...)`, and annotated Compose data models with `@Immutable`.
+- Enforced neutral `"AI_ASSISTANT"` default persona across DB/prefs/engines with an explicit 18+ confirmation gate before enabling `"GF_COMPANION"`.
+- Trimmed unused Gradle catalog entries (`datastore-preferences`, `secrets-gradle-plugin`, `runner`, `espresso-core`, `ui-test-junit4`, `navigation-compose`) and updated `proguard-rules.pro`.

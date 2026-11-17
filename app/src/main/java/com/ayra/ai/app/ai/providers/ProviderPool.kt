@@ -674,7 +674,7 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthesisPrompt = buildString {
-            append("You are Ayra AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
+            append("You are Ghost AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
             append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")
@@ -789,8 +789,9 @@ class ProviderPool @JvmOverloads constructor(
         } else {
             val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
             val isBanglish = AyraAgentOrchestrator.isBanglish(request.prompt)
-            val isGfMode = request.persona == "GF_COMPANION"
             val appContext = context
+            val safePersona = AyraPreferences.resolveSafePersona(appContext, request.persona)
+            val isGfMode = safePersona == "GF_COMPANION"
             val userInstructions = appContext?.let { AyraPreferences.buildCombinedPersonalizationBlock(it) } ?: ""
             val isMemoryOn = appContext?.let { AyraPreferences.isMemoryEnabled(it) } ?: false
             val roomFacts = appContext?.takeIf { isMemoryOn }?.let { ctx ->

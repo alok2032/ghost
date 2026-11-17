@@ -12,12 +12,19 @@
 -keep class androidx.biometric.** { *; }
 -keep class androidx.credentials.** { *; }
 
-# Moshi & Kotlinx Serialization
--keepclasseswithmembers class * {
-    @com.squareup.moshi.JsonClass *;
+# Keep @Immutable data/UI models and ModelTier routing specs
+-keep @androidx.compose.runtime.Immutable class com.ayra.ai.app.** { *; }
+-keep enum com.ayra.ai.app.ai.providers.ModelTier { *; }
+-keep class com.ayra.ai.app.data.** { *; }
+
+# Kotlinx Serialization (if used by transitive/plugin payloads)
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.SerializationKt
+-keepclassmembers class kotlinx.serialization.json.** {
+    *** Companion;
 }
--keepclassmembers class * {
-    @com.squareup.moshi.Json *;
+-keepclasseswithmembers class kotlinx.serialization.json.** {
+    kotlinx.serialization.KSerializer serializer(...);
 }
 
 # Remove debug logging in release builds

@@ -4,7 +4,10 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import androidx.compose.runtime.Immutable
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.ScheduledTask
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +19,38 @@ import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
 
+@Immutable
+data class AlarmArmResult(
+    val scheduled: Boolean,
+    val isExact: Boolean,
+    val needsExactPermissionPrompt: Boolean,
+    val fallbackNotice: String = ""
+)
+
 class AyraTaskScheduler(private val context: Context) {
+
+    fun canScheduleExactAlarms(): Boolean {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
+        }
+    }
+
+    fun buildExactAlarmSettingsIntent(): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:${context.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        }
+    }
 
     /**
      * Checks if user prompt is asking to schedule:
@@ -105,9 +139,9 @@ class AyraTaskScheduler(private val context: Context) {
         var messageToSpeak = extractSpokenMessage(userInput)
         if (messageToSpeak.isBlank()) {
             messageToSpeak = if (isBengali) {
-                "হ্যালো $recipient! এটি আয়রা এআই থেকে আপনার জন্য শিডিউল করা ভয়েস কল। আশা করি আপনি ভালো আছেন!"
+                "হ্যালো $recipient! এটি Ghost AI থেকে আপনার জন্য শিডিউল করা ভয়েস কল। আশা করি আপনি ভালো আছেন!"
             } else {
-                "Hello $recipient! This is a scheduled voice call from Ayra AI. Wishing you a great day!"
+                "Hello $recipient! This is a scheduled voice call from Ghost AI. Wishing you a great day!"
             }
         }
 
@@ -126,7 +160,7 @@ class AyraTaskScheduler(private val context: Context) {
         )
         val taskId = db.scheduledTaskDao().insertTask(task)
 
-        armAlarmManager(taskId, "CALL", recipient, messageToSpeak, phoneNumber, epochMillis)
+        val armResult = armAlarmManager(taskId, "CALL", recipient, messageToSpeak, phoneNumber, epochMillis, isBengali)
 
         val extraJson = JSONObject().apply {
             put("taskId", taskId)
@@ -135,20 +169,25 @@ class AyraTaskScheduler(private val context: Context) {
             put("phone", phoneNumber)
             put("time", formattedTime)
             put("spokenMessage", messageToSpeak)
+            put("isExact", armResult.isExact)
+            put("needsExactPermissionPrompt", armResult.needsExactPermissionPrompt)
         }.toString()
 
+        val fallbackSuffix = if (armResult.fallbackNotice.isNotBlank()) "\n\n${armResult.fallbackNotice}" else ""
         val reply = if (isBengali) {
             "📞 **ভয়েস কল রিমাইন্ডার শিডিউল সম্পন্ন হয়েছে!**\n\n" +
                     "• প্রাপক: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• নির্ধারিত সময়: **$formattedTime**\n" +
                     "• প্রস্তুত বার্তা: *\"$messageToSpeak\"*\n\n" +
-                    "✅ নির্ধারিত সময়ে AlarmManager অ্যালার্ম বাজিয়ে বার্তাটি মনে করিয়ে দেবে এবং এক-ট্যাপ ডায়ালার (ACTION_DIAL) নোটিফিকেশন দেখাবে!"
+                    "✅ নির্ধারিত সময়ে AlarmManager অ্যালার্ম বাজিয়ে বার্তাটি মনে করিয়ে দেবে এবং এক-ট্যাপ ডায়ালার (ACTION_DIAL) নোটিফিকেশন দেখাবে!" +
+                    fallbackSuffix
         } else {
             "📞 **Scheduled Call Prompt Armed!**\n\n" +
                     "• Recipient: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• Scheduled Time: **$formattedTime**\n" +
                     "• Note / Spoken Prompt: *\"$messageToSpeak\"*\n\n" +
-                    "✅ At the scheduled time, AlarmManager will chime, speak your reminder aloud, and post a high-priority notification to open your phone dialer."
+                    "✅ At the scheduled time, AlarmManager will chime, speak your reminder aloud, and post a high-priority notification to open your phone dialer." +
+                    fallbackSuffix
         }
 
         return AutomationResult(
@@ -185,25 +224,30 @@ class AyraTaskScheduler(private val context: Context) {
         )
         val taskId = db.scheduledTaskDao().insertTask(task)
 
-        armAlarmManager(taskId, "REMINDER", "You", reminderText, "", epochMillis)
+        val armResult = armAlarmManager(taskId, "REMINDER", "You", reminderText, "", epochMillis, isBengali)
 
         val extraJson = JSONObject().apply {
             put("taskId", taskId)
             put("taskType", "REMINDER")
             put("time", formattedTime)
             put("reminder", reminderText)
+            put("isExact", armResult.isExact)
+            put("needsExactPermissionPrompt", armResult.needsExactPermissionPrompt)
         }.toString()
 
+        val fallbackSuffix = if (armResult.fallbackNotice.isNotBlank()) "\n\n${armResult.fallbackNotice}" else ""
         val reply = if (isBengali) {
             "⏰ **স্মার্ট রিমাইন্ডার সেট করা হয়েছে!**\n\n" +
                     "• কাজের বিবরণ: **$reminderText**\n" +
                     "• মনে করিয়ে দেওয়ার সময়: **$formattedTime**\n\n" +
-                    "🔔 নির্ধারিত সময়ে মোবাইল লক বা স্লিপে থাকলেও রিংটোন বাজিয়ে এবং ভয়েসে বলে আয়রা আপনাকে এই কাজটি মনে করিয়ে দেবে! ⚡"
+                    "🔔 নির্ধারিত সময়ে মোবাইল লক বা স্লিপে থাকলেও রিংটোন বাজিয়ে এবং ভয়েসে বলে Ghost AI আপনাকে এই কাজটি মনে করিয়ে দেবে! ⚡" +
+                    fallbackSuffix
         } else {
             "⏰ **Smart Reminder Armed!**\n\n" +
                     "• Task: **$reminderText**\n" +
                     "• Reminder Time: **$formattedTime**\n\n" +
-                    "🔔 Even if the screen is off or phone is sleeping, Ayra will wake up, chime the alarm, and speak this reminder to you! ⚡"
+                    "🔔 Even if the screen is off or phone is sleeping, Ghost AI will wake up, chime the alarm, and speak this reminder to you! ⚡" +
+                    fallbackSuffix
         }
 
         return AutomationResult(
@@ -242,13 +286,13 @@ class AyraTaskScheduler(private val context: Context) {
         if (messageText.isBlank()) {
             messageText = if (isBirthday) {
                 if (isBengali) {
-                    "শুভ জন্মদিন $recipient! 🎉🎂 তোমার আগামী দিনগুলো অফুরন্ত আনন্দ ও ভালোবাসায় ভরে উঠুক! — Ayra AI মারফত আন্তরিক শুভেচ্ছা ❤️"
+                    "শুভ জন্মদিন $recipient! 🎉🎂 তোমার আগামী দিনগুলো অফুরন্ত আনন্দ ও ভালোবাসায় ভরে উঠুক! — Ghost AI মারফত আন্তরিক শুভেচ্ছা ❤️"
                 } else {
-                    "Happy Birthday $recipient! 🎉🎂 Wishing you joy, success and boundless happiness! — via Ayra AI ❤️"
+                    "Happy Birthday $recipient! 🎉🎂 Wishing you joy, success and boundless happiness! — via Ghost AI ❤️"
                 }
             } else {
-                if (isBengali) "প্রিয় $recipient, এটি আয়রা এআই থেকে আপনার নির্ধারিত বার্তা। দিনটি শুভ হোক! ✨"
-                else "Hello $recipient! This is your scheduled message from Ayra AI. Have a great day! ✨"
+                if (isBengali) "প্রিয় $recipient, এটি Ghost AI থেকে আপনার নির্ধারিত বার্তা। দিনটি শুভ হোক! ✨"
+                else "Hello $recipient! This is your scheduled message from Ghost AI. Have a great day! ✨"
             }
         }
 
@@ -266,7 +310,7 @@ class AyraTaskScheduler(private val context: Context) {
         )
         val taskId = db.scheduledTaskDao().insertTask(task)
 
-        armAlarmManager(taskId, targetApp, recipient, messageText, phoneNumber, epochMillis)
+        val armResult = armAlarmManager(taskId, targetApp, recipient, messageText, phoneNumber, epochMillis, isBengali)
 
         val extraJson = JSONObject().apply {
             put("taskId", taskId)
@@ -276,22 +320,27 @@ class AyraTaskScheduler(private val context: Context) {
             put("phone", phoneNumber)
             put("time", formattedTime)
             put("message", messageText)
+            put("isExact", armResult.isExact)
+            put("needsExactPermissionPrompt", armResult.needsExactPermissionPrompt)
         }.toString()
 
+        val fallbackSuffix = if (armResult.fallbackNotice.isNotBlank()) "\n\n${armResult.fallbackNotice}" else ""
         val reply = if (isBengali) {
             "✉️ **মেসেজ রিমাইন্ডার ও ড্রাফট শিডিউল সম্পন্ন হয়েছে!**\n\n" +
                     "• প্রাপক: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• মাধ্যম: **$targetApp**\n" +
                     "• নির্ধারিত সময়: **$formattedTime**\n" +
                     "• ড্রাফট মেসেজ: *\"$messageText\"*\n\n" +
-                    "✅ নির্ধারিত সময়ে মোবাইল রিংটোন বাজিয়ে আপনাকে মনে করিয়ে দেবে এবং এক-ট্যাপে $targetApp / SMS খোলার প্রিপপুলেটেড নোটিফিকেশন দেখাবে।"
+                    "✅ নির্ধারিত সময়ে মোবাইল রিংটোন বাজিয়ে আপনাকে মনে করিয়ে দেবে এবং এক-ট্যাপে $targetApp / SMS খোলার প্রিপপুলেটেড নোটিফিকেশন দেখাবে।" +
+                    fallbackSuffix
         } else {
             "✉️ **Scheduled Message Draft Armed!**\n\n" +
                     "• Recipient: **$recipient** ${if (phoneNumber.isNotBlank()) "($phoneNumber)" else ""}\n" +
                     "• Channel: **$targetApp**\n" +
                     "• Scheduled Time: **$formattedTime**\n" +
                     "• Draft Message: *\"$messageText\"*\n\n" +
-                    "✅ At the scheduled time, AlarmManager will alert you with a high-priority notification pre-filled to review & send via $targetApp / SMS."
+                    "✅ At the scheduled time, AlarmManager will alert you with a high-priority notification pre-filled to review & send via $targetApp / SMS." +
+                    fallbackSuffix
         }
 
         return AutomationResult(
@@ -324,16 +373,24 @@ class AyraTaskScheduler(private val context: Context) {
     }
 
     // --- Helper Methods ---
+    @JvmOverloads
     fun armAlarmManager(
         taskId: Long,
         targetApp: String,
         recipient: String,
         messageText: String,
         phoneNumber: String,
-        epochMillis: Long
-    ) {
+        epochMillis: Long,
+        isBengali: Boolean = false
+    ): AlarmArmResult {
         try {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                ?: return AlarmArmResult(
+                    scheduled = false,
+                    isExact = false,
+                    needsExactPermissionPrompt = false,
+                    fallbackNotice = "⚠️ AlarmManager service unavailable on this device."
+                )
             val intent = Intent(context, ScheduledTaskReceiver::class.java).apply {
                 action = "com.ayra.ai.app.ACTION_EXECUTE_SCHEDULED_TASK"
                 putExtra("TASK_ID", taskId)
@@ -356,11 +413,23 @@ class AyraTaskScheduler(private val context: Context) {
                         epochMillis,
                         pendingIntent
                     )
+                    return AlarmArmResult(scheduled = true, isExact = true, needsExactPermissionPrompt = false)
                 } else {
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         epochMillis,
                         pendingIntent
+                    )
+                    val notice = if (isBengali) {
+                        "⚠️ **সতর্কতা (Inexact Alarm Fallback):** 'Alarms & Reminders' পারমিশন চালু না থাকায় এই রিমাইন্ডারটি কয়েক মিনিট দেরিতে বাজতে পারে। সঠিক সময়ের জন্য Control Center → Scheduled Routines থেকে 'Open Alarm Settings' চালু করুন।"
+                    } else {
+                        "⚠️ **Inexact Timing Notice:** Exact alarm permission is off on Android 12+, so this alarm was scheduled via inexact fallback and may be delayed by battery optimizations. Open Control Center → Scheduled Routines → 'Open Alarm Settings' for exact timing."
+                    }
+                    return AlarmArmResult(
+                        scheduled = true,
+                        isExact = false,
+                        needsExactPermissionPrompt = true,
+                        fallbackNotice = notice
                     )
                 }
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -369,15 +438,31 @@ class AyraTaskScheduler(private val context: Context) {
                     epochMillis,
                     pendingIntent
                 )
+                return AlarmArmResult(scheduled = true, isExact = true, needsExactPermissionPrompt = false)
             } else {
                 alarmManager.setExact(
                     AlarmManager.RTC_WAKEUP,
                     epochMillis,
                     pendingIntent
                 )
+                return AlarmArmResult(scheduled = true, isExact = true, needsExactPermissionPrompt = false)
             }
+        } catch (e: SecurityException) {
+            android.util.Log.w("TaskScheduler", "Exact alarm permission denied for taskId=$taskId", e)
+            return AlarmArmResult(
+                scheduled = false,
+                isExact = false,
+                needsExactPermissionPrompt = true,
+                fallbackNotice = "⚠️ Exact alarm permission was denied by the OS. Enable 'Alarms & Reminders' in System Settings."
+            )
         } catch (e: Exception) {
             android.util.Log.e("TaskScheduler", "Error arming alarm for taskId=$taskId", e)
+            return AlarmArmResult(
+                scheduled = false,
+                isExact = false,
+                needsExactPermissionPrompt = false,
+                fallbackNotice = "⚠️ Failed to schedule alarm: ${e.localizedMessage ?: "Unknown error"}"
+            )
         }
     }
 

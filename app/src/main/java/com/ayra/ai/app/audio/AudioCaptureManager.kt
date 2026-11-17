@@ -43,7 +43,7 @@ class AudioCaptureManager(private val context: Context) {
             val dir = File(context.applicationContext.cacheDir, "voice_notes").apply {
                 if (!exists()) mkdirs()
             }
-            val file = File(dir, "ayra_voice_${System.currentTimeMillis()}.m4a")
+            val file = File(dir, "ghost_voice_${System.currentTimeMillis()}.m4a")
             val mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(context.applicationContext)
             } else {

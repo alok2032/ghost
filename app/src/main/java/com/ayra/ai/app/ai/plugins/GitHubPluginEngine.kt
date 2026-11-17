@@ -854,13 +854,13 @@ class GitHubPluginEngine @JvmOverloads constructor(
                 compatibilityLevel = "DIRECT_IN_APP_API",
                 runtimeRequirements = reqs.ifEmpty { listOf("HTTPS OpenAPI") },
                 androidIntegrationMode = "Live HTTPS OpenAPI GET Invocation + AI Prompt Context",
-                notes = "Public GET endpoints run natively inside Ayra over HTTPS without desktop dependencies."
+                notes = "Public GET endpoints run natively inside Ghost AI over HTTPS without desktop dependencies."
             )
             hasSkillMd -> CompatibilityReport(
                 compatibilityLevel = "DIRECT_SKILL_NATIVE",
                 runtimeRequirements = listOf("Markdown Skill Context"),
                 androidIntegrationMode = "Claude/ChatGPT Skill & Workflow Injection",
-                notes = "Instructions and workflows execute directly through Ayra's multi-model AI orchestrator."
+                notes = "Instructions and workflows execute directly through Ghost AI's multi-model AI orchestrator."
             )
             isComfyServer -> CompatibilityReport(
                 compatibilityLevel = "REMOTE_SERVER_BRIDGE",
@@ -872,13 +872,13 @@ class GitHubPluginEngine @JvmOverloads constructor(
                 compatibilityLevel = "KNOWLEDGE_AND_CODE_ASSIST",
                 runtimeRequirements = reqs,
                 androidIntegrationMode = "Architecture Reference + Source Code Inspection + Code Studio Generation",
-                notes = "Heavy desktop/GPU runtimes (${reqs.joinToString(", ")}) do not execute locally on Android; Ayra indexes the repo files so you can inspect code and generate compatible Kotlin/API code."
+                notes = "Heavy desktop/GPU runtimes (${reqs.joinToString(", ")}) do not execute locally on Android; Ghost AI indexes the repo files so you can inspect code and generate compatible Kotlin/API code."
             )
             else -> CompatibilityReport(
                 compatibilityLevel = "KNOWLEDGE_AND_CODE_ASSIST",
                 runtimeRequirements = listOf(language.ifBlank { "Source Repository" }),
                 androidIntegrationMode = "On-Demand File Inspection + AI Reasoning Context",
-                notes = "Indexed repository files and docs are injected into Ayra AI prompts."
+                notes = "Indexed repository files and docs are injected into Ghost AI prompts."
             )
         }
     }
@@ -926,7 +926,7 @@ class GitHubPluginEngine @JvmOverloads constructor(
             val reqBuilder = Request.Builder()
                 .url(url)
                 .header("Accept", accept)
-                .header("User-Agent", "Ayra-AI-Android-Plugin-Client/1.0")
+                .header("User-Agent", "Ghost-AI-Android-Plugin-Client/1.0")
             if (!githubToken.isNullOrBlank() && url.startsWith(githubApiBaseUrl.trimEnd('/'))) {
                 reqBuilder.header("Authorization", "Bearer $githubToken")
             }

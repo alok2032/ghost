@@ -1,5 +1,3 @@
-import java.util.Properties
-import java.io.FileInputStream
 import java.time.Duration
 
 plugins {
@@ -83,7 +81,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.navigation.compose)
+    // Unused navigation-compose trimmed cleanly for smaller APK/faster builds (app uses custom AyraWorkspaceHost state routing)
+    // implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

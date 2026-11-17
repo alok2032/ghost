@@ -36,8 +36,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,14 +77,14 @@ fun SettingsAppearanceScreen(
     val uiConfig = LocalAyraUiConfig.current
     var activeTab by remember { mutableStateOf(SettingsTab.APPEARANCE) }
 
-    val themeMode by AyraPreferences.themeModeFlow.collectAsState()
-    val accentPreset by AyraPreferences.accentPresetFlow.collectAsState()
-    val customHexFlow by AyraPreferences.customAccentHexFlow.collectAsState()
+    val themeMode by AyraPreferences.themeModeFlow.collectAsStateWithLifecycle()
+    val accentPreset by AyraPreferences.accentPresetFlow.collectAsStateWithLifecycle()
+    val customHexFlow by AyraPreferences.customAccentHexFlow.collectAsStateWithLifecycle()
     var customHexDraft by remember(customHexFlow) { mutableStateOf(customHexFlow) }
-    val fontScale by AyraPreferences.fontScaleFlow.collectAsState()
-    val bubbleCornerDp by AyraPreferences.bubbleCornerDpFlow.collectAsState()
-    val uiDensity by AyraPreferences.uiDensityFlow.collectAsState()
-    val reducedMotion by AyraPreferences.reducedMotionFlow.collectAsState()
+    val fontScale by AyraPreferences.fontScaleFlow.collectAsStateWithLifecycle()
+    val bubbleCornerDp by AyraPreferences.bubbleCornerDpFlow.collectAsStateWithLifecycle()
+    val uiDensity by AyraPreferences.uiDensityFlow.collectAsStateWithLifecycle()
+    val reducedMotion by AyraPreferences.reducedMotionFlow.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier

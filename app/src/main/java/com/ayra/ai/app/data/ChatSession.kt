@@ -1,14 +1,16 @@
 package com.ayra.ai.app.data
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Immutable
 @Entity(tableName = "chat_sessions")
 data class ChatSession(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val title: String,
-    val personaMode: String = "GF_COMPANION",
+    val personaMode: String = "AI_ASSISTANT",
     val modelTier: String = "auto",
     val isPinned: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),

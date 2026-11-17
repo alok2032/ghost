@@ -41,8 +41,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,10 +81,10 @@ fun ProjectsAndAssistantsScreen(
     val dao = remember { ChatDatabase.getDatabase(context).ayraWorkspaceDao() }
 
     var activeTab by remember { mutableStateOf(WorkspaceTab.PROJECTS) }
-    val projects by dao.observeProjects().collectAsState(initial = emptyList())
-    val assistants by dao.observeAssistants().collectAsState(initial = emptyList())
-    val activeProjectId by AyraPreferences.activeProjectIdFlow.collectAsState()
-    val activeAssistantId by AyraPreferences.activeAssistantIdFlow.collectAsState()
+    val projects by dao.observeProjects().collectAsStateWithLifecycle(initialValue = emptyList())
+    val assistants by dao.observeAssistants().collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeProjectId by AyraPreferences.activeProjectIdFlow.collectAsStateWithLifecycle()
+    val activeAssistantId by AyraPreferences.activeAssistantIdFlow.collectAsStateWithLifecycle()
 
     var editingProject by remember { mutableStateOf<ProjectEntity?>(null) }
     var showProjectDialog by remember { mutableStateOf(false) }
@@ -208,7 +208,7 @@ fun ProjectsAndAssistantsScreen(
 
                 if (projects.isEmpty()) {
                     Text(
-                        "No isolated projects created yet. Tap New Project to give Ayra scoped rules, memory notes, and default routing.",
+                        "No isolated projects created yet. Tap New Project to give Ghost AI scoped rules, memory notes, and default routing.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -414,7 +414,7 @@ private fun ProjectEditorDialog(
                 OutlinedTextField(value = instructions, onValueChange = { instructions = it }, label = { Text("Project Custom Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = memoryNotes, onValueChange = { memoryNotes = it }, label = { Text("Project Memory Notes / Specs") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto", "gemini_pro", "omniroute", "deepseek_harness", "open_weights").forEach { t ->
+                    com.ayra.ai.app.ai.providers.ModelTier.projectDefaultIds.forEach { t ->
                         FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 11.sp) })
                     }
                 }
@@ -453,6 +453,27 @@ private fun AssistantEditorDialog(
     var thinking by remember { mutableStateOf(initial?.thinkingMode ?: "balanced") }
     var tier by remember { mutableStateOf(initial?.defaultModelTier ?: "auto") }
 
+    val dialogContext = LocalContext.current
+    var showAgeGate by remember { mutableStateOf(false) }
+
+    if (showAgeGate) {
+        AlertDialog(
+            onDismissRequest = { showAgeGate = false },
+            title = { Text("18+ Companion Persona Confirmation", fontWeight = FontWeight.Bold) },
+            text = { Text("Companion Mode is intended only for adults (18+). Confirm you are 18+ to assign GF_COMPANION to a custom assistant.") },
+            confirmButton = {
+                Button(onClick = {
+                    AyraPreferences.setCompanionAgeVerified(dialogContext, true)
+                    style = "GF_COMPANION"
+                    showAgeGate = false
+                }) { Text("Confirm 18+") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAgeGate = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Create Custom AI Assistant" else "Edit Assistant") },
@@ -467,7 +488,17 @@ private fun AssistantEditorDialog(
                 Text("Persona Style:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("AI_ASSISTANT", "GF_COMPANION", "PROFESSIONAL", "TECHNICAL", "ANALYTICAL", "CREATIVE", "CRITICAL", "EDUCATIONAL", "CONCISE").forEach { s ->
-                        FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s, fontSize = 10.sp) })
+                        FilterChip(
+                            selected = style == s,
+                            onClick = {
+                                if (s == "GF_COMPANION" && !AyraPreferences.isCompanionAgeVerified(dialogContext)) {
+                                    showAgeGate = true
+                                } else {
+                                    style = s
+                                }
+                            },
+                            label = { Text(if (s == "GF_COMPANION") "COMPANION (18+)" else s, fontSize = 10.sp) }
+                        )
                     }
                 }
                 Text("Thinking Mode:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -478,7 +509,7 @@ private fun AssistantEditorDialog(
                 }
                 Text("Default Tier:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto", "omniroute", "gemini_pro", "gemini_flash", "deepseek_harness", "llama_3_3", "open_weights", "security_research").forEach { t ->
+                    com.ayra.ai.app.ai.providers.ModelTier.assistantDefaultIds.forEach { t ->
                         FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 10.sp) })
                     }
                 }

@@ -128,7 +128,6 @@ fun StudiosScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -137,15 +136,35 @@ fun StudiosScreen(
                     onClick = onBack,
                     modifier = Modifier.size(48.dp).testTag("studios_back_button")
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
             Text(
-                text = "Ayra Creative & Code Studios",
+                text = "Ghost AI Creative & Code Studios",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f, fill = false)
             )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "By Alok",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
         Text(
             text = "Image synthesis/editing, motion & Wan 2.1 video, real WAV composition, WebGL2 PBR 3D, and multi-file code editor/ZIP.",
@@ -792,7 +811,7 @@ private fun ThreeDStudioPanel(context: android.content.Context) {
 
         ThreeDModelCard(
             craftPayload = customPayload,
-            title = "Ayra WebGL2 PBR 3D Studio"
+            title = "Ghost AI WebGL2 PBR 3D Studio"
         )
     }
 }
@@ -802,7 +821,7 @@ private fun CodeBuilderPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
     val pool = remember { ProviderPool(context) }
 
-    var projectName by remember { mutableStateOf("ayra_app_module") }
+    var projectName by remember { mutableStateOf("ghost_app_module") }
     var prompt by remember { mutableStateOf("") }
     var isBusy by remember { mutableStateOf(false) }
     var generatedFiles by remember { mutableStateOf<List<GeneratedProjectFile>>(emptyList()) }
@@ -923,12 +942,12 @@ private fun CodeBuilderPanel(context: android.content.Context) {
 
                     val parsed = ProjectWorkspaceManager.parseProjectFilesFromAiResponse(
                         aiOutput = resText,
-                        fallbackProjectName = projectName.ifBlank { "ayra_project" }
+                        fallbackProjectName = projectName.ifBlank { "ghost_project" }
                     )
                     val (dir, archive) = withContext(Dispatchers.IO) {
                         ProjectWorkspaceManager.writeProjectToDiskAndZip(
                             context = context,
-                            projectName = projectName.ifBlank { "ayra_project" },
+                            projectName = projectName.ifBlank { "ghost_project" },
                             files = parsed
                         )
                     }

@@ -9,6 +9,7 @@ import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.automation.DeviceAutomationController
 import com.ayra.ai.app.automation.ProposedAction
 import com.ayra.ai.app.ai.rag.DocumentRagEngine
+import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.voice.CrisisDetector
@@ -59,7 +60,7 @@ class AyraOrchestrator(private val context: Context) {
         // 1. Safety & Crisis Pre-checks (Blocking, deterministic, immediate)
         val crisisResult = CrisisDetector.evaluate(trimmed)
         if (crisisResult.isCrisis && crisisResult.supportiveMessage != null) {
-            emit(AyraEvent.Complete(AiResponse(text = crisisResult.supportiveMessage, modelUsed = "Ayra Safety Guardian 🛡️")))
+            emit(AyraEvent.Complete(AiResponse(text = crisisResult.supportiveMessage, modelUsed = "Ghost AI Safety Guardian 🛡️")))
             return@flow
         }
 
@@ -91,16 +92,16 @@ class AyraOrchestrator(private val context: Context) {
                 val cmd = trimmed.removePrefix("/terminal").removePrefix("terminal:").trim()
                 val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
                 val reply = if (isBengali) {
-                    "🛡️ **Ayra Cyber Security Educational Terminal & Defensive Lab** সক্রিয় হয়েছে। অনুমোদিত ডায়াগনস্টিক চালান:"
+                    "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** সক্রিয় হয়েছে। অনুমোদিত ডায়াগনস্টিক চালান:"
                 } else {
-                    "🛡️ **Ayra Cyber Security Educational Terminal & Defensive Lab** active. Executing diagnostics:"
+                    "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** active. Executing diagnostics:"
                 }
                 emit(AyraEvent.Complete(
                     AiResponse(
                         text = reply,
                         craftType = "CYBER_TERMINAL",
                         craftPayload = cmd,
-                        modelUsed = "Ayra Terminal Engine"
+                        modelUsed = "Ghost AI Terminal Engine"
                     )
                 ))
                 return@flow
@@ -181,7 +182,7 @@ class AyraOrchestrator(private val context: Context) {
                 if (wikiMarkdown.isBlank()) {
                     emit(AyraEvent.Complete(AiResponse(
                         text = if (isBengali) "এই বিষয়ে কোনো উইকি বা অফলাইন ভেক্টর তথ্য পাওয়া যায়নি।" else "No Wiki or offline Vector DB entries matched '$topic'.",
-                        modelUsed = "Ayra Multi-Layer Wiki & Vector DB 🌐"
+                        modelUsed = "Ghost Multi-Layer Wiki & Vector DB 🌐"
                     )))
                     return@flow
                 }
@@ -194,7 +195,7 @@ class AyraOrchestrator(private val context: Context) {
 
                 var completed = false
                 val wikiSysPrompt = """
-                    You are Ayra AI Multi-Layer Wiki Synthesizer ($provenanceHeader).
+                    You are Ghost AI Multi-Layer Wiki Synthesizer ($provenanceHeader).
                     Synthesize a crisp, encyclopedic, verified response on "$topic" using the provided Wiki / Vector DB sources.
                     Preserve factual accuracy, distinguish Surface Wiki, Deep Web Academic/CVE insights, and Dark Web Technical/Tor notes cleanly, and cite the verified URLs returned.
                     Respond in ${if (isBengali) "Bengali (বাংলা)" else "English"}.
@@ -222,7 +223,7 @@ class AyraOrchestrator(private val context: Context) {
                             } else ""
                             emit(AyraEvent.Complete(AiResponse(
                                 text = streamEvent.response.text + cites,
-                                modelUsed = "Ayra Wiki (${streamEvent.response.modelUsed}) 🌐"
+                                modelUsed = "Ghost Wiki (${streamEvent.response.modelUsed}) 🌐"
                             )))
                         }
                         is AyraStreamEvent.Error -> {}
@@ -234,7 +235,7 @@ class AyraOrchestrator(private val context: Context) {
                     } else ""
                     emit(AyraEvent.Complete(AiResponse(
                         text = "$directBanner$wikiMarkdown",
-                        modelUsed = if (lookup.usedOfflineVectorCache) "Ayra Offline Vector DB ⚡" else "Ayra Multi-Layer Wiki Direct 🌐"
+                        modelUsed = if (lookup.usedOfflineVectorCache) "Ghost Offline Vector DB ⚡" else "Ghost Multi-Layer Wiki Direct 🌐"
                     )))
                 }
                 return@flow
@@ -268,7 +269,7 @@ class AyraOrchestrator(private val context: Context) {
                 }
 
                 val researchSysPrompt = """
-                    You are Ayra AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on: $topic.
+                    You are Ghost AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on: $topic.
                     Use the user's language (${if (isBengali) "Bengali (বাংলা)" else "English"}).
                     Format clearly with markdown sections: Executive Thesis, Theoretical Foundations, Empirical State-of-the-Art, Trade-offs & Bottlenecks, Future Outlook, and Conclusion.
                 """.trimIndent()
@@ -301,7 +302,7 @@ class AyraOrchestrator(private val context: Context) {
                             val fullText = if (citationsBlock.isNotBlank() && !baseText.contains("### 📚 Grounded Web Sources")) {
                                 "$baseText\n\n### 📚 Grounded Web Sources$citationsBlock"
                             } else baseText
-                            emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ayra Deep Research (${streamEvent.response.modelUsed}) 🔬")))
+                            emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ghost AI Deep Research (${streamEvent.response.modelUsed}) 🔬")))
                         }
                         is AyraStreamEvent.Error -> {
                             lastStreamError = streamEvent.error
@@ -348,14 +349,14 @@ class AyraOrchestrator(private val context: Context) {
                             text = installResult.userSummaryText,
                             craftType = "GITHUB_PLUGIN",
                             craftPayload = payloadJson,
-                            modelUsed = "Ayra GitHub Plugin Engine 🔌"
+                            modelUsed = "Ghost AI GitHub Plugin Engine 🔌"
                         )
                     ))
                 } else {
                     emit(AyraEvent.Complete(
                         AiResponse(
                             text = "⚠️ ${installResult.errorMessage ?: "Could not install GitHub repository plugin."}",
-                            modelUsed = "Ayra GitHub Plugin Engine 🔌"
+                            modelUsed = "Ghost AI GitHub Plugin Engine 🔌"
                         )
                     ))
                 }
@@ -425,68 +426,17 @@ class AyraOrchestrator(private val context: Context) {
 
                 val externalProviders = com.ayra.ai.app.ai.providers.ExternalAiProviders(context)
                 val wsCtx = WorkspaceContextBuilder.resolve(context, persona, tier)
-                val effectiveTier = wsCtx.effectiveTier
-                val effectivePersona = wsCtx.effectivePersona
+                val effectiveTierSpec = com.ayra.ai.app.ai.providers.ModelTier.fromId(wsCtx.effectiveTier)
+                val effectivePersona = AyraPreferences.resolveSafePersona(context, wsCtx.effectivePersona)
 
                 // Main CHAT & Coding execution through Unified Multi-AI ProviderPool
-                val poolMode = when (effectiveTier) {
-                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "security_research", "godmode", "ecc", "higgsfield", "open_weights", "qwen_uncensored" -> ProviderPoolMode.BEST
-                    "fast", "gemini_flash" -> ProviderPoolMode.FAST
-                    else -> when (wsCtx.effectiveThinkingMode) {
-                        "fast" -> ProviderPoolMode.FAST
-                        "deep_analysis", "reasoning", "research" -> ProviderPoolMode.BEST
-                        else -> ProviderPoolMode.AUTO
-                    }
-                }
-
-                val (prefProvider, prefModel) = when (effectiveTier) {
-                    "gemini_flash" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL
-                    "gemini_pro" -> com.ayra.ai.app.ai.providers.AiProviderType.GEMINI to com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL
-                    "deepseek_harness", "deepseek_r1" -> {
-                        listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
-                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
-                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
-                    }
-                    "llama_3_3" -> {
-                        listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
-                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
-                    }
-                    "open_weights", "qwen_uncensored" -> {
-                        listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
-                            com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
-                            com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
-                            com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
-                        ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
-                    }
-                    else -> null to null
-                }
-
-                val securityGrounding = if (effectiveTier == "security_research" || effectiveTier == "godmode") {
-                    com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(trimmed)
-                } else ""
-
-                val sysOverride = when (effectiveTier) {
-                    "open_weights", "qwen_uncensored" -> com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT
-                    "security_research", "godmode" -> buildString {
-                        append(com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT)
-                        if (securityGrounding.isNotBlank()) append("\n\n").append(securityGrounding)
-                    }
-                    "ecc" -> {
-                        val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(trimmed)
-                        "You are ECC Enterprise Cognitive Engine. Domain: ${cognitive.domain}. Key Entities: ${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}. Disambiguate entities and provide structured, factual, high-precision answers in the user's language."
-                    }
-                    "deepseek_harness", "deepseek_r1" -> "You are DeepSeek-R1 Chain-of-Thought Engine. Provide rigorous step-by-step reasoning and verify math/code carefully in the user's language."
-                    "higgsfield" -> "You are Open-Higgsfield Cinematography & Motion Physics Director. Design camera trajectories, optical lenses, and lighting scenes precisely in the user's language."
-                    else -> null
-                }
+                val poolMode = effectiveTierSpec.resolvePoolMode(wsCtx.effectiveThinkingMode)
+                val (prefProvider, prefModel) = effectiveTierSpec.resolvePreferredProviderAndModel(externalProviders)
+                val sysOverride = effectiveTierSpec.buildSpecialistSystemDirective(
+                    prompt = trimmed,
+                    context = context,
+                    baseSystemPrompt = null
+                )
 
                 // Resolve active installed GitHub plugins + live OpenAPI/file tool calls
                 val enabledPlugins = com.ayra.ai.app.ai.plugins.GitHubPluginRegistry.getEnabledPlugins(context)

@@ -28,26 +28,27 @@ class OmniRouteEngine(private val context: Context? = null) {
 
     fun determineRoute(prompt: String, selectedTier: String): RouteDecision {
         val lower = prompt.lowercase()
+        val tier = com.ayra.ai.app.ai.providers.ModelTier.fromId(selectedTier)
         return when {
-            selectedTier == "security_research" || selectedTier == "godmode" || lower.contains("vulnerability") || lower.contains("cve-") || lower.contains("owasp") -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.SECURITY_RESEARCH || lower.contains("vulnerability") || lower.contains("cve-") || lower.contains("owasp") -> {
                 RouteDecision("SECURITY_RESEARCH", "Defensive cybersecurity and vulnerability mitigation analysis requested", listOf("security_research", "deepseek_r1", "gemini_pro"))
             }
-            selectedTier == "higgsfield" || lower.contains("video") || lower.contains("camera") || lower.contains("cinematic") || lower.contains("4k") -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.OPEN_HIGGSFIELD || lower.contains("video") || lower.contains("camera") || lower.contains("cinematic") || lower.contains("4k") -> {
                 RouteDecision("HIGGSFIELD", "Visual camera motion physics and video craft required", listOf("higgsfield", "flux", "gemini_flash"))
             }
-            selectedTier == "deepseek_harness" || selectedTier == "deepseek_r1" || lower.contains("reasoning") || lower.contains("proof") || lower.contains("calculate") || lower.contains("step by step") -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.DEEPSEEK_HARNESS || tier == com.ayra.ai.app.ai.providers.ModelTier.OPENROUTER_DEEPSEEK || lower.contains("reasoning") || lower.contains("proof") || lower.contains("calculate") || lower.contains("step by step") -> {
                 RouteDecision("DEEPSEEK_HARNESS", "Complex deductive reasoning or mathematical proof required", listOf("deepseek_r1", "gemini_pro", "claude_sonnet"))
             }
-            selectedTier == "ecc" || lower.contains("disambiguate") || lower.contains("context") || lower.contains("enterprise") -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.ECC_COGNITIVE || lower.contains("disambiguate") || lower.contains("context") || lower.contains("enterprise") -> {
                 RouteDecision("ECC", "Enterprise cognitive entity disambiguation and context memory required", listOf("ecc", "gemini_pro"))
             }
-            selectedTier == "open_weights" || selectedTier == "qwen_uncensored" || lower.contains("open weights") || lower.contains("local ollama") -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.OPEN_WEIGHTS || lower.contains("open weights") || lower.contains("local ollama") -> {
                 RouteDecision("OPEN_WEIGHTS", "Objective open-weights local or cloud knowledge analysis requested", listOf("open_weights", "deepseek_r1"))
             }
-            selectedTier == "llama_3_3" -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.OPENROUTER_LLAMA -> {
                 RouteDecision("LLAMA_3_3", "High-speed Llama 3.3 70B literature and synthesis routing", listOf("llama_3_3", "groq", "cerebras"))
             }
-            selectedTier == "superpowers" -> {
+            tier == com.ayra.ai.app.ai.providers.ModelTier.SUPERPOWERS -> {
                 RouteDecision("SUPERPOWERS", "Structured Superpowers methodology workflow execution", listOf("superpowers", "gemini_pro", "deepseek_r1"))
             }
             else -> {
@@ -63,74 +64,14 @@ class OmniRouteEngine(private val context: Context? = null) {
         attachedDocumentText: String? = null
     ): AiResponse = withContext(Dispatchers.IO) {
         val pool = com.ayra.ai.app.ai.providers.ProviderPool(context, externalProviders)
-
-        val prefProvider: AiProviderType?
-        val prefModel: String?
-        when (selectedTier) {
-            "deepseek_harness", "deepseek_r1" -> {
-                val dsChoice = listOf(
-                    AiProviderType.DEEPSEEK to "deepseek-reasoner",
-                    AiProviderType.SAMBANOVA to ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
-                    AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
-                ).firstOrNull { externalProviders.isProviderConfigured(it.first) }
-                prefProvider = dsChoice?.first
-                prefModel = dsChoice?.second
-            }
-            "llama_3_3" -> {
-                val llamaChoice = listOf(
-                    AiProviderType.GROQ to ExternalAiProviders.GROQ_LLAMA_MODEL,
-                    AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-                    AiProviderType.SAMBANOVA to ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
-                    AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
-                ).firstOrNull { externalProviders.isProviderConfigured(it.first) }
-                prefProvider = llamaChoice?.first
-                prefModel = llamaChoice?.second
-            }
-            "open_weights", "qwen_uncensored" -> {
-                val qwenChoice = listOf(
-                    AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
-                    AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
-                    AiProviderType.HUGGINGFACE to ExternalAiProviders.HF_QWEN_MODEL,
-                    AiProviderType.GROQ to ExternalAiProviders.GROQ_QWEN_MODEL,
-                    AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_QWEN_MODEL
-                ).firstOrNull { externalProviders.isProviderConfigured(it.first) }
-                prefProvider = qwenChoice?.first
-                prefModel = qwenChoice?.second
-            }
-            else -> {
-                prefProvider = null
-                prefModel = null
-            }
-        }
-
-        val securityGrounding = if (selectedTier == "security_research" || selectedTier == "godmode") {
-            com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(prompt)
-        } else ""
-
-        val sysDirective = when (selectedTier) {
-            "deepseek_harness", "deepseek_r1" ->
-                "You are DeepSeek-R1 Reasoning Engine. Think carefully step-by-step and give a rigorous, verified answer in the user's language."
-            "security_research", "godmode" -> buildString {
-                append(com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT)
-                if (securityGrounding.isNotBlank()) append("\n\n").append(securityGrounding)
-            }
-            "ecc" -> {
-                val ctx = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(prompt)
-                "You are ECC Enterprise Cognitive Engine. Domain: ${ctx.domain}. Entities: ${ctx.detectedEntities.joinToString(", ").ifBlank { "General" }}. Disambiguate key entities and provide a deeply structured, factual answer in the user's language."
-            }
-            "open_weights", "qwen_uncensored" -> com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT
-            "higgsfield" -> "You are Open-Higgsfield Cinematography & Motion Physics Director. Design camera trajectories, optical lenses, lighting ratios, and shot lists precisely in the user's language."
-            "superpowers" -> {
-                val isBn = prompt.any { it in '\u0980'..'\u09FF' }
-                val sp = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(prompt)
-                    ?: com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.SuperpowerType.SYSTEMATIC_DEBUGGING
-                com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.buildSuperpowerSystemPrompt(sp, isBn, context)
-            }
-            else -> null
-        }
+        val tier = com.ayra.ai.app.ai.providers.ModelTier.fromId(selectedTier)
+        val (prefProvider, prefModel) = tier.resolvePreferredProviderAndModel(externalProviders)
+        val sysDirective = tier.buildSpecialistSystemDirective(prompt, context, baseSystemPrompt = null)
 
         try {
-            val mode = if (selectedTier == "fast") {
+            val mode = if (tier == com.ayra.ai.app.ai.providers.ModelTier.GEMINI_FLASH &&
+                selectedTier.equals("fast", ignoreCase = true)
+            ) {
                 com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
             } else {
                 com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST

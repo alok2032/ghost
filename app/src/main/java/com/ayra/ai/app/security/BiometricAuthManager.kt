@@ -75,7 +75,7 @@ object BiometricAuthManager {
         activity: FragmentActivity,
         title: String,
         subtitle: String,
-        description: String = "Confirm your identity to unlock protected AYRA AI security controls.",
+        description: String = "Confirm your identity to unlock protected Ghost AI security controls.",
         onSuccess: (proofTagHex: String) -> Unit,
         onError: (reason: String, invalidated: Boolean) -> Unit
     ) {

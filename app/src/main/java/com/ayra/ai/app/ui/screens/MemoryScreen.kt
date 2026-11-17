@@ -41,8 +41,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,7 +72,7 @@ fun MemoryScreen(
     val uiConfig = LocalAyraUiConfig.current
 
     var memoryEnabled by remember { mutableStateOf(AyraPreferences.isMemoryEnabled(context)) }
-    val memories by remember { LongTermMemoryManager.observeAllMemories(context) }.collectAsState(initial = emptyList())
+    val memories by remember { LongTermMemoryManager.observeAllMemories(context) }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("ALL") }
@@ -131,7 +131,7 @@ fun MemoryScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Opt-In Memory Recall", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
-                        if (memoryEnabled) "Ayra uses top relevant memories during chat (requires your confirmation to save new facts)."
+                        if (memoryEnabled) "Ghost AI uses top relevant memories during chat (requires your confirmation to save new facts)."
                         else "Off by default for maximum privacy. Nothing is recalled or stored.",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

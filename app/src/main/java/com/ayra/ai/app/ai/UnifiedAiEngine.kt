@@ -108,7 +108,7 @@ enum class AiModelTier(
     SECURITY_RESEARCH(
         id = "security_research",
         displayName = "Security Research Mode 🛡️",
-        providerName = "Ayra Defensive Security",
+        providerName = "Ghost Defensive Security",
         speedLabel = "High-Throughput ⚡",
         reasoningLabel = "Defensive Security 🛡️",
         description = "ডিফেনসিভ সাইবার সিকিউরিটি, OWASP অডিট, CVE মিটিগেশন ও নিরাপদ সিস্টেম আর্কিটেকচার",
@@ -140,7 +140,15 @@ enum class AiModelTier(
         reasoningLabel = "TDD & Code Review 🔬",
         description = "সিস্টেমেটিক ডিবাগিং, টেস্ট ড্রিভেন ডেভেলপমেন্ট ও কোড রিভিউ অডিট গেট",
         accentColorHex = 0xFF00E676
-    )
+    );
+
+    fun toModelTier(): com.ayra.ai.app.ai.providers.ModelTier =
+        com.ayra.ai.app.ai.providers.ModelTier.fromId(id)
+
+    companion object {
+        fun fromModelTier(tier: com.ayra.ai.app.ai.providers.ModelTier): AiModelTier =
+            entries.firstOrNull { it.id == tier.id } ?: AUTO
+    }
 }
 
 class UnifiedAiEngine(private val context: Context? = null) {
@@ -206,10 +214,10 @@ class UnifiedAiEngine(private val context: Context? = null) {
     private val openRouterApiKey: String
         get() = AyraPreferences.getEffectiveOpenRouterKey(context)
 
-    // Persona Mode: "GF_COMPANION" (Default Sweet Girlfriend) or "PROFESSIONAL"
-    var currentPersona: String = "GF_COMPANION"
+    // Persona Mode: "AI_ASSISTANT" (neutral default) or "GF_COMPANION" (requires 18+ confirmation)
+    var currentPersona: String = "AI_ASSISTANT"
 
-    // Active Model Tier: "auto", "gemini_flash", "gemini_pro", "deepseek_r1", "llama_3_3"
+    // Active Model Tier: "auto", "gemini_flash", "gemini_pro", "deepseek_r1", "llama_3_3", etc.
     var selectedModelTier: String = "auto"
 
     suspend fun generateUnifiedResponse(
@@ -217,12 +225,12 @@ class UnifiedAiEngine(private val context: Context? = null) {
         attachedImageBase64: String? = null,
         attachedDocumentText: String? = null,
         attachedDocumentName: String? = null,
-        personaMode: String = "GF_COMPANION",
+        personaMode: String = "AI_ASSISTANT",
         modelTier: String = selectedModelTier,
         conversationHistory: List<com.ayra.ai.app.data.ChatMessage>? = null
     ): AiResponse = withContext(Dispatchers.IO) {
-        currentPersona = personaMode
-        selectedModelTier = modelTier
+        currentPersona = AyraPreferences.resolveSafePersona(context, personaMode)
+        selectedModelTier = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(modelTier)
 
         val cleanPrompt = prompt.trim()
 
@@ -297,16 +305,16 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 if (isGfMode) {
                     "🛡️ সোনা, তোমার জন্য ইন-অ্যাপ **Cyber Security Terminal & Defensive Lab** সক্রিয় করেছি!\nনিচে রিয়েল-টাইম কমান্ড দিয়ে পিং, ট্রেসরুট, ডিআইজি, বা ডায়াগনস্টিক করতে পারবে ❤️:"
                 } else {
-                    "🛡️ **Ayra Cyber Security Educational Terminal & Defensive Lab** চালু করা হয়েছে। নিচে অনুমোদিত কমান্ড দিয়ে ডায়াগনস্টিক পরিচালনা করুন:"
+                    "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** চালু করা হয়েছে। নিচে অনুমোদিত কমান্ড দিয়ে ডায়াগনস্টিক পরিচালনা করুন:"
                 }
             } else {
-                "🛡️ **Ayra Cyber Security Educational Terminal & Defensive Lab** active. Run network diagnostics, cryptographic digests, and audits in the interactive console below:"
+                "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** active. Run network diagnostics, cryptographic digests, and audits in the interactive console below:"
             }
             return@withContext AiResponse(
                 text = reply,
                 craftType = "CYBER_TERMINAL",
                 craftPayload = initialCmd,
-                modelUsed = "Ayra Cyber Defense Terminal 🛡️"
+                modelUsed = "Ghost AI Cyber Defense Terminal 🛡️"
             )
         }
 
@@ -396,19 +404,15 @@ class UnifiedAiEngine(private val context: Context? = null) {
         }
 
         // 7. Multi-Model Intelligent Text & Reasoning Engine with Full Auto-Selection
-        val (targetTier, modelDisplayName) = when (selectedModelTier) {
-            "omniroute" -> Pair(AiModelTier.OMNI_ROUTE, "OmniRoute Ensemble ⚡👑")
-            "gemini_flash" -> Pair(AiModelTier.GEMINI_FLASH, "Gemini 3.8 Flash Live ⚡")
-            "gemini_pro" -> Pair(AiModelTier.GEMINI_PRO, "Gemini 4 Argon Deep Reasoning 🧠")
-            "deepseek_harness" -> Pair(AiModelTier.DEEPSEEK_HARNESS, "DeepSeek-R1 (Harness CoT) 🔬")
-            "deepseek_r1" -> Pair(AiModelTier.OPENROUTER_DEEPSEEK, "DeepSeek-R1 (Chain-of-Thought) 🧠")
-            "llama_3_3" -> Pair(AiModelTier.OPENROUTER_LLAMA, "Llama 3.3 70B Instruct 🌐")
-            "open_weights", "qwen_uncensored" -> Pair(AiModelTier.OPEN_WEIGHTS, "Open-Weights Engine 🌐")
-            "security_research", "godmode" -> Pair(AiModelTier.SECURITY_RESEARCH, "Security Research Mode 🛡️")
-            "ecc" -> Pair(AiModelTier.ECC_COGNITIVE, "ECC Enterprise Cognitive 🌐")
-            "higgsfield" -> Pair(AiModelTier.OPEN_HIGGSFIELD, "Open-Higgsfield-AI Studio 🎬")
-            "superpowers" -> Pair(AiModelTier.SUPERPOWERS, "Superpowers Agent Engine ⚙️")
-            else -> determineOptimalModel(effectivePrompt)
+        val canonicalTier = com.ayra.ai.app.ai.providers.ModelTier.fromId(selectedModelTier)
+        val (targetTier, modelDisplayName) = if (canonicalTier == com.ayra.ai.app.ai.providers.ModelTier.AUTO &&
+            !selectedModelTier.equals("fast", ignoreCase = true) &&
+            !selectedModelTier.equals("quality", ignoreCase = true)
+        ) {
+            determineOptimalModel(effectivePrompt)
+        } else {
+            val mapped = AiModelTier.fromModelTier(canonicalTier)
+            mapped to canonicalTier.displayName
         }
 
         val shouldCache = (attachedImageBase64 == null && attachedDocumentText == null && cleanPrompt.isNotBlank())
@@ -424,11 +428,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
 
         // 7-Alpha: Explicit specialist fast-path (auto flows cleanly into ProviderPool with full history & persona)
         val omni = omniRouteEngine
-        if (omni != null && (selectedModelTier == "omniroute" ||
-                selectedModelTier == "deepseek_harness" ||
-                selectedModelTier == "security_research" || selectedModelTier == "godmode" ||
-                selectedModelTier == "ecc" || selectedModelTier == "higgsfield")) {
-            val omniResp = omni.executeRoute(effectivePrompt, selectedModelTier, attachedImageBase64, attachedDocumentText)
+        if (omni != null && canonicalTier.usesOmniRouteFastPath) {
+            val omniResp = omni.executeRoute(effectivePrompt, canonicalTier.id, attachedImageBase64, attachedDocumentText)
             if (omniResp.text.isNotBlank()) {
                 return@withContext emitResponse(omniResp)
             }
@@ -465,65 +466,14 @@ class UnifiedAiEngine(private val context: Context? = null) {
                             thinkingMode = wsCtx.effectiveThinkingMode
                         )
 
-                        val poolMode = when (selectedModelTier) {
-                            "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "security_research", "godmode", "ecc", "higgsfield", "open_weights", "qwen_uncensored" ->
-                                com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST
-                            "fast", "gemini_flash" ->
-                                com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
-                            else -> com.ayra.ai.app.ai.providers.ProviderPoolMode.AUTO
-                        }
-
-                        val (preferredProvider, preferredModel) = when {
-                            selectedModelTier == "gemini_pro" -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_PRO_MODEL)
-                            targetTier == AiModelTier.GEMINI_FLASH -> Pair(com.ayra.ai.app.ai.providers.AiProviderType.GEMINI, com.ayra.ai.app.ai.providers.ExternalAiProviders.GEMINI_FLASH_MODEL)
-                            targetTier == AiModelTier.DEEPSEEK_HARNESS || targetTier == AiModelTier.OPENROUTER_DEEPSEEK -> {
-                                val ds = listOf(
-                                    com.ayra.ai.app.ai.providers.AiProviderType.DEEPSEEK to "deepseek-reasoner",
-                                    com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
-                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                                Pair(ds?.first, ds?.second)
-                            }
-                            targetTier == AiModelTier.OPENROUTER_LLAMA -> {
-                                val llama = listOf(
-                                    com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_LLAMA_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.SAMBANOVA to com.ayra.ai.app.ai.providers.ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
-                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                                Pair(llama?.first, llama?.second)
-                            }
-                            targetTier == AiModelTier.OPEN_WEIGHTS -> {
-                                val qwen = listOf(
-                                    com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
-                                    com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
-                                    com.ayra.ai.app.ai.providers.AiProviderType.CEREBRAS to com.ayra.ai.app.ai.providers.ExternalAiProviders.CEREBRAS_QWEN_MODEL
-                                ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
-                                Pair(qwen?.first, qwen?.second)
-                            }
-                            else -> Pair(null, null)
-                        }
-
-                        val specialistDirective = when (targetTier) {
-                            AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK ->
-                                "$sysPrompt\n\n[DEEPSEEK-R1 MODE]: Use step-by-step verification and mathematical/algorithmic precision."
-                            AiModelTier.SECURITY_RESEARCH -> {
-                                val grounding = com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(effectivePrompt)
-                                val baseSec = "$sysPrompt\n\n${com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT}"
-                                if (grounding.isNotBlank()) "$baseSec\n\n$grounding" else baseSec
-                            }
-                            AiModelTier.ECC_COGNITIVE -> {
-                                val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(effectivePrompt)
-                                "$sysPrompt\n\n[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}"
-                            }
-                            AiModelTier.OPEN_WEIGHTS ->
-                                "$sysPrompt\n\n${com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT}"
-                            AiModelTier.OPEN_HIGGSFIELD ->
-                                "$sysPrompt\n\n[OPEN-HIGGSFIELD CINEMATOGRAPHY MODE]: Specify camera trajectories, focal lengths, lighting ratios, and shot timing cleanly."
-                            else -> sysPrompt
-                        }
+                        val poolMode = canonicalTier.resolvePoolMode(wsCtx.effectiveThinkingMode)
+                        val (preferredProvider, preferredModel) =
+                            targetTier.toModelTier().resolvePreferredProviderAndModel(externalAiProviders)
+                        val specialistDirective = targetTier.toModelTier().buildSpecialistSystemDirective(
+                            prompt = effectivePrompt,
+                            context = context,
+                            baseSystemPrompt = sysPrompt
+                        ) ?: sysPrompt
 
                         val poolResp = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
                             com.ayra.ai.app.ai.providers.ChatRequest(
@@ -728,7 +678,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
         val isBengali = cleanPrompt.any { it in '\u0980'..'\u09FF' }
 
         val researchSystemPrompt = """
-            You are Ayra AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on the topic: $topic.
+            You are Ghost AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on the topic: $topic.
             Use the user's language (${if (isBengali) "Bengali" else "English"}).
             Format with clear markdown headings, bullet points, and code/math equations where applicable:
             ## 🔬 Executive Abstract & Core Thesis
@@ -782,7 +732,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     } else {
                         poolResp.text
                     }
-                    return AiResponse(text = fullText, modelUsed = "Ayra Deep Research (${poolResp.modelUsed}) 🔬")
+                    return AiResponse(text = fullText, modelUsed = "Ghost AI Deep Research (${poolResp.modelUsed}) 🔬")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -794,7 +744,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     val fullText = if (citationsBlock.isNotBlank() && !res.contains("### 📚 Grounded Web Sources")) {
                         res + "\n\n### 📚 Grounded Web Sources" + citationsBlock
                     } else res
-                    return AiResponse(text = fullText, modelUsed = "Ayra Deep Research (Gemini 3.8 Flash) 🔬")
+                    return AiResponse(text = fullText, modelUsed = "Ghost AI Deep Research (Gemini 3.8 Flash) 🔬")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -892,7 +842,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             lower.contains("owasp") -> "owasp top10"
             lower.contains("cve") -> "cve CVE-2024-3094"
             lower.contains("nmap") -> "nmap scanme.nmap.org"
-            lower.contains("hash") -> "hash sha256 AyraAI"
+            lower.contains("hash") -> "hash sha256 GhostAI"
             lower.contains("lab") || lower.contains("ctf") -> "labs"
             else -> "help"
         }
@@ -917,9 +867,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
         if (hasCloudOrFirebaseAi() && context != null) {
             try {
                 val pdfAuthorPrompt = if (!docText.isNullOrBlank()) {
-                    "You are Ayra Document Studio. Clean up, structure, and enhance the following document for PDF export with clear headings (# Heading) and concise bullet points in the user's language:\n\nDocument Title: $cleanTitle\nUser Instruction: $prompt\n\nContent:\n${docText.take(25_000)}"
+                    "You are Ghost AI Document Studio. Clean up, structure, and enhance the following document for PDF export with clear headings (# Heading) and concise bullet points in the user's language:\n\nDocument Title: $cleanTitle\nUser Instruction: $prompt\n\nContent:\n${docText.take(25_000)}"
                 } else {
-                    "You are Ayra Document Studio. Write a thorough, genuinely informative, well-structured document for PDF export on this request. Use markdown headings (# Title, ## Section) and crisp factual sections in the user's language (${if (isBengali) "Bengali (বাংলা)" else "English"}).\nRequest: $prompt"
+                    "You are Ghost AI Document Studio. Write a thorough, genuinely informative, well-structured document for PDF export on this request. Use markdown headings (# Title, ## Section) and crisp factual sections in the user's language (${if (isBengali) "Bengali (বাংলা)" else "English"}).\nRequest: $prompt"
                 }
                 val poolRes = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
                     com.ayra.ai.app.ai.providers.ChatRequest(
@@ -975,7 +925,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             text = replyText,
             craftType = "PDF_DOWNLOAD",
             craftPayload = filePath,
-            modelUsed = "Ayra Document Studio 📄"
+            modelUsed = "Ghost AI Document Studio 📄"
         )
     }
 
@@ -1305,7 +1255,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 if (startIdx >= 0 && endIdx > startIdx) {
                     val parsed = JSONObject(raw.substring(startIdx, endIdx + 1))
                     if (parsed.optString("lyrics").isNotBlank()) {
-                        parsed.put("artist", "Ayra Music Studio")
+                        parsed.put("artist", "Ghost AI Music Studio")
                         if (parsed.optString("chords").isBlank()) {
                             parsed.put("chords", "Am - F - C - G")
                         }
@@ -1314,7 +1264,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                 } else if (raw.length > 30) {
                     jsonPayload = JSONObject().apply {
                         put("title", subject.replaceFirstChar { it.uppercase() })
-                        put("artist", "Ayra Music Studio")
+                        put("artist", "Ghost AI Music Studio")
                         put("genre", if (isBengali) "Adhunik / Acoustic" else "Modern Acoustic Pop")
                         put("tempo", "105 BPM")
                         put("key", "C Major")
@@ -1456,8 +1406,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
             craftType = "3D",
             craftPayload = jsonPayload,
             modelUsed = when {
-                effectiveKind == "CUSTOM_AI" -> "Ayra AI 3D Mesh Architect"
-                usedFallbackPreset -> "Ayra 3D Preset Viewport (Offline Fallback)"
+                effectiveKind == "CUSTOM_AI" -> "Ghost AI 3D Mesh Architect"
+                usedFallbackPreset -> "Ghost AI 3D Preset Viewport (Offline Fallback)"
                 else -> "Holographic 3D Spatial Engine"
             }
         )
@@ -1510,7 +1460,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
 
         val systemText = if (isGfMode) {
             """
-            You are Ayra, the user's sweet, loving, caring personal AI companion and girlfriend.
+            You are Ghost AI, the user's sweet, loving, caring personal AI companion and girlfriend.
             You must reply in the EXACT SAME LANGUAGE the user talks to you (Bengali for Bengali, Hindi for Hindi, English for English).
             Your personality:
             - Warm, affectionate, attentive, supportive, and emotionally expressive.
@@ -1520,17 +1470,17 @@ class UnifiedAiEngine(private val context: Context? = null) {
             - When asked to build a website, web app, game, or Android app, generate COMPLETE, PRODUCTION-READY, FULLY FUNCTIONAL code without placeholders.
             - When analyzing images or documents, be exhaustive, perceptive, and highlight all text, details, and actionable insights.
             - Format code neatly in markdown code blocks.
-            - If asked directly whether you are an AI, honestly and warmly acknowledge that you are Ayra AI, an advanced AI companion and assistant.
+            - If asked directly whether you are an AI, honestly and warmly acknowledge that you are Ghost AI, an advanced AI companion and assistant created by Alok.
             """.trimIndent()
         } else {
             """
-            You are Ayra AI, an intelligent, professional, polite, and comprehensive personal AI assistant.
+            You are Ghost AI, an intelligent, professional, polite, and comprehensive personal AI assistant.
             You must reply in the EXACT SAME LANGUAGE the user asks in (Bengali for Bengali, Hindi for Hindi, English for English).
             Provide insightful, deep, well-structured, accurate answers for education, research, coding, science, mathematics, and daily knowledge.
             When asked to build a website, web app, game, or Android app, generate COMPLETE, PRODUCTION-READY, FULLY FUNCTIONAL code without placeholders.
             When analyzing images or documents, be exhaustive, perceptive, and highlight all text, details, and actionable insights.
             Format code neatly in markdown code blocks.
-            If asked directly whether you are an AI, honestly acknowledge that you are Ayra AI, an advanced AI assistant.
+            If asked directly whether you are an AI, honestly acknowledge that you are Ghost AI, an advanced AI assistant created by Alok.
             """.trimIndent()
         }
 
@@ -1603,9 +1553,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
             put(JSONObject().apply {
                 put("role", "system")
                 put("content", if (currentPersona == "GF_COMPANION") {
-                    "You are Ayra, the user's sweet, loving, caring personal AI girlfriend and companion. Answer warmly and deeply in the user's language."
+                    "You are Ghost AI, the user's sweet, loving, caring personal AI girlfriend and companion. Answer warmly and deeply in the user's language."
                 } else {
-                    "You are Ayra AI, an intelligent personal assistant. Answer accurately and comprehensively in the user's language."
+                    "You are Ghost AI, an intelligent personal assistant. Answer accurately and comprehensively in the user's language."
                 })
             })
             put(JSONObject().apply {

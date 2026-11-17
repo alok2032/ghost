@@ -14,7 +14,6 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import android.telephony.SmsManager
@@ -64,7 +63,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
         val taskId = intent.getLongExtra("TASK_ID", -1L)
         val targetApp = intent.getStringExtra("TARGET_APP") ?: "WhatsApp"
         val recipient = intent.getStringExtra("RECIPIENT") ?: "Friend"
-        val messageText = intent.getStringExtra("MESSAGE_TEXT") ?: "Hello from Ayra AI!"
+        val messageText = intent.getStringExtra("MESSAGE_TEXT") ?: "Hello from Ghost AI!"
         val phoneNumber = intent.getStringExtra("PHONE_NUMBER") ?: ""
 
         // 2. Acquire safe WakeLock to process task
@@ -84,7 +83,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
             val channel = NotificationChannel(
                 channelId,
-                "Ayra Autonomous Tasks & Calls",
+                "Ghost AI Autonomous Tasks & Calls",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Autonomous task execution, scheduled phone calls, and spoken reminders"
@@ -136,9 +135,9 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             targetApp.equals("REMINDER", ignoreCase = true) -> {
                 AyraVoiceAnnouncer.playAlarmChime(context)
                 val speech = if (isBengali) {
-                    "রিমাইন্ডার! আয়রা এআই আপনাকে মনে করিয়ে দিচ্ছে: $messageText"
+                    "রিমাইন্ডার! Ghost AI আপনাকে মনে করিয়ে দিচ্ছে: $messageText"
                 } else {
-                    "Reminder! Ayra AI is reminding you to: $messageText"
+                    "Reminder! Ghost AI is reminding you to: $messageText"
                 }
                 AyraVoiceAnnouncer.speakAloud(context, speech)
 
@@ -154,7 +153,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
 
                 val notif = NotificationCompat.Builder(context, channelId)
                     .setSmallIcon(android.R.drawable.ic_popup_reminder)
-                    .setContentTitle("⏰ Ayra Reminder")
+                    .setContentTitle("⏰ Ghost AI Reminder")
                     .setContentText(messageText)
                     .setStyle(NotificationCompat.BigTextStyle().bigText("⏰ Scheduled Reminder:\n\n$messageText"))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)

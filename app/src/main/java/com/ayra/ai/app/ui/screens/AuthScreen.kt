@@ -126,17 +126,44 @@ fun AuthScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Ayra AI Emblem",
+                            contentDescription = "Ghost AI Emblem",
                             tint = Color.Black,
                             modifier = Modifier.size(34.dp)
                         )
                     }
 
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Ghost AI",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextPrimary
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF0F172A).copy(alpha = 0.85f))
+                                .border(1.dp, NeonCyan.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "By Alok",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NeonCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
                     Text(
-                        text = "Ayra AI • Unified Frontier",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary,
+                        text = "Unified Frontier • Enterprise AI Platform",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NeonCyan,
                         textAlign = TextAlign.Center
                     )
 

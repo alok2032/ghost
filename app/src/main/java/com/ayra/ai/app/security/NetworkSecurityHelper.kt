@@ -60,6 +60,7 @@ object NetworkSecurityHelper {
             .connectTimeout(8, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .readTimeout(35, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
             .retryOnConnectionFailure(true)
@@ -71,13 +72,35 @@ object NetworkSecurityHelper {
      * (e.g. Ollama / ComfyUI on private subnet) when user explicitly enables LAN endpoints.
      */
     val localLanClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        hardenedPooledClient.newBuilder()
             .connectionSpecs(listOf(strictTlsConnectionSpec, ConnectionSpec.CLEARTEXT))
             .connectTimeout(6, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
+            .build()
+    }
+
+    /**
+     * Central OkHttpClient factory sharing the singleton Dispatcher, ConnectionPool, TLS spec,
+     * and baseline timeouts across all feature engines.
+     */
+    @JvmOverloads
+    fun newClient(
+        connectTimeoutSec: Long = 8L,
+        readTimeoutSec: Long = 35L,
+        writeTimeoutSec: Long = 15L,
+        callTimeoutSec: Long = 60L,
+        allowLanCleartext: Boolean = false
+    ): OkHttpClient {
+        val base = if (allowLanCleartext) localLanClient else hardenedPooledClient
+        return base.newBuilder()
+            .connectTimeout(connectTimeoutSec, TimeUnit.SECONDS)
+            .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
+            .writeTimeout(writeTimeoutSec, TimeUnit.SECONDS)
+            .callTimeout(callTimeoutSec, TimeUnit.SECONDS)
             .build()
     }
 

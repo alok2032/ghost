@@ -7,11 +7,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ayra.ai.app.ai.AyraEvent
 import com.ayra.ai.app.ai.AyraOrchestrator
+import com.ayra.ai.app.ai.agent.AgentCitation
 import com.ayra.ai.app.ai.agent.AgentPlanStep
 import com.ayra.ai.app.ai.memory.LongTermMemoryManager
 import com.ayra.ai.app.ai.memory.MemoryCandidate
 import com.ayra.ai.app.ai.memory.MemorySaveResult
 import com.ayra.ai.app.ai.providers.AyraError
+import com.ayra.ai.app.ai.providers.ModelTier
 import com.ayra.ai.app.automation.ProposedAction
 import com.ayra.ai.app.cloud.AyraCloudRepository
 import com.ayra.ai.app.data.AyraPreferences
@@ -36,7 +38,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Production ViewModel for Ayra Chat.
+ * Production ViewModel for Ghost AI Chat.
  * Manages persistent Room chat sessions, scoped message history, ViewModel-scoped orchestration
  * resilient to configuration changes, partial-token preservation on Stop, and opt-in memory confirmation.
  */
@@ -50,7 +52,7 @@ class ChatViewModel(
     private val sendMutex = Mutex()
     private var inFlightJob: Job? = null
     @Volatile
-    private var activeModelHint: String = "Ayra AI"
+    private var activeModelHint: String = "Ghost AI"
 
     private val _activeSessionId = MutableStateFlow(1L)
     val activeSessionId: StateFlow<Long> = _activeSessionId.asStateFlow()
@@ -89,6 +91,9 @@ class ChatViewModel(
 
     private val _agentPlanSteps = MutableStateFlow<List<AgentPlanStep>>(emptyList())
     val agentPlanSteps: StateFlow<List<AgentPlanStep>> = _agentPlanSteps.asStateFlow()
+
+    private val _activeCitations = MutableStateFlow<List<AgentCitation>>(emptyList())
+    val activeCitations: StateFlow<List<AgentCitation>> = _activeCitations.asStateFlow()
 
     private val _pendingMemoryCandidate = MutableStateFlow<MemoryCandidate?>(null)
     val pendingMemoryCandidate: StateFlow<MemoryCandidate?> = _pendingMemoryCandidate.asStateFlow()
@@ -219,11 +224,11 @@ class ChatViewModel(
     }
 
     fun setPersona(persona: String) {
-        _currentPersona.value = persona
+        _currentPersona.value = persona.ifBlank { "AI_ASSISTANT" }
     }
 
     fun setModelTier(tier: String) {
-        _selectedModelTier.value = tier
+        _selectedModelTier.value = ModelTier.canonicalizeId(tier)
     }
 
     fun setPendingAction(action: ProposedAction?) {
@@ -318,7 +323,8 @@ class ChatViewModel(
         onSpeakResponse: (String) -> Unit
     ) {
         _agentPlanSteps.value = emptyList()
-        activeModelHint = "Ayra AI"
+        _activeCitations.value = emptyList()
+        activeModelHint = "Ghost AI"
         val job = viewModelScope.launch {
             var receivedTerminalEvent = false
             try {
@@ -335,7 +341,12 @@ class ChatViewModel(
                         is AyraEvent.PlanUpdated -> {
                             _agentPlanSteps.value = event.steps
                         }
-                        is AyraEvent.CitationAdded -> {}
+                        is AyraEvent.CitationAdded -> {
+                            val current = _activeCitations.value
+                            if (current.none { it.url == event.citation.url }) {
+                                _activeCitations.value = current + event.citation
+                            }
+                        }
                         is AyraEvent.Status -> {
                             _thinkingStatus.value = event.message
                             activeModelHint = event.message.removePrefix("Thinking with ").removeSuffix("...").take(60)
@@ -368,7 +379,7 @@ class ChatViewModel(
                                                 title = prompt.take(120),
                                                 prompt = prompt,
                                                 summary = event.response.text.take(800),
-                                                modelUsed = event.response.modelUsed ?: "Ayra AI"
+                                                modelUsed = event.response.modelUsed ?: "Ghost AI"
                                             )
                                         }
                                     }
@@ -429,6 +440,7 @@ class ChatViewModel(
         _thinkingStatus.value = null
         _streamingAnswer.value = null
         _agentPlanSteps.value = emptyList()
+        _activeCitations.value = emptyList()
         if (!partialSnapshot.isNullOrBlank()) {
             viewModelScope.launch(Dispatchers.IO) {
                 runCatching {
@@ -452,6 +464,7 @@ class ChatViewModel(
         _errorMessage.value = null
         _streamingAnswer.value = null
         _agentPlanSteps.value = emptyList()
+        _activeCitations.value = emptyList()
         _thinkingStatus.value = "Thinking..."
         return true
     }
@@ -460,6 +473,8 @@ class ChatViewModel(
         _isGenerating.value = false
         _thinkingStatus.value = null
         _streamingAnswer.value = null
+        _agentPlanSteps.value = emptyList()
+        _activeCitations.value = emptyList()
         _errorMessage.value = error
         inFlightJob = null
     }

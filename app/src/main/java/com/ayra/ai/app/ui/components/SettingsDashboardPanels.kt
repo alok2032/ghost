@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,10 +40,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,8 +76,9 @@ fun PersonalizationAndMemoryPanel(
     onOpenMemoryVault: () -> Unit = {}
 ) {
     val uiConfig = LocalAyraUiConfig.current
-    val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsState()
+    val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsStateWithLifecycle()
     var activePersona by remember { mutableStateOf(AyraPreferences.getSavedPersona(context)) }
+    var showCompanionAgeGate by remember { mutableStateOf(false) }
     var formality by remember { mutableFloatStateOf(AyraPreferences.getFormalityLevel(context).toFloat()) }
     var detail by remember { mutableFloatStateOf(AyraPreferences.getDetailLevel(context).toFloat()) }
     var techDepth by remember { mutableFloatStateOf(AyraPreferences.getTechnicalDepth(context).toFloat()) }
@@ -129,13 +132,42 @@ fun PersonalizationAndMemoryPanel(
                 FilterChip(
                     selected = activePersona == style,
                     onClick = {
-                        activePersona = style
-                        AyraPreferences.savePersona(context, style)
-                        onPersonaStyleSelected(style)
+                        if (style == "GF_COMPANION" && !AyraPreferences.isCompanionAgeVerified(context)) {
+                            showCompanionAgeGate = true
+                        } else {
+                            activePersona = style
+                            AyraPreferences.savePersona(context, style)
+                            onPersonaStyleSelected(style)
+                        }
                     },
-                    label = { Text(style.replace("_", " "), fontSize = 10.sp) }
+                    label = {
+                        Text(
+                            text = if (style == "GF_COMPANION") "COMPANION (18+)" else style.replace("_", " "),
+                            fontSize = 10.sp
+                        )
+                    }
                 )
             }
+        }
+
+        if (showCompanionAgeGate) {
+            AlertDialog(
+                onDismissRequest = { showCompanionAgeGate = false },
+                title = { Text("18+ Companion Persona Confirmation", fontWeight = FontWeight.Bold) },
+                text = { Text("Companion Mode uses affectionate, personal conversational tones intended only for adults (18+). Confirm you are 18+ to enable this optional mode.") },
+                confirmButton = {
+                    Button(onClick = {
+                        AyraPreferences.setCompanionAgeVerified(context, true)
+                        activePersona = "GF_COMPANION"
+                        AyraPreferences.savePersona(context, "GF_COMPANION")
+                        onPersonaStyleSelected("GF_COMPANION")
+                        showCompanionAgeGate = false
+                    }) { Text("Confirm 18+ & Enable") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCompanionAgeGate = false }) { Text("Cancel") }
+                }
+            )
         }
 
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
@@ -172,9 +204,9 @@ fun PersonalizationAndMemoryPanel(
         }
 
         Text("Structured Custom Instructions (Encrypted)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ghost AI") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = aboutUser, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ayra Should Respond") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ghost AI Should Respond") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = outputFormat, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = restrictions, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())
@@ -260,8 +292,8 @@ fun DeviceAndUsageDashboardPanel(
 ) {
     val scope = rememberCoroutineScope()
     val uiConfig = LocalAyraUiConfig.current
-    val usageMetrics by AiUsageTracker.metricsFlow.collectAsState()
-    val dailyUsage by AiUsageTracker.dailyStatsFlow.collectAsState()
+    val usageMetrics by AiUsageTracker.metricsFlow.collectAsStateWithLifecycle()
+    val dailyUsage by AiUsageTracker.dailyStatsFlow.collectAsStateWithLifecycle()
 
     var sessionCount by remember { mutableStateOf(0) }
     var messageCount by remember { mutableStateOf(0) }

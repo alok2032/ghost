@@ -25,7 +25,7 @@ object ProjectWorkspaceManager {
 
     private val fileHeaderRegex = Regex("(?m)^(?:===\\s*FILE:\\s*|//\\s*FILE:\\s*|#\\s*FILE:\\s*)([^=\\r\\n]+?)(?:\\s*===)?\\s*$")
 
-    fun parseProjectFilesFromAiResponse(aiOutput: String, fallbackProjectName: String = "ayra_project"): List<GeneratedProjectFile> {
+    fun parseProjectFilesFromAiResponse(aiOutput: String, fallbackProjectName: String = "ghost_project"): List<GeneratedProjectFile> {
         val matches = fileHeaderRegex.findAll(aiOutput).toList()
         if (matches.isNotEmpty()) {
             val files = mutableListOf<GeneratedProjectFile>()
@@ -81,7 +81,7 @@ object ProjectWorkspaceManager {
         projectName: String,
         files: List<GeneratedProjectFile>
     ): Pair<File, File> {
-        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "ayra_project" }
+        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "ghost_project" }
         val rootDir = File(context.filesDir, "code_projects/$safeProj").apply {
             if (exists()) deleteRecursively()
             mkdirs()
@@ -162,7 +162,7 @@ object ProjectWorkspaceManager {
     }
 
     fun createProjectZip(context: Context, projectName: String, rootDir: File): File {
-        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "ayra_project" }
+        val safeProj = projectName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "ghost_project" }
         val exportsDir = File(context.filesDir, "project_zips").apply { if (!exists()) mkdirs() }
         val zipFile = File(exportsDir, "${safeProj}_${System.currentTimeMillis()}.zip")
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->

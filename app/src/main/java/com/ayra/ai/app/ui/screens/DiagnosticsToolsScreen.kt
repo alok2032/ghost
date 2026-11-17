@@ -66,14 +66,6 @@ import com.ayra.ai.app.data.StorageHelper.WorkspaceArtifact
 import com.ayra.ai.app.ui.components.CyberTerminalCard
 import com.ayra.ai.app.ui.components.GitHubPluginHubSection
 import com.ayra.ai.app.ui.components.ProviderKeysSection
-import com.ayra.ai.app.ui.theme.CosmicBackground
-import com.ayra.ai.app.ui.theme.GlassSurfaceDark
-import com.ayra.ai.app.ui.theme.NeonCyan
-import com.ayra.ai.app.ui.theme.NeonGreen
-import com.ayra.ai.app.ui.theme.NeonPurple
-import com.ayra.ai.app.ui.theme.NeonRose
-import com.ayra.ai.app.ui.theme.TextPrimary
-import com.ayra.ai.app.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -317,8 +309,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceDark)
-                .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -326,9 +318,9 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 text = "Appearance & Engine Controls",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = NeonCyan
+                color = MaterialTheme.colorScheme.primary
             )
-            Text("Material 3 Theme", color = TextSecondary, fontSize = 11.5.sp)
+            Text("Material 3 Theme", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.5.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("dark" to "Dark", "light" to "Light", "system" to "System").forEach { (mode, label) ->
                     FilterChip(
@@ -346,8 +338,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Live Search Grounding", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("Augment answers with live DuckDuckGo / Wikipedia / CrossRef", color = TextSecondary, fontSize = 11.sp)
+                    Text("Live Search Grounding", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Augment answers with live DuckDuckGo / Wikipedia / CrossRef", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 Switch(
                     checked = searchGrounding,
@@ -365,8 +357,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Global Free AI Pool", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("Keyless community endpoints when personal keys aren't set", color = TextSecondary, fontSize = 11.sp)
+                    Text("Global Free AI Pool", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Keyless community endpoints when personal keys aren't set", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 Switch(
                     checked = freePool,
@@ -384,8 +376,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Persistent AI Memory", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("Remember user profile facts & coding preferences across chats", color = TextSecondary, fontSize = 11.sp)
+                    Text("Persistent AI Memory", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Remember user profile facts & coding preferences across chats", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 Switch(
                     checked = memoryEnabled,
@@ -403,8 +395,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceDark)
-                .border(1.dp, NeonPurple.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -412,11 +404,11 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 text = "Key-Free Workspace Backup & Restore",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = NeonPurple
+                color = MaterialTheme.colorScheme.tertiary
             )
             Text(
                 text = "Exports chats, installed plugins, and non-secret preferences to JSON. API keys remain strictly inside Android Keystore and are NEVER exported.",
-                color = TextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.5.sp
             )
             Row(
@@ -424,7 +416,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = { exportBackupLauncher.launch("ayra_workspace_backup.json") },
+                    onClick = { exportBackupLauncher.launch("ghost_workspace_backup.json") },
                     modifier = Modifier.weight(1f).testTag("workspace_export_backup_button")
                 ) {
                     Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -441,7 +433,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 }
             }
             backupStatus?.let { msg ->
-                Text(text = msg, color = NeonGreen, fontSize = 11.5.sp)
+                Text(text = msg, color = MaterialTheme.colorScheme.secondary, fontSize = 11.5.sp)
             }
         }
 
@@ -450,8 +442,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceDark)
-                .border(1.dp, NeonGreen.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -466,11 +458,11 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                         text = "Workspace Files Explorer (${artifacts.size})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = NeonGreen
+                        color = MaterialTheme.colorScheme.secondary
                     )
                     Text(
                         text = "Total storage: ${totalKb} KB across docs, images, 3D, audio & code ZIPs",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -478,14 +470,14 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                     onClick = { reloadArtifacts() },
                     modifier = Modifier.size(48.dp).testTag("workspace_refresh_files_button")
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Files", tint = NeonCyan)
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Files", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             if (artifacts.isEmpty()) {
                 Text(
                     text = "No generated documents, 3D meshes, images, audio, or code ZIPs on disk yet.",
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
             } else {
@@ -494,15 +486,15 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(CosmicBackground)
+                            .background(MaterialTheme.colorScheme.surface)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = item.name, color = TextPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                            Text(text = item.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 text = "${item.folder} • ${(item.sizeBytes / 1024L).coerceAtLeast(1L)} KB",
-                                color = TextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 10.5.sp
                             )
                         }
@@ -524,7 +516,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                                 },
                                 modifier = Modifier.size(48.dp)
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = "Share ${item.name}", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Share, contentDescription = "Share ${item.name}", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                             }
                         }
                         IconButton(
@@ -535,7 +527,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                             },
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete ${item.name}", tint = NeonRose, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Delete, contentDescription = "Delete ${item.name}", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                         }
                     }
                 }

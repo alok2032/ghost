@@ -504,7 +504,7 @@ fun SecurityCenterScreen(
                 onExportEncryptedFile = { passphrase ->
                     runWithOptionalBiometricGate("Authorize Encrypted Backup Export") {
                         pendingExportPassphrase = passphrase
-                        exportBackupLauncher.launch("ayra_vault_backup_${System.currentTimeMillis()}.ayrabak")
+                        exportBackupLauncher.launch("ghost_vault_backup_${System.currentTimeMillis()}.ayrabak")
                     }
                 },
                 onImportEncryptedFile = { passphrase ->

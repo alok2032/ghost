@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import com.ayra.ai.app.ai.providers.ModelTier
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -257,10 +258,10 @@ fun AiRoutingAndMemoryCard(context: Context) {
 
     val routingModes = remember {
         listOf(
-            Triple("auto", "Auto ⚡", "Adaptive selection"),
+            Triple(ModelTier.AUTO.id, "Auto ⚡", "Adaptive selection"),
             Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 3.7"),
             Triple("fast", "Ultra Fast 🚀", "Gemini 3.8 Flash / Groq"),
-            Triple("open_weights", "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
+            Triple(ModelTier.OPEN_WEIGHTS.id, "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
             Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek R1 / o3-mini"),
             Triple("coding", "Coding & STEM 💻", "GLM 5.3 / Codestral"),
             Triple("local", "Private LAN 🏠", "Local Ollama / LM Studio")
@@ -384,7 +385,7 @@ fun AiRoutingAndMemoryCard(context: Context) {
                     userInstructions = it
                     AyraPreferences.setUserCustomInstructions(context, it)
                 },
-                label = { Text("Custom Instructions for Ayra (optional)", fontSize = 11.sp) },
+                label = { Text("Custom Instructions for Ghost AI (optional)", fontSize = 11.sp) },
                 placeholder = { Text("e.g. Always respond in Bengali; prioritize concise code", fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 2,

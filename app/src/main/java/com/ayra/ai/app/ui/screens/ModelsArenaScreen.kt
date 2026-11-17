@@ -36,8 +36,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,15 +57,6 @@ import com.ayra.ai.app.ai.providers.AiModelRegistry
 import com.ayra.ai.app.ai.providers.AiUsageTracker
 import com.ayra.ai.app.ai.providers.ModelCategory
 import com.ayra.ai.app.ai.providers.ModelHealthStatus
-import com.ayra.ai.app.ui.theme.CosmicBackground
-import com.ayra.ai.app.ui.theme.GlassSurfaceDark
-import com.ayra.ai.app.ui.theme.NeonCyan
-import com.ayra.ai.app.ui.theme.NeonGold
-import com.ayra.ai.app.ui.theme.NeonGreen
-import com.ayra.ai.app.ui.theme.NeonPurple
-import com.ayra.ai.app.ui.theme.NeonRose
-import com.ayra.ai.app.ui.theme.TextPrimary
-import com.ayra.ai.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 private enum class ArenaTab(val label: String) {
@@ -150,8 +141,8 @@ fun ModelsArenaScreen(
 @Composable
 private fun RegistryHealthPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
-    val entries by AiModelRegistry.entries.collectAsState()
-    val usageMetrics by AiUsageTracker.metricsFlow.collectAsState()
+    val entries by AiModelRegistry.entries.collectAsStateWithLifecycle()
+    val usageMetrics by AiUsageTracker.metricsFlow.collectAsStateWithLifecycle()
     var selectedCategory by remember { mutableStateOf<ModelCategory?>(null) }
     var isSweeping by remember { mutableStateOf(false) }
     var isDiscovering by remember { mutableStateOf(false) }
@@ -213,7 +204,7 @@ private fun RegistryHealthPanel(context: android.content.Context) {
         }
 
         discoveryStatus?.let { msg ->
-            Text(text = msg, color = NeonCyan, fontSize = 11.5.sp)
+            Text(text = msg, color = MaterialTheme.colorScheme.primary, fontSize = 11.5.sp)
         }
 
         if (usageMetrics.isNotEmpty()) {
@@ -221,8 +212,8 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(GlassSurfaceDark)
-                    .border(1.dp, NeonPurple.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
                     .padding(12.dp)
                     .testTag("provider_usage_telemetry_card"),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -234,7 +225,7 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                 ) {
                     Text(
                         text = "Local Provider Telemetry (${usageMetrics.sumOf { it.totalRequests }} calls)",
-                        color = NeonPurple,
+                        color = MaterialTheme.colorScheme.tertiary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.5.sp
                     )
@@ -253,14 +244,14 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                     ) {
                         Text(
                             text = metric.displayName,
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = "${metric.totalRequests} req • ${metric.successRatePercent}% ok • avg ${metric.avgLatencyMs}ms",
-                            color = if (metric.successRatePercent >= 75) NeonGreen else NeonGold,
+                            color = if (metric.successRatePercent >= 75) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
                             fontSize = 11.sp
                         )
                     }
@@ -288,17 +279,17 @@ private fun RegistryHealthPanel(context: android.content.Context) {
 
         filtered.forEach { entry ->
             val statusColor = when (entry.healthStatus) {
-                ModelHealthStatus.OPERATIONAL -> NeonGreen
-                ModelHealthStatus.DEGRADED -> NeonGold
-                ModelHealthStatus.OFFLINE -> NeonRose
-                ModelHealthStatus.UNCONFIGURED -> TextSecondary
-                ModelHealthStatus.UNKNOWN -> NeonCyan
+                ModelHealthStatus.OPERATIONAL -> MaterialTheme.colorScheme.secondary
+                ModelHealthStatus.DEGRADED -> MaterialTheme.colorScheme.tertiary
+                ModelHealthStatus.OFFLINE -> MaterialTheme.colorScheme.error
+                ModelHealthStatus.UNCONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
+                ModelHealthStatus.UNKNOWN -> MaterialTheme.colorScheme.primary
             }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(GlassSurfaceDark)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                     .border(1.dp, statusColor.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -310,7 +301,7 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                 ) {
                     Text(
                         text = entry.displayName,
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(1f)
@@ -327,16 +318,16 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                 }
                 Text(
                     text = "${entry.tierStatus.label} • ${entry.contextWindow} • ${entry.rateLimitNote}",
-                    color = NeonCyan,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 11.sp
                 )
                 Text(
                     text = "Model: ${entry.modelId} • ${entry.authRequirement}",
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
                 entry.lastError?.takeIf { it.isNotBlank() }?.let { err ->
-                    Text(text = err, color = NeonRose, fontSize = 11.sp)
+                    Text(text = err, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                 }
             }
         }
@@ -361,14 +352,14 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
-            .border(1.dp, NeonPurple.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             text = "Select 2–4 Configured Models",
-            color = NeonCyan,
+            color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp
         )
@@ -376,7 +367,7 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
         if (targets.isEmpty()) {
             Text(
                 text = "No AI providers are configured yet. Add free or paid API keys in Tools -> API Keys Vault or enable Free AI Pool.",
-                color = NeonRose,
+                color = MaterialTheme.colorScheme.error,
                 fontSize = 12.sp
             )
         } else {
@@ -397,8 +388,8 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                         }
                     )
                     Column {
-                        Text(target.displayName, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text(target.providerName, color = TextSecondary, fontSize = 11.sp)
+                        Text(target.displayName, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(target.providerName, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
                 }
             }
@@ -409,7 +400,7 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Cross-Model Debate & Verification", color = TextPrimary, fontSize = 12.5.sp)
+            Text("Cross-Model Debate & Verification", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp)
             Switch(checked = runDebate, onCheckedChange = { runDebate = it })
         }
 
@@ -450,18 +441,18 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(CosmicBackground)
-                    .border(1.dp, NeonGreen.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = "Verification Synthesis (${rep.totalElapsedMs}ms total)",
-                    color = NeonGreen,
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
                 )
-                Text(text = rep.synthesisSummary, color = TextPrimary, fontSize = 12.5.sp, lineHeight = 18.sp)
+                Text(text = rep.synthesisSummary, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, lineHeight = 18.sp)
             }
 
             rep.results.forEach { res ->
@@ -469,10 +460,10 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(CosmicBackground)
+                        .background(MaterialTheme.colorScheme.surface)
                         .border(
                             1.dp,
-                            if (res.success) NeonCyan.copy(alpha = 0.35f) else NeonRose.copy(alpha = 0.45f),
+                            if (res.success) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.error.copy(alpha = 0.45f),
                             RoundedCornerShape(12.dp)
                         )
                         .padding(12.dp),
@@ -482,17 +473,17 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(res.displayName, color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(res.displayName, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Text(
                             text = if (res.success) "${res.latencyMs}ms" else "Failed (${res.latencyMs}ms)",
-                            color = if (res.success) NeonGreen else NeonRose,
+                            color = if (res.success) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
                     Text(
                         text = if (res.success) res.responseText else (res.errorMessage ?: "Unknown error"),
-                        color = if (res.success) TextPrimary else NeonRose,
+                        color = if (res.success) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
                         fontSize = 12.sp,
                         lineHeight = 17.sp
                     )

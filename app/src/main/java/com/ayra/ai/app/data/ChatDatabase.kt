@@ -62,7 +62,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     """
                     INSERT OR IGNORE INTO `chat_sessions`
                     (`id`, `title`, `personaMode`, `modelTier`, `isPinned`, `createdAt`, `updatedAt`, `messageCount`, `lastMessagePreview`)
-                    VALUES (1, 'Ayra Main Chat', 'GF_COMPANION', 'auto', 0, $now, $now, 0, '')
+                    VALUES (1, 'Ghost Main Chat', 'AI_ASSISTANT', 'auto', 0, $now, $now, 0, '')
                     """.trimIndent()
                 )
 
@@ -306,7 +306,7 @@ abstract class ChatDatabase : RoomDatabase() {
                 """
                 INSERT OR IGNORE INTO `chat_sessions`
                 (`id`, `title`, `personaMode`, `modelTier`, `isPinned`, `createdAt`, `updatedAt`, `messageCount`, `lastMessagePreview`)
-                SELECT 1, 'Ayra Main Chat', 'GF_COMPANION', 'auto', 0, $now, $now, 0, ''
+                SELECT 1, 'Ghost Main Chat', 'AI_ASSISTANT', 'auto', 0, $now, $now, 0, ''
                 WHERE NOT EXISTS (SELECT 1 FROM `chat_sessions`)
                 """.trimIndent()
             )

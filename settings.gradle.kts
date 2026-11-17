@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Ayra AI"
+rootProject.name = "Ghost AI"
 include(":app")

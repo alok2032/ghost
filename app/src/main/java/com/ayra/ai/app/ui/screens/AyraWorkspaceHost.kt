@@ -47,8 +47,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,7 +73,7 @@ import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 enum class AyraDestination(val title: String, val subtitle: String, val icon: ImageVector) {
-    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
+    CHAT("Ghost Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
     RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public),
     PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune),
     PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial),
@@ -101,14 +101,14 @@ fun AyraWorkspaceHost(
     var currentDest by rememberSaveable { mutableStateOf(AyraDestination.CHAT) }
     var drawerSearch by remember { mutableStateOf("") }
 
-    val sessions by viewModel.sessions.collectAsState()
-    val activeSessionId by viewModel.activeSessionId.collectAsState()
-    val activeProjectId by AyraPreferences.activeProjectIdFlow.collectAsState()
-    val activeAssistantId by AyraPreferences.activeAssistantIdFlow.collectAsState()
+    val sessions by viewModel.sessions.collectAsStateWithLifecycle()
+    val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()
+    val activeProjectId by AyraPreferences.activeProjectIdFlow.collectAsStateWithLifecycle()
+    val activeAssistantId by AyraPreferences.activeAssistantIdFlow.collectAsStateWithLifecycle()
 
     val workspaceDao = remember { ChatDatabase.getDatabase(context).ayraWorkspaceDao() }
-    val projects by workspaceDao.observeProjects().collectAsState(initial = emptyList())
-    val assistants by workspaceDao.observeAssistants().collectAsState(initial = emptyList())
+    val projects by workspaceDao.observeProjects().collectAsStateWithLifecycle(initialValue = emptyList())
+    val assistants by workspaceDao.observeAssistants().collectAsStateWithLifecycle(initialValue = emptyList())
     val activeProject = remember(projects, activeProjectId) { projects.firstOrNull { it.id == activeProjectId } }
     val activeAssistant = remember(assistants, activeAssistantId) { assistants.firstOrNull { it.id == activeAssistantId } }
 
@@ -149,7 +149,7 @@ fun AyraWorkspaceHost(
                     ) {
                         Column {
                             Text(
-                                text = "Ayra AI by Alok",
+                                text = "Ghost AI • By Alok",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = uiConfig.accentColor

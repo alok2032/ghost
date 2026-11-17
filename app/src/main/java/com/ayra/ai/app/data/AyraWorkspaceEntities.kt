@@ -1,5 +1,6 @@
 package com.ayra.ai.app.data
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -8,6 +9,7 @@ import androidx.room.PrimaryKey
 /**
  * Isolated Project Workspace with its own custom instructions, memory notes, and default routing tier.
  */
+@Immutable
 @Entity(tableName = "projects")
 data class ProjectEntity(
     @PrimaryKey(autoGenerate = true)
@@ -24,6 +26,7 @@ data class ProjectEntity(
 /**
  * Custom User-Authored AI Assistant / Agent Persona with its own system prompt, model, thinking mode, and tools.
  */
+@Immutable
 @Entity(tableName = "custom_assistants")
 data class CustomAssistantEntity(
     @PrimaryKey(autoGenerate = true)
@@ -45,6 +48,7 @@ data class CustomAssistantEntity(
 /**
  * Structured Prompt Template saved in Prompt Library.
  */
+@Immutable
 @Entity(tableName = "prompt_templates")
 data class PromptTemplateEntity(
     @PrimaryKey(autoGenerate = true)
@@ -81,6 +85,7 @@ data class PromptTemplateEntity(
     ],
     indices = [Index(value = ["templateId"])]
 )
+@Immutable
 data class PromptVersionEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

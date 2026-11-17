@@ -98,7 +98,7 @@ object GlobalWebKnowledgeGateway {
                 ## 3. 🛡️ Tor বনাম VPN: মূল পার্থক্য
                 - **VPN:** সিঙ্গেল-হপ এনক্রিপশন। আপনার ইন্টারনেট প্রোভাইডার কিছু দেখতে পারে না, কিন্তু VPN প্রোভাইডার সম্পূর্ণ ট্রাফিক দেখতে পারে (যদি না তারা জিরো-লগ নীতি মেনে চলে)।
                 - **Tor:** ট্রিপল-হপ এনক্রিপশন। কোনো একক সত্তা বা সার্ভার একসাথে প্রেরক এবং প্রাপক উভয়কে চিনতে পারে না।
-                - **নোট:** Ayra AI কোনো অন্তর্নির্মিত VPN টানেল চালায় না; এটি HTTPS/TLS, Android Keystore এনক্রিপশন ও Firebase App Check নিরাপত্তা ব্যবহার করে।
+                - **নোট:** Ghost AI কোনো অন্তর্নির্মিত VPN টানেল চালায় না; এটি HTTPS/TLS, Android Keystore এনক্রিপশন ও Firebase App Check নিরাপত্তা ব্যবহার করে।
                 """.trimIndent()
             } else {
                 """
@@ -122,7 +122,7 @@ object GlobalWebKnowledgeGateway {
                 ## 3. 🛡️ Tor vs VPN Architectural Comparison
                 - **VPN:** 1-hop centralized tunnel. Hides traffic from ISP, but requires trust in VPN provider logs.
                 - **Tor:** 3-hop decentralized path. Requires zero centralized trust.
-                - **Ayra Transport Security:** Ayra AI does not run a built-in VPN tunnel or Tor proxy; network requests use encrypted HTTPS/TLS with Android Keystore key protection and Firebase App Check.
+                - **Ghost AI Transport Security:** Ghost AI does not run a built-in VPN tunnel or Tor proxy; network requests use encrypted HTTPS/TLS with Android Keystore key protection and Firebase App Check.
                 """.trimIndent()
             }
         }
@@ -163,8 +163,8 @@ object GlobalWebKnowledgeGateway {
                 - **বৈশিষ্ট্য:** সাধারণ ডিএনএস (DNS) এবং রাউটার দিয়ে এটি কাজ করে না। এটি একটি এনক্রিপ্টেড ওভারলে নেটওয়ার্ক যার জন্য বিশেষ সফটওয়্যার (যেমন: Tor Browser, I2P Router) প্রয়োজন হয়।
                 - **প্রযুক্তি:** পেজগুলোর ডোমেইন এক্সটেনশন `.onion` বা `.i2p` হয় এবং একাধিক নোডের মধ্য দিয়ে ট্রাফিক এনক্রিপ্ট হয়ে যায়।
 
-                ## 🛡️ Ayra AI কীভাবে কাজ করে?
-                Ayra AI সম্পূর্ণ ক্লিয়ারনেট নলেজ গ্রাফ, লাইভ উইকিপিডিয়া সার্চ এবং সাইবার সিকিউরিটি থ্রেট ইন্টেলিজেন্স ডেটাসেটের সাথে সংযুক্ত, যাতে যেকোনো জটিল গবেষণার উত্তর কয়েক মিলিসেকেন্ডে প্রদান করতে পারে।
+                ## 🛡️ Ghost AI কীভাবে কাজ করে?
+                Ghost AI সম্পূর্ণ ক্লিয়ারনেট নলেজ গ্রাফ, লাইভ উইকিপিডিয়া সার্চ এবং সাইবার সিকিউরিটি থ্রেট ইন্টেলিজেন্স ডেটাসেটের সাথে সংযুক্ত, যাতে যেকোনো জটিল গবেষণার উত্তর কয়েক মিলিসেকেন্ডে প্রদান করতে পারে।
                 """.trimIndent()
             } else {
                 """
@@ -185,8 +185,8 @@ object GlobalWebKnowledgeGateway {
                 - **Definition:** A tiny subset of the deep web running on distributed cryptographic overlay networks requiring specialized peering and node protocols (Tor, I2P, Freenet, GNUnet).
                 - **Addressing:** Non-standard TLDs like `.onion` (Tor) or `.b32.i2p` (I2P), resolving without centralized ICANN root servers.
 
-                ## 🛡️ Ayra Autonomous Integration
-                Ayra AI unifies live clearnet open-knowledge with verified cybersecurity threat vectors, onion routing protocols, and encryption science for instant deep analysis.
+                ## 🛡️ Ghost AI Autonomous Integration
+                Ghost AI unifies live clearnet open-knowledge with verified cybersecurity threat vectors, onion routing protocols, and encryption science for instant deep analysis.
                 """.trimIndent()
             }
         }
@@ -195,7 +195,7 @@ object GlobalWebKnowledgeGateway {
         if (lower.contains("vpn") || lower.contains("ভিপিএন") || lower.contains("wireguard") || lower.contains("dns leak")) {
             return if (isBengali) {
                 """
-                # 🛡️ নেটওয়ার্ক প্রাইভেসি গাইড: WireGuard, DNS-over-HTTPS ও Ayra নিরাপত্তা
+                # 🛡️ নেটওয়ার্ক প্রাইভেসি গাইড: WireGuard, DNS-over-HTTPS ও Ghost AI নিরাপত্তা
 
                 ## 1. ⚡ WireGuard® প্রোটোকল কীভাবে কাজ করে
                 - **আধুনিক ক্রিপ্টোগ্রাফি:** স্ট্যান্ডার্ড WireGuard কার্নেল স্পেস টানেল **ChaCha20** সাইফার, **Poly1305** অথেন্টিকেশন ও **Noise_IK** হ্যান্ডশেক ব্যবহার করে।
@@ -203,13 +203,13 @@ object GlobalWebKnowledgeGateway {
                 ## 2. 🔒 DNS-over-HTTPS (DoH)
                 - DoH (RFC 8484) DNS কোয়েরিকে পোর্ট ৪৪৩-এর এনক্রিপ্টেড HTTPS সংযোগের মাধ্যমে পাঠিয়ে প্লেইনটেক্সট DNS মনিটরিং প্রতিরোধ করে।
 
-                ## 3. 📱 Ayra AI-এর প্রকৃত নিরাপত্তা আর্কিটেকচার
-                - Ayra AI-তে কোনো সক্রিয় অন্তর্নির্মিত VPN সার্ভার বা ভার্চুয়াল প্রক্সি নেই। আপনার ডিভাইসের নেটওয়ার্ক সুরক্ষার জন্য সিস্টেম সেটিংসে বিশ্বস্ত VPN অ্যাপ অথবা Private DNS (DoT) ব্যবহার করুন।
-                - Ayra নিজে **HTTPS/TLS**, **Android Keystore এনক্রিপ্টেড কী স্টোরেজ**, এবং **Firebase App Check** ব্যবহার করে ডেটা সুরক্ষিত রাখে।
+                ## 3. 📱 Ghost AI-এর প্রকৃত নিরাপত্তা আর্কিটেকচার
+                - Ghost AI-তে কোনো সক্রিয় অন্তর্নির্মিত VPN সার্ভার বা ভার্চুয়াল প্রক্সি নেই। আপনার ডিভাইসের নেটওয়ার্ক সুরক্ষার জন্য সিস্টেম সেটিংসে বিশ্বস্ত VPN অ্যাপ অথবা Private DNS (DoT) ব্যবহার করুন।
+                - Ghost AI নিজে **HTTPS/TLS**, **Android Keystore এনক্রিপ্টেড কী স্টোরেজ**, এবং **Firebase App Check** ব্যবহার করে ডেটা সুরক্ষিত রাখে।
                 """.trimIndent()
             } else {
                 """
-                # 🛡️ Network Privacy Guide: WireGuard, DNS-over-HTTPS & Ayra Security
+                # 🛡️ Network Privacy Guide: WireGuard, DNS-over-HTTPS & Ghost AI Security
 
                 ## 1. ⚡ How WireGuard® Works (Educational Overview)
                 - **Cryptographic Primitives:** Standard WireGuard implementations use the Noise protocol framework, **ChaCha20** cipher, **Poly1305** authentication, and **BLAKE2s** hashing for compact VPN tunnels.
@@ -217,9 +217,9 @@ object GlobalWebKnowledgeGateway {
                 ## 2. 🔒 DNS-over-HTTPS (DoH)
                 - DoH (RFC 8484) encrypts DNS lookups over TLS port 443 to help reduce plaintext DNS inspection on untrusted networks.
 
-                ## 3. 📱 Ayra AI Actual Transport Security
-                - Ayra AI does **not** operate a built-in VPN tunnel or fake proxy nodes. For device-wide VPN routing, configure an independent trusted WireGuard/VPN client or Android Private DNS in system settings.
-                - Within Ayra, API requests use standard **HTTPS/TLS**, API keys stay inside **Android Keystore**-backed storage, and Firebase traffic is guarded by **Firebase App Check**.
+                ## 3. 📱 Ghost AI Actual Transport Security
+                - Ghost AI does **not** operate a built-in VPN tunnel or fake proxy nodes. For device-wide VPN routing, configure an independent trusted WireGuard/VPN client or Android Private DNS in system settings.
+                - Within Ghost AI, API requests use standard **HTTPS/TLS**, API keys stay inside **Android Keystore**-backed storage, and Firebase traffic is guarded by **Firebase App Check**.
                 """.trimIndent()
             }
         }
@@ -262,9 +262,9 @@ object GlobalWebKnowledgeGateway {
         // 5. Default Comprehensive Global Knowledge Synthesis
         return if (isBengali) {
             """
-            # 🌐 Ayra গ্লোবাল ইন্টারনেট ও সাইবার রিসার্চ ইঞ্জিন
+            # 🌐 Ghost AI গ্লোবাল ইন্টারনেট ও সাইবার রিসার্চ ইঞ্জিন
 
-            ${if (isGfMode) "সোনা, ইন্টারনেটের যেকোনো জটিল বিজ্ঞান, নেটওয়ার্কিং, সাইবার সিকিউরিটি বা রিসার্চের প্রশ্ন আমাকে নির্দ্বিধায় করতে পারো! নিচে সংক্ষেপে তুলে ধরছি:\n" else "Ayra AI-এর গ্লোবাল ইন্টারনেট ও নলেজ গেটওয়ে সম্পূর্ণভাবে সংযুক্ত। প্রধান সক্ষমতাসমূহ:\n"}
+            ${if (isGfMode) "সোনা, ইন্টারনেটের যেকোনো জটিল বিজ্ঞান, নেটওয়ার্কিং, সাইবার সিকিউরিটি বা রিসার্চের প্রশ্ন আমাকে নির্দ্বিধায় করতে পারো! নিচে সংক্ষেপে তুলে ধরছি:\n" else "Ghost AI-এর গ্লোবাল ইন্টারনেট ও নলেজ গেটওয়ে সম্পূর্ণভাবে সংযুক্ত। প্রধান সক্ষমতাসমূহ:\n"}
 
             - 🌍 **উইকিপিডিয়া ও ওপেন নলেজ গ্রাফ:** রিয়েল-টাইম লাইভ সার্চ ও এনসাইক্লোপেডিক ডেটা।
             - 🧅 **ডার্ক ওয়েব ও টর প্রোটোকল রিসার্চ:** Onion Routing v3, Hidden Wiki আর্কিটেকচার, I2P, PGP/GPG ক্রিপ্টোগ্রাফি ও নিরাপদ গবেষণা পদ্ধতি।
@@ -274,9 +274,9 @@ object GlobalWebKnowledgeGateway {
             """.trimIndent()
         } else {
             """
-            # 🌐 Ayra Global Internet & Cyber Research Gateway
+            # 🌐 Ghost AI Global Internet & Cyber Research Gateway
 
-            Ayra AI maintains a comprehensive, unified knowledge index spanning:
+            Ghost AI maintains a comprehensive, unified knowledge index spanning:
             - 🌍 **Clearnet Encyclopedia:** Live Wikipedia OpenSearch API, OpenAlex, arXiv, and CrossRef scholarly queries.
             - 🧅 **Onion & Darknet Protocol Architecture:** Educational documentation on The Hidden Wiki, Tor v3 onion routing, PGP, and I2P mechanics.
             - 🔒 **Transport Security:** Standard HTTPS/TLS with Android Keystore key protection and Firebase App Check (no simulated VPN nodes).

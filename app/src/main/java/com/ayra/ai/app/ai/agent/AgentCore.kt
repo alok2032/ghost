@@ -1,6 +1,7 @@
 package com.ayra.ai.app.ai.agent
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import com.ayra.ai.app.ai.AiResponse
 import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.ai.providers.AyraError
@@ -31,6 +32,7 @@ enum class StepStatus {
     SKIPPED
 }
 
+@Immutable
 data class AgentCitation(
     val title: String,
     val url: String,
@@ -39,6 +41,7 @@ data class AgentCitation(
     val domain: String = ""
 )
 
+@Immutable
 data class AgentPlanStep(
     val id: Int,
     val title: String,
@@ -181,7 +184,7 @@ class DefaultAgentCore(
         }
 
         val plannerSystemPrompt = """
-            You are Ayra Autonomous Agent executing a bounded Plan -> Act -> Verify loop.
+            You are Ghost Autonomous Agent executing a bounded Plan -> Act -> Verify loop.
             Available tools:
             $toolCatalogText
 
@@ -410,8 +413,8 @@ class DefaultAgentCore(
     }.flowOn(Dispatchers.IO)
 
     private fun buildModelLabel(usedTools: List<String>): String {
-        return if (usedTools.isEmpty()) "Ayra Agent"
-        else "Ayra Agent (${usedTools.distinct().joinToString(", ")})"
+        return if (usedTools.isEmpty()) "Ghost Agent"
+        else "Ghost Agent (${usedTools.distinct().joinToString(", ")})"
     }
 
     private suspend fun decideNextStep(

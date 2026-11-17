@@ -1,10 +1,15 @@
 package com.ayra.ai.app.ai
 
+import android.content.Context
 import com.ayra.ai.app.ai.plugins.GitHubPluginEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
+import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.data.ChatDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,10 +28,6 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object AutonomousKnowledgeEngine {
 
-    private const val MAX_CACHE_ENTRIES = 250
-    private val knowledgeCache = ConcurrentHashMap<String, String>()
-    private val structuredCache = ConcurrentHashMap<String, WikiLayerResult>()
-
     data class WikiCitation(
         val title: String,
         val url: String,
@@ -41,52 +42,55 @@ object AutonomousKnowledgeEngine {
         val deepAcademic: String = "",
         val pubmedArticles: String = "",
         val cveIntel: String = "",
-        val darkWebTech: String = "",
         val liveTorNetwork: String = "",
+        val darkWebTech: String = "",
         val citations: List<WikiCitation> = emptyList(),
         val isFromLiveNetwork: Boolean = false
     ) {
         fun hasAnyContent(): Boolean = listOf(
-            surfaceWiki, wikidataEntities, ddgInstant, deepAcademic,
-            pubmedArticles, cveIntel, darkWebTech, liveTorNetwork
+            surfaceWiki,
+            wikidataEntities,
+            ddgInstant,
+            deepAcademic,
+            pubmedArticles,
+            cveIntel,
+            liveTorNetwork,
+            darkWebTech
         ).any { it.isNotBlank() }
 
         fun toFormattedMarkdown(): String = buildString {
-            val surfaceCombined = listOf(surfaceWiki, wikidataEntities).filter { it.isNotBlank() }.joinToString("\n\n")
-            if (surfaceCombined.isNotBlank()) {
-                append("### [SURFACE WIKI — WIKIPEDIA]\n")
-                append(surfaceCombined.take(1400)).append("\n\n")
+            val surface = listOf(surfaceWiki, wikidataEntities, ddgInstant).filter { it.isNotBlank() }.joinToString("\n\n")
+            if (surface.isNotBlank()) {
+                append("### [SURFACE WIKI — WIKIPEDIA / WIKIDATA / DDG]\n").append(surface).append("\n\n")
             }
-            if (ddgInstant.isNotBlank()) {
-                append("### [LIVE INSTANT KNOWLEDGE — DUCKDUCKGO]\n")
-                append(ddgInstant.take(700)).append("\n\n")
+            val deep = listOf(deepAcademic, pubmedArticles, cveIntel).filter { it.isNotBlank() }.joinToString("\n\n")
+            if (deep.isNotBlank()) {
+                append("### [DEEP WEB WIKI — OPENALEX / ARXIV / PUBMED / CVE]\n").append(deep).append("\n\n")
             }
-            val deepCombined = listOf(deepAcademic, pubmedArticles, cveIntel).filter { it.isNotBlank() }.joinToString("\n\n")
-            if (deepCombined.isNotBlank()) {
-                append("### [DEEP WEB ACADEMIC WIKI — OPENALEX / ARXIV]\n")
-                append(deepCombined.take(1300)).append("\n\n")
-            }
-            val darkCombined = listOf(darkWebTech, liveTorNetwork).filter { it.isNotBlank() }.joinToString("\n\n")
-            if (darkCombined.isNotBlank()) {
-                append("### [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI]\n")
-                append(darkCombined.take(1500)).append("\n\n")
-            }
-            if (citations.isNotEmpty()) {
-                append("### [VERIFIED LIVE SOURCES]\n")
-                citations.distinctBy { it.url }.take(8).forEach { cit ->
-                    append("• [${cit.layer}] ${cit.title} — ${cit.url}\n")
-                }
+            val dark = listOf(liveTorNetwork, darkWebTech).filter { it.isNotBlank() }.joinToString("\n\n")
+            if (dark.isNotBlank()) {
+                append("### [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI]\n").append(dark).append("\n\n")
             }
         }.trim()
     }
 
-    private val STOP_WORDS_EN_REGEX = Regex("(?i)^(why does|why is|why do|what is|what are|how does|how to|who is|where is|when did|explain|tell me about|meaning of|definition of|/wiki|/deepwiki|/darkwiki|wiki:|deepwiki:|darkwiki:)\\s*")
+    data class CachedWikiLookupResult(
+        val wikiResult: WikiLayerResult,
+        val vectorHits: List<com.ayra.ai.app.ai.rag.VectorSearchHit> = emptyList(),
+        val usedOfflineVectorCache: Boolean = false,
+        val cachedNewSourcesCount: Int = 0
+    )
+
+    private const val MAX_CACHE_ENTRIES = 250
+    private val knowledgeCache = ConcurrentHashMap<String, String>()
+    private val CVE_ID_REGEX = Regex("CVE-\\d{4}-\\d{4,7}", RegexOption.IGNORE_CASE)
+
+    private val STOP_WORDS_EN_REGEX = Regex("(?i)^(why does|why is|why do|what is|what are|how does|how to|who is|where is|when did|explain|tell me about|meaning of|definition of)\\s+")
     private val STOP_WORDS_BN_REGEX = Regex("\\b(কেন|কীভাবে|কিভাবে|কোথায়|কখন|কেমন|কার|কোনটি|কী|কি|বলুন|বলো তো|বলো|সম্পর্কে|জানাও|ব্যাখ্যা করো|দেখা যায়|দেখায়|হয়|হলো|কাকে বলে|অর্থ কি|নাম কি|কারণে)\\b")
     private val PUNCTUATION_REGEX = Regex("[?।!.,:;]")
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val MATH_REGEX = Regex("^(\\d+(?:\\.\\d+)?)\\s*([+\\-*/xX×÷^%]|যোগ|বিয়োগ|গুণ|ভাগ)\\s*(\\d+(?:\\.\\d+)?)$")
-    private val CVE_REGEX = Regex("CVE-\\d{4}-\\d{4,7}", RegexOption.IGNORE_CASE)
-    private val USER_AGENT = "AyraAiAssistant/3.2 (Linux; Android 14; Mobile; https://ayra.ai/assistant)"
+    private val USER_AGENT = "GhostAiAssistant/3.2 (Linux; Android 14; Mobile; https://ghost-ai.app/assistant)"
 
     private fun putCache(key: String, value: String) {
         if (value.isBlank()) return
@@ -94,14 +98,6 @@ object AutonomousKnowledgeEngine {
             knowledgeCache.clear()
         }
         knowledgeCache[key] = value
-    }
-
-    private fun putStructuredCache(key: String, value: WikiLayerResult) {
-        if (!value.hasAnyContent()) return
-        if (structuredCache.size >= MAX_CACHE_ENTRIES) {
-            structuredCache.clear()
-        }
-        structuredCache[key] = value
     }
 
     /**
@@ -115,92 +111,22 @@ object AutonomousKnowledgeEngine {
         wikipediaBaseUrl: String? = null,
         ddgBaseUrl: String? = null,
         openAlexBaseUrl: String? = null,
-        arxivBaseUrl: String? = null,
-        wikidataBaseUrl: String? = null,
-        pubmedBaseUrl: String? = null,
-        cveBaseUrl: String? = null,
-        onionooBaseUrl: String? = null
-    ): String {
+        arxivBaseUrl: String? = null
+    ): String = supervisorScope {
         val cleanPrompt = prompt.trim()
-        if (cleanPrompt.length < 3) return ""
+        if (cleanPrompt.length < 3) return@supervisorScope ""
 
         val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
         val cacheKey = "multi:${if (isBengali) "bn" else "en"}:${topic.lowercase(Locale.ROOT)}"
-        val hasOverrides = wikipediaBaseUrl != null || ddgBaseUrl != null || openAlexBaseUrl != null ||
-            arxivBaseUrl != null || wikidataBaseUrl != null || pubmedBaseUrl != null ||
-            cveBaseUrl != null || onionooBaseUrl != null
-        if (!hasOverrides) {
-            knowledgeCache[cacheKey]?.let { return it }
-        }
+        knowledgeCache[cacheKey]?.let { return@supervisorScope it }
 
-        val structured = queryMultiLayerWikiStructured(
-            prompt = cleanPrompt,
-            isBengali = isBengali,
-            httpClient = httpClient,
-            wikipediaBaseUrl = wikipediaBaseUrl,
-            ddgBaseUrl = ddgBaseUrl,
-            openAlexBaseUrl = openAlexBaseUrl,
-            arxivBaseUrl = arxivBaseUrl,
-            wikidataBaseUrl = wikidataBaseUrl,
-            pubmedBaseUrl = pubmedBaseUrl,
-            cveBaseUrl = cveBaseUrl,
-            onionooBaseUrl = onionooBaseUrl
-        )
-        val assembled = structured.toFormattedMarkdown()
-        if (assembled.isNotBlank() && !hasOverrides) {
-            putCache(cacheKey, assembled)
-        }
-        return assembled
-    }
-
-    /**
-     * Structured multi-layer lookup used by both the AI prompt grounder and the live Wiki Explorer UI.
-     */
-    suspend fun queryMultiLayerWikiStructured(
-        prompt: String,
-        isBengali: Boolean,
-        httpClient: OkHttpClient = ExternalAiProviders.sharedFastWebClient,
-        wikipediaBaseUrl: String? = null,
-        ddgBaseUrl: String? = null,
-        openAlexBaseUrl: String? = null,
-        arxivBaseUrl: String? = null,
-        wikidataBaseUrl: String? = null,
-        pubmedBaseUrl: String? = null,
-        cveBaseUrl: String? = null,
-        onionooBaseUrl: String? = null,
-        forceAllLayers: Boolean = false
-    ): WikiLayerResult = supervisorScope {
-        val cleanPrompt = prompt.trim()
-        if (cleanPrompt.length < 3) return@supervisorScope WikiLayerResult(cleanPrompt)
-
-        val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
-        val hasOverrides = wikipediaBaseUrl != null || ddgBaseUrl != null || openAlexBaseUrl != null ||
-            arxivBaseUrl != null || wikidataBaseUrl != null || pubmedBaseUrl != null ||
-            cveBaseUrl != null || onionooBaseUrl != null
-        val cacheKey = "struct:${if (isBengali) "bn" else "en"}:$forceAllLayers:${topic.lowercase(Locale.ROOT)}"
-        if (!hasOverrides) {
-            structuredCache[cacheKey]?.let { return@supervisorScope it }
-        }
-
-        val isDarkOrDeep = forceAllLayers || GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(cleanPrompt)
-        val wantsDeepAcademic = forceAllLayers || isDarkOrDeep || isAcademicOrTechnicalQuery(cleanPrompt)
-        val wantsMedical = forceAllLayers || isBiomedicalQuery(cleanPrompt)
-        val cveMatch = CVE_REGEX.find(cleanPrompt)?.value?.uppercase(Locale.ROOT)
-        val wantsCve = cveMatch != null || cveBaseUrl != null ||
-            cleanPrompt.contains("cve", ignoreCase = true) ||
-            cleanPrompt.contains("vulnerability", ignoreCase = true)
+        val isDarkOrDeep = GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(cleanPrompt)
+        val wantsDeepAcademic = isDarkOrDeep || isAcademicOrTechnicalQuery(cleanPrompt)
 
         val wikiDeferred = async(Dispatchers.IO) {
-            withTimeoutOrNull(1800L) {
-                queryLiveWebKnowledgeWithUrl(cleanPrompt, isBengali, httpClient, wikipediaBaseUrl)
-            }
-        }
-
-        val wikidataDeferred = async(Dispatchers.IO) {
-            if (!forceAllLayers && wikidataBaseUrl == null && !wantsDeepAcademic) return@async null
-            withTimeoutOrNull(1400L) {
-                fetchWikidataEntities(topic, isBengali, httpClient, wikidataBaseUrl)
-            }
+            withTimeoutOrNull(1600L) {
+                queryLiveWebKnowledge(cleanPrompt, isBengali, httpClient, wikipediaBaseUrl)
+            } ?: ""
         }
 
         val ddgDeferred = async(Dispatchers.IO) {
@@ -210,31 +136,17 @@ object AutonomousKnowledgeEngine {
         }
 
         val deepAcademicDeferred = async(Dispatchers.IO) {
-            if (!wantsDeepAcademic) return@async null
-            withTimeoutOrNull(2000L) {
+            if (!wantsDeepAcademic) return@async ""
+            withTimeoutOrNull(1800L) {
                 val oa = fetchOpenAlexResearch(topic, httpClient, openAlexBaseUrl)
-                val ax = if (oa.isBlank() || forceAllLayers || cleanPrompt.contains("arxiv", true) || cleanPrompt.contains("paper", true)) {
+                val ax = if (oa.isBlank() || cleanPrompt.lowercase().contains("arxiv") || cleanPrompt.lowercase().contains("paper")) {
                     fetchArxivPreprints(topic, httpClient, arxivBaseUrl)
                 } else ""
-                val cr = if (oa.isBlank() || cleanPrompt.contains("doi", true) || cleanPrompt.contains("journal", true) || cleanPrompt.contains("citation", true)) {
+                val cr = if (oa.isBlank() || cleanPrompt.lowercase().contains("doi") || cleanPrompt.lowercase().contains("journal") || cleanPrompt.lowercase().contains("citation")) {
                     fetchCrossRefResearch(topic, httpClient)
                 } else ""
                 listOf(oa, ax, cr).filter { it.isNotBlank() }.joinToString("\n\n")
-            }
-        }
-
-        val pubmedDeferred = async(Dispatchers.IO) {
-            if (!wantsMedical && pubmedBaseUrl == null) return@async null
-            withTimeoutOrNull(1800L) {
-                fetchPubMedResearch(topic, httpClient, pubmedBaseUrl)
-            }
-        }
-
-        val cveDeferred = async(Dispatchers.IO) {
-            if (!wantsCve) return@async null
-            withTimeoutOrNull(1800L) {
-                fetchCveIntelligence(cveMatch, topic, httpClient, cveBaseUrl)
-            }
+            } ?: ""
         }
 
         val darkTechDeferred = async(Dispatchers.IO) {
@@ -247,84 +159,43 @@ object AutonomousKnowledgeEngine {
             } else ""
         }
 
-        val onionooDeferred = async(Dispatchers.IO) {
-            if (!isDarkOrDeep && onionooBaseUrl == null) return@async null
-            withTimeoutOrNull(1800L) {
-                fetchTorOnionooTelemetry(topic, httpClient, onionooBaseUrl)
-            }
-        }
-
-        val wikiPair = wikiDeferred.await()
-        val wikidataRes = wikidataDeferred.await()
+        val wikiText = wikiDeferred.await()
         val ddgText = ddgDeferred.await()
-        val academicText = deepAcademicDeferred.await().orEmpty()
-        val pubmedRes = pubmedDeferred.await()
-        val cveRes = cveDeferred.await()
+        val academicText = deepAcademicDeferred.await()
         val darkTechText = darkTechDeferred.await()
-        val onionooRes = onionooDeferred.await()
 
-        val citations = mutableListOf<WikiCitation>()
-        wikiPair?.second?.takeIf { it.isNotBlank() }?.let { url ->
-            citations.add(WikiCitation(title = "Wikipedia: $topic", url = url, layer = "Surface Wiki"))
-        }
-        wikidataRes?.second?.let { citations.addAll(it) }
-        pubmedRes?.second?.let { citations.addAll(it) }
-        cveRes?.second?.let { citations.addAll(it) }
-        onionooRes?.second?.let { citations.add(it) }
-        if (academicText.isNotBlank()) {
-            citations.add(WikiCitation("OpenAlex Scholarly Works", "https://openalex.org/works?search=${URLEncoder.encode(topic, "UTF-8")}", "Deep Web Wiki"))
-            citations.add(WikiCitation("arXiv Open Preprints", "https://arxiv.org/search/?query=${URLEncoder.encode(topic, "UTF-8")}&searchtype=all", "Deep Web Wiki"))
-        }
+        val assembled = buildString {
+            if (wikiText.isNotBlank()) {
+                append("### [SURFACE WIKI — WIKIPEDIA]\n")
+                append(wikiText.take(1200)).append("\n\n")
+            }
+            if (ddgText.isNotBlank()) {
+                append("### [LIVE INSTANT KNOWLEDGE — DUCKDUCKGO]\n")
+                append(ddgText.take(700)).append("\n\n")
+            }
+            if (academicText.isNotBlank()) {
+                append("### [DEEP WEB ACADEMIC WIKI — OPENALEX / ARXIV]\n")
+                append(academicText.take(1000)).append("\n\n")
+            }
+            if (darkTechText.isNotBlank()) {
+                append("### [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI]\n")
+                append(darkTechText.take(1400)).append("\n\n")
+            }
+        }.trim()
 
-        val isLive = (wikiPair?.first?.isNotBlank() == true) ||
-            (wikidataRes?.first?.isNotBlank() == true) ||
-            ddgText.isNotBlank() ||
-            academicText.isNotBlank() ||
-            (pubmedRes?.first?.isNotBlank() == true) ||
-            (cveRes?.first?.isNotBlank() == true) ||
-            (onionooRes?.first?.isNotBlank() == true)
-
-        val result = WikiLayerResult(
-            topic = topic,
-            surfaceWiki = wikiPair?.first.orEmpty(),
-            wikidataEntities = wikidataRes?.first.orEmpty(),
-            ddgInstant = ddgText,
-            deepAcademic = academicText,
-            pubmedArticles = pubmedRes?.first.orEmpty(),
-            cveIntel = cveRes?.first.orEmpty(),
-            darkWebTech = darkTechText,
-            liveTorNetwork = onionooRes?.first.orEmpty(),
-            citations = citations,
-            isFromLiveNetwork = isLive
-        )
-        if (!hasOverrides && result.hasAnyContent()) {
-            putStructuredCache(cacheKey, result)
+        if (assembled.isNotBlank() && wikipediaBaseUrl == null && ddgBaseUrl == null && openAlexBaseUrl == null && arxivBaseUrl == null) {
+            putCache(cacheKey, assembled)
         }
-        result
+        assembled
     }
 
-    data class CachedWikiLookupResult(
-        val wikiResult: WikiLayerResult,
-        val usedOfflineVectorCache: Boolean,
-        val cachedNewSourcesCount: Int,
-        val vectorHits: List<com.ayra.ai.app.ai.rag.VectorSearchHit> = emptyList()
-    )
-
-    /**
-     * Unified Multi-Layer Wiki lookup backed by Room Local Vector Database:
-     * - Online (when Local-Only Mode is OFF): queries live clearnet APIs (Wikipedia, Wikidata, DDG,
-     *   OpenAlex, arXiv, CrossRef, PubMed, CIRCL CVE, Tor Onionoo) AND automatically vectorizes/caches
-     *   fetched results into Room SQLite.
-     * - Offline / Local-Only Mode / Network Failure: serves fast, accurate hybrid cosine+BM25 results
-     *   from the local Room Vector Database (curated corpus + previously cached live fetches).
-     */
     suspend fun queryMultiLayerWikiWithVectorCache(
-        context: android.content.Context,
+        context: Context,
         prompt: String,
         isBengali: Boolean,
         layerFilter: String? = null,
-        offlineOnlyOverride: Boolean = false,
-        forceAllLayers: Boolean = true,
+        offlineOnlyOverride: Boolean? = null,
+        forceAllLayers: Boolean = false,
         httpClient: OkHttpClient = ExternalAiProviders.sharedFastWebClient,
         vectorRepoOverride: com.ayra.ai.app.ai.rag.VectorKnowledgeRepository? = null,
         wikipediaBaseUrl: String? = null,
@@ -335,88 +206,314 @@ object AutonomousKnowledgeEngine {
         pubmedBaseUrl: String? = null,
         cveBaseUrl: String? = null,
         onionooBaseUrl: String? = null
-    ): CachedWikiLookupResult {
-        val repo = vectorRepoOverride ?: com.ayra.ai.app.ai.rag.VectorKnowledgeRepository(
-            dao = com.ayra.ai.app.data.ChatDatabase.getDatabase(context).vectorKnowledgeDao(),
-            context = context
+    ): CachedWikiLookupResult = withContext(Dispatchers.IO) {
+        val cleanPrompt = prompt.trim()
+        val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
+        val vectorRepo = vectorRepoOverride ?: com.ayra.ai.app.ai.rag.VectorKnowledgeRepository(
+            ChatDatabase.getDatabase(context).vectorKnowledgeDao(),
+            context
         )
-        repo.ensureSeeded()
+        vectorRepo.ensureSeeded()
 
-        val localOnly = offlineOnlyOverride || com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)
-        if (!localOnly) {
-            val liveResult = runCatching {
-                queryMultiLayerWikiStructured(
-                    prompt = prompt,
-                    isBengali = isBengali,
-                    httpClient = httpClient,
-                    wikipediaBaseUrl = wikipediaBaseUrl,
-                    ddgBaseUrl = ddgBaseUrl,
-                    openAlexBaseUrl = openAlexBaseUrl,
-                    arxivBaseUrl = arxivBaseUrl,
-                    wikidataBaseUrl = wikidataBaseUrl,
-                    pubmedBaseUrl = pubmedBaseUrl,
-                    cveBaseUrl = cveBaseUrl,
-                    onionooBaseUrl = onionooBaseUrl,
-                    forceAllLayers = forceAllLayers
-                )
-            }.getOrNull()
-
-            if (liveResult != null && liveResult.isFromLiveNetwork) {
-                val cachedCount = runCatching {
-                    repo.cacheWikiLayerResult(liveResult, language = if (isBengali) "bn" else "en")
-                }.getOrDefault(0)
-                val hits = runCatching {
-                    repo.search(query = prompt, layerFilter = layerFilter, topK = 4)
-                }.getOrDefault(emptyList())
-                return CachedWikiLookupResult(
-                    wikiResult = liveResult,
-                    usedOfflineVectorCache = false,
-                    cachedNewSourcesCount = cachedCount,
-                    vectorHits = hits
-                )
-            }
-        }
-
-        // Offline / Local-Only / Unreachable fallback -> Room Vector DB Hybrid Search
-        val hits = repo.search(query = prompt, layerFilter = layerFilter, topK = 6)
-        val offlineWiki = repo.searchAsWikiLayerResult(
-            query = prompt,
-            layerFilter = layerFilter,
-            topK = 6
-        )
-        if (offlineWiki.hasAnyContent()) {
-            return CachedWikiLookupResult(
+        val localOnly = offlineOnlyOverride ?: AyraPreferences.isLocalOnlyAiModeEnabled(context)
+        if (localOnly || cleanPrompt.length < 2) {
+            val hits = vectorRepo.search(cleanPrompt.ifBlank { topic }, layerFilter = layerFilter, topK = 6)
+            val offlineWiki = vectorRepo.searchAsWikiLayerResult(cleanPrompt.ifBlank { topic }, layerFilter = layerFilter, topK = 6)
+            return@withContext CachedWikiLookupResult(
                 wikiResult = offlineWiki,
+                vectorHits = hits,
                 usedOfflineVectorCache = true,
-                cachedNewSourcesCount = 0,
-                vectorHits = hits
+                cachedNewSourcesCount = 0
             )
         }
 
-        val topic = extractTopicKeyword(prompt).ifBlank { prompt.trim() }
-        val fallbackDark = if (GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(prompt)) {
-            GlobalWebKnowledgeGateway.synthesizeGlobalNetworkKnowledge(prompt, isBengali, isGfMode = false)
-        } else ""
-        return CachedWikiLookupResult(
-            wikiResult = WikiLayerResult(
-                topic = topic,
-                darkWebTech = fallbackDark,
-                isFromLiveNetwork = false
-            ),
+        val liveResult = queryMultiLayerWikiStructured(
+            prompt = cleanPrompt,
+            isBengali = isBengali,
+            layerFilter = layerFilter,
+            forceAllLayers = forceAllLayers,
+            httpClient = httpClient,
+            wikipediaBaseUrl = wikipediaBaseUrl,
+            ddgBaseUrl = ddgBaseUrl,
+            openAlexBaseUrl = openAlexBaseUrl,
+            arxivBaseUrl = arxivBaseUrl,
+            wikidataBaseUrl = wikidataBaseUrl,
+            pubmedBaseUrl = pubmedBaseUrl,
+            cveBaseUrl = cveBaseUrl,
+            onionooBaseUrl = onionooBaseUrl
+        )
+
+        if (liveResult.isFromLiveNetwork && liveResult.hasAnyContent()) {
+            val cachedCount = try {
+                vectorRepo.cacheWikiLayerResult(liveResult, if (isBengali) "bn" else "en")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                0
+            }
+            val hits = vectorRepo.search(cleanPrompt, layerFilter = layerFilter, topK = 6)
+            return@withContext CachedWikiLookupResult(
+                wikiResult = liveResult,
+                vectorHits = hits,
+                usedOfflineVectorCache = false,
+                cachedNewSourcesCount = cachedCount
+            )
+        }
+
+        val hits = vectorRepo.search(cleanPrompt, layerFilter = layerFilter, topK = 6)
+        val offlineWiki = vectorRepo.searchAsWikiLayerResult(cleanPrompt, layerFilter = layerFilter, topK = 6)
+        CachedWikiLookupResult(
+            wikiResult = if (offlineWiki.hasAnyContent()) offlineWiki else liveResult,
+            vectorHits = hits,
             usedOfflineVectorCache = true,
-            cachedNewSourcesCount = 0,
-            vectorHits = emptyList()
+            cachedNewSourcesCount = 0
         )
     }
 
-    private fun isBiomedicalQuery(prompt: String): Boolean {
-        val lower = prompt.lowercase(Locale.ROOT)
-        val cues = listOf(
-            "medical", "medicine", "clinical", "disease", "virus", "bacteria",
-            "cancer", "gene", "dna", "rna", "protein", "vaccine", "pubmed",
-            "neuro", "cardiac", "therapy", "diagnosis", "চিকিৎসা", "রোগ", "ওষুধ"
+    suspend fun queryMultiLayerWikiStructured(
+        prompt: String,
+        isBengali: Boolean,
+        layerFilter: String? = null,
+        forceAllLayers: Boolean = false,
+        httpClient: OkHttpClient = ExternalAiProviders.sharedFastWebClient,
+        wikipediaBaseUrl: String? = null,
+        ddgBaseUrl: String? = null,
+        openAlexBaseUrl: String? = null,
+        arxivBaseUrl: String? = null,
+        wikidataBaseUrl: String? = null,
+        pubmedBaseUrl: String? = null,
+        cveBaseUrl: String? = null,
+        onionooBaseUrl: String? = null
+    ): WikiLayerResult = supervisorScope {
+        val cleanPrompt = prompt.trim()
+        val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
+        val isDarkOrDeep = forceAllLayers || GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(cleanPrompt)
+        val wantsDeepAcademic = forceAllLayers || isDarkOrDeep || isAcademicOrTechnicalQuery(cleanPrompt)
+        val wantSurface = layerFilter == null || layerFilter == "SURFACE_WIKI"
+        val wantDeep = layerFilter == null || layerFilter == "DEEP_WEB"
+        val wantDark = layerFilter == null || layerFilter == "DARK_WEB"
+        val cveMatch = CVE_ID_REGEX.find(cleanPrompt)?.value?.uppercase(Locale.ROOT)
+
+        val wikiDef = async(Dispatchers.IO) {
+            if (!wantSurface) return@async ""
+            withTimeoutOrNull(2000L) { queryLiveWebKnowledge(cleanPrompt, isBengali, httpClient, wikipediaBaseUrl) } ?: ""
+        }
+        val wikidataDef = async(Dispatchers.IO) {
+            if (!wantSurface) return@async ""
+            withTimeoutOrNull(1800L) { fetchWikidataEntities(topic, isBengali, httpClient, wikidataBaseUrl) } ?: ""
+        }
+        val ddgDef = async(Dispatchers.IO) {
+            if (!wantSurface) return@async ""
+            withTimeoutOrNull(1600L) { fetchDuckDuckGoInstantAnswer(topic, httpClient, ddgBaseUrl) } ?: ""
+        }
+        val deepAcademicDef = async(Dispatchers.IO) {
+            if (!wantDeep || !wantsDeepAcademic) return@async ""
+            withTimeoutOrNull(2200L) {
+                val oa = fetchOpenAlexResearch(topic, httpClient, openAlexBaseUrl)
+                val ax = fetchArxivPreprints(topic, httpClient, arxivBaseUrl)
+                val cr = if (oa.isBlank() && openAlexBaseUrl == null) fetchCrossRefResearch(topic, httpClient) else ""
+                listOf(oa, ax, cr).filter { it.isNotBlank() }.joinToString("\n\n")
+            } ?: ""
+        }
+        val pubmedDef = async(Dispatchers.IO) {
+            if (!wantDeep || !wantsDeepAcademic) return@async ""
+            withTimeoutOrNull(1800L) { fetchPubMedResearch(topic, httpClient, pubmedBaseUrl) } ?: ""
+        }
+        val cveDef = async(Dispatchers.IO) {
+            if (!wantDeep || (cveMatch == null && !forceAllLayers && !cleanPrompt.contains("cve", true))) {
+                return@async Pair("", emptyList<WikiCitation>())
+            }
+            withTimeoutOrNull(2000L) { fetchCveIntelligence(cveMatch, topic, httpClient, cveBaseUrl) }
+                ?: Pair("", emptyList())
+        }
+        val onionooDef = async(Dispatchers.IO) {
+            if (!wantDark || (!isDarkOrDeep && !forceAllLayers)) return@async Pair("", null)
+            withTimeoutOrNull(2000L) { fetchTorOnionooTelemetry(topic, httpClient, onionooBaseUrl) }
+                ?: Pair("", null)
+        }
+        val darkTechDef = async(Dispatchers.IO) {
+            if (!wantDark || !isDarkOrDeep) return@async ""
+            GlobalWebKnowledgeGateway.synthesizeGlobalNetworkKnowledge(cleanPrompt, isBengali, isGfMode = false)
+        }
+
+        val surfaceWiki = wikiDef.await()
+        val wikidataEntities = wikidataDef.await()
+        val ddgInstant = ddgDef.await()
+        val deepAcademic = deepAcademicDef.await()
+        val pubmedArticles = pubmedDef.await()
+        val (cveIntel, cveCits) = cveDef.await()
+        val (liveTorNetwork, onionCit) = onionooDef.await()
+        val darkWebTech = darkTechDef.await()
+
+        val citations = buildList {
+            if (surfaceWiki.isNotBlank()) {
+                val lang = if (isBengali) "bn" else "en"
+                add(WikiCitation("Wikipedia: $topic", "https://$lang.wikipedia.org/wiki/${URLEncoder.encode(topic.replace(" ", "_"), "UTF-8")}", "Surface Wiki"))
+            }
+            if (deepAcademic.isNotBlank()) {
+                add(WikiCitation("OpenAlex / arXiv: $topic", "https://openalex.org/works?search=${URLEncoder.encode(topic, "UTF-8")}", "Deep Web Academic"))
+            }
+            addAll(cveCits)
+            if (onionCit != null) add(onionCit)
+        }
+
+        val liveHit = listOf(surfaceWiki, wikidataEntities, ddgInstant, deepAcademic, pubmedArticles, cveIntel, liveTorNetwork)
+            .any { it.isNotBlank() }
+
+        WikiLayerResult(
+            topic = topic,
+            surfaceWiki = surfaceWiki,
+            wikidataEntities = wikidataEntities,
+            ddgInstant = ddgInstant,
+            deepAcademic = deepAcademic,
+            pubmedArticles = pubmedArticles,
+            cveIntel = cveIntel,
+            liveTorNetwork = liveTorNetwork,
+            darkWebTech = darkWebTech,
+            citations = citations,
+            isFromLiveNetwork = liveHit
         )
-        return cues.any { lower.contains(it) }
+    }
+
+    internal fun fetchTorOnionooTelemetry(
+        query: String,
+        httpClient: OkHttpClient,
+        baseUrlOverride: String? = null
+    ): Pair<String, WikiCitation?> {
+        return try {
+            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
+                ?: "https://onionoo.torproject.org/"
+            val encoded = URLEncoder.encode(query.ifBlank { "tor" }, "UTF-8")
+            val url = "${base}summary?limit=6&search=$encoded"
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return Pair("", null)
+                val body = resp.body?.string() ?: return Pair("", null)
+                val json = JSONObject(body)
+                val published = json.optString("relays_published", "").trim()
+                val relays = json.optJSONArray("relays") ?: JSONArray()
+                if (relays.length() == 0) return Pair("", null)
+                val sb = StringBuilder()
+                if (published.isNotBlank()) sb.append("Tor Onionoo Consensus Published: ").append(published).append("\n")
+                for (i in 0 until relays.length()) {
+                    val r = relays.optJSONObject(i) ?: continue
+                    val nick = r.optString("n", r.optString("nickname", "")).trim()
+                    if (nick.isBlank()) continue
+                    val running = r.optBoolean("r", r.optBoolean("running", true))
+                    sb.append("• Relay: ").append(nick).append(" (running=").append(running).append(")\n")
+                }
+                val text = sb.toString().trim()
+                if (text.isBlank()) Pair("", null)
+                else Pair(text, WikiCitation("Tor Project Onionoo Consensus", "https://metrics.torproject.org/rs.html", "Dark Web Telemetry"))
+            }
+        } catch (_: Exception) {
+            Pair("", null)
+        }
+    }
+
+    internal fun fetchCveIntelligence(
+        cveId: String?,
+        query: String,
+        httpClient: OkHttpClient,
+        baseUrlOverride: String? = null
+    ): Pair<String, List<WikiCitation>> {
+        return try {
+            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
+                ?: "https://cve.circl.lu/"
+            val url = if (!cveId.isNullOrBlank()) "${base}api/cve/$cveId" else "${base}api/last/5"
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return Pair("", emptyList())
+                val body = resp.body?.string()?.trim() ?: return Pair("", emptyList())
+                if (body.isBlank()) return Pair("", emptyList())
+                val entries = mutableListOf<JSONObject>()
+                if (body.startsWith("[")) {
+                    val arr = JSONArray(body)
+                    for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { entries.add(it) }
+                } else if (body.startsWith("{")) {
+                    entries.add(JSONObject(body))
+                }
+                if (entries.isEmpty()) return Pair("", emptyList())
+                val sb = StringBuilder()
+                val citations = mutableListOf<WikiCitation>()
+                entries.take(5).forEach { obj ->
+                    val id = obj.optString("id", cveId ?: query).trim()
+                    val summary = obj.optString("summary", "").trim()
+                    if (id.isNotBlank() && summary.isNotBlank()) {
+                        sb.append("• **$id**: ").append(summary).append("\n")
+                        citations.add(WikiCitation("CVE Advisory: $id", "https://nvd.nist.gov/vuln/detail/$id", "Deep Web CVE"))
+                    }
+                }
+                Pair(sb.toString().trim(), citations)
+            }
+        } catch (_: Exception) {
+            Pair("", emptyList())
+        }
+    }
+
+    internal fun fetchWikidataEntities(
+        query: String,
+        isBengali: Boolean,
+        httpClient: OkHttpClient,
+        baseUrlOverride: String? = null
+    ): String {
+        return try {
+            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
+                ?: "https://www.wikidata.org/"
+            val lang = if (isBengali) "bn" else "en"
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = "${base}w/api.php?action=wbsearchentities&search=$encoded&language=$lang&format=json&limit=2"
+            val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return ""
+                val body = resp.body?.string() ?: return ""
+                val arr = JSONObject(body).optJSONArray("search") ?: return ""
+                val sb = StringBuilder()
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    val label = item.optString("label", "").trim()
+                    val desc = item.optString("description", "").trim()
+                    if (label.isNotBlank()) sb.append("• **Wikidata — $label**: $desc\n")
+                }
+                sb.toString().trim()
+            }
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    internal fun fetchPubMedResearch(
+        query: String,
+        httpClient: OkHttpClient,
+        baseUrlOverride: String? = null
+    ): String {
+        return try {
+            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
+                ?: "https://eutils.ncbi.nlm.nih.gov/"
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = "${base}entrez/eutils/esearch.fcgi?db=pubmed&term=$encoded&retmax=2&retmode=json"
+            val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return ""
+                val body = resp.body?.string() ?: return ""
+                val ids = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist") ?: return ""
+                if (ids.length() == 0) return ""
+                val list = (0 until ids.length()).mapNotNull { ids.optString(it).takeIf { id -> id.isNotBlank() } }
+                if (list.isEmpty()) "" else "• **PubMed Indexed PMIDs**: ${list.joinToString(", ") { "https://pubmed.ncbi.nlm.nih.gov/$it/" }}"
+            }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun isAcademicOrTechnicalQuery(prompt: String): Boolean {
@@ -442,27 +539,13 @@ object AutonomousKnowledgeEngine {
         httpClient: OkHttpClient,
         baseUrlOverride: String? = null
     ): String {
-        return queryLiveWebKnowledgeWithUrl(prompt, isBengali, httpClient, baseUrlOverride).first
-    }
-
-    internal fun queryLiveWebKnowledgeWithUrl(
-        prompt: String,
-        isBengali: Boolean,
-        httpClient: OkHttpClient,
-        baseUrlOverride: String? = null
-    ): Pair<String, String> {
         val topic = extractTopicKeyword(prompt)
         val queryTerm = if (topic.isNotBlank()) topic else prompt.trim()
-        if (queryTerm.isBlank()) return "" to ""
+        if (queryTerm.isBlank()) return ""
         val cacheKey = "wiki:${if (isBengali) "bn" else "en"}:$queryTerm"
 
-        fun pageUrl(lang: String, title: String): String =
-            "https://$lang.wikipedia.org/wiki/${URLEncoder.encode(title.replace(" ", "_"), "UTF-8")}"
-
         if (baseUrlOverride == null) {
-            knowledgeCache[cacheKey]?.let { cached ->
-                return cached to pageUrl(if (isBengali) "bn" else "en", queryTerm)
-            }
+            knowledgeCache[cacheKey]?.let { return it }
         }
 
         fun fetchWikiGeneratorSearch(lang: String, term: String): Pair<String, String>? {
@@ -522,13 +605,13 @@ object AutonomousKnowledgeEngine {
             if (bnGen != null) {
                 val formatted = formatKnowledgePoints(bnGen.first, bnGen.second, isBengali = true)
                 if (baseUrlOverride == null) putCache(cacheKey, formatted)
-                return formatted to pageUrl("bn", bnGen.first)
+                return formatted
             }
             val bnSummary = fetchWikiSummary("bn", queryTerm)
             if (bnSummary != null) {
                 val formatted = formatKnowledgePoints(bnSummary.first, bnSummary.second, isBengali = true)
                 if (baseUrlOverride == null) putCache(cacheKey, formatted)
-                return formatted to pageUrl("bn", bnSummary.first)
+                return formatted
             }
         }
 
@@ -536,17 +619,17 @@ object AutonomousKnowledgeEngine {
         if (enGen != null) {
             val formatted = formatKnowledgePoints(enGen.first, enGen.second, isBengali = isBengali)
             if (baseUrlOverride == null) putCache(cacheKey, formatted)
-            return formatted to pageUrl("en", enGen.first)
+            return formatted
         }
 
         val enSummary = fetchWikiSummary("en", queryTerm)
         if (enSummary != null) {
             val formatted = formatKnowledgePoints(enSummary.first, enSummary.second, isBengali = isBengali)
             if (baseUrlOverride == null) putCache(cacheKey, formatted)
-            return formatted to pageUrl("en", enSummary.first)
+            return formatted
         }
 
-        return "" to ""
+        return ""
     }
 
     internal fun fetchDuckDuckGoInstantAnswer(
@@ -754,204 +837,6 @@ object AutonomousKnowledgeEngine {
             }
         } catch (_: Exception) {
             ""
-        }
-    }
-
-    internal fun fetchWikidataEntities(
-        query: String,
-        isBengali: Boolean,
-        httpClient: OkHttpClient,
-        baseUrlOverride: String? = null
-    ): Pair<String, List<WikiCitation>> {
-        return try {
-            val encoded = URLEncoder.encode(query, "UTF-8")
-            val lang = if (isBengali) "bn" else "en"
-            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://www.wikidata.org/"
-            val url = "${base}w/api.php?action=wbsearchentities&search=$encoded&language=$lang&uselang=$lang&limit=3&format=json"
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return "" to emptyList()
-                val body = resp.body?.string() ?: return "" to emptyList()
-                val searchArr = JSONObject(body).optJSONArray("search") ?: return "" to emptyList()
-                if (searchArr.length() == 0) return "" to emptyList()
-                val sb = StringBuilder("**Wikidata Knowledge Graph:**\n")
-                val cits = mutableListOf<WikiCitation>()
-                for (i in 0 until searchArr.length()) {
-                    val item = searchArr.optJSONObject(i) ?: continue
-                    val id = item.optString("id", "").trim()
-                    val label = item.optString("label", "").trim()
-                    val desc = item.optString("description", "").trim()
-                    if (label.isBlank()) continue
-                    sb.append("• **$label** ($id)")
-                    if (desc.isNotBlank()) sb.append(" — $desc")
-                    sb.append("\n")
-                    if (id.isNotBlank()) {
-                        cits.add(WikiCitation("Wikidata: $label ($id)", "https://www.wikidata.org/wiki/$id", "Surface Wiki"))
-                    }
-                }
-                sb.toString().trim() to cits
-            }
-        } catch (_: Exception) {
-            "" to emptyList()
-        }
-    }
-
-    internal fun fetchPubMedResearch(
-        query: String,
-        httpClient: OkHttpClient,
-        baseUrlOverride: String? = null
-    ): Pair<String, List<WikiCitation>> {
-        return try {
-            val encoded = URLEncoder.encode(query, "UTF-8")
-            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
-            val searchReq = Request.Builder()
-                .url("${base}esearch.fcgi?db=pubmed&term=$encoded&retmax=2&retmode=json")
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val ids = httpClient.newCall(searchReq).execute().use { resp ->
-                if (!resp.isSuccessful) return "" to emptyList()
-                val body = resp.body?.string() ?: return "" to emptyList()
-                val idList = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist") ?: return "" to emptyList()
-                (0 until idList.length()).mapNotNull { idList.optString(it).takeIf { s -> s.isNotBlank() } }
-            }
-            if (ids.isEmpty()) return "" to emptyList()
-
-            val summaryReq = Request.Builder()
-                .url("${base}esummary.fcgi?db=pubmed&id=${ids.joinToString(",")}&retmode=json")
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            httpClient.newCall(summaryReq).execute().use { resp ->
-                if (!resp.isSuccessful) return "" to emptyList()
-                val body = resp.body?.string() ?: return "" to emptyList()
-                val resultObj = JSONObject(body).optJSONObject("result") ?: return "" to emptyList()
-                val sb = StringBuilder("**PubMed / NIH Biomedical Index:**\n")
-                val cits = mutableListOf<WikiCitation>()
-                for (pmid in ids) {
-                    val art = resultObj.optJSONObject(pmid) ?: continue
-                    val title = art.optString("title", "").trim()
-                    val pubDate = art.optString("pubdate", "").trim()
-                    val source = art.optString("source", "").trim()
-                    if (title.isBlank()) continue
-                    sb.append("• **$title**")
-                    if (source.isNotBlank() || pubDate.isNotBlank()) sb.append(" ($source $pubDate)")
-                    sb.append(" [PMID: $pmid]\n")
-                    cits.add(WikiCitation("PubMed $pmid: ${title.take(60)}", "https://pubmed.ncbi.nlm.nih.gov/$pmid/", "Deep Web Wiki"))
-                }
-                sb.toString().trim() to cits
-            }
-        } catch (_: Exception) {
-            "" to emptyList()
-        }
-    }
-
-    internal fun fetchCveIntelligence(
-        cveId: String?,
-        query: String,
-        httpClient: OkHttpClient,
-        baseUrlOverride: String? = null
-    ): Pair<String, List<WikiCitation>> {
-        return try {
-            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://cve.circl.lu/api/"
-            if (!cveId.isNullOrBlank()) {
-                val url = "${base}cve/${URLEncoder.encode(cveId, "UTF-8")}"
-                val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-                httpClient.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) return "" to emptyList()
-                    val body = resp.body?.string() ?: return "" to emptyList()
-                    val json = JSONObject(body)
-                    val summary = json.optString("summary", "").ifBlank {
-                        json.optJSONObject("containers")?.optJSONObject("cna")
-                            ?.optJSONArray("descriptions")?.optJSONObject(0)?.optString("value", "").orEmpty()
-                    }
-                    val cvss = json.optDouble("cvss", Double.NaN)
-                    if (summary.isBlank()) return "" to emptyList()
-                    val sb = StringBuilder("**Live CVE Threat Advisory ($cveId):**\n")
-                    if (!cvss.isNaN()) sb.append("• **CVSS Score:** $cvss\n")
-                    sb.append("• **Summary:** ${summary.take(360)}")
-                    val nvdUrl = "https://nvd.nist.gov/vuln/detail/$cveId"
-                    return sb.toString().trim() to listOf(WikiCitation("NVD Advisory: $cveId", nvdUrl, "Dark Web & Cyber Wiki"))
-                }
-            }
-            val url = "${base}last/2"
-            val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return "" to emptyList()
-                val body = resp.body?.string() ?: return "" to emptyList()
-                val arr = JSONArray(body)
-                if (arr.length() == 0) return "" to emptyList()
-                val sb = StringBuilder("**Latest Public CVE Vulnerability Advisories (CIRCL Feed):**\n")
-                val cits = mutableListOf<WikiCitation>()
-                for (i in 0 until minOf(2, arr.length())) {
-                    val item = arr.optJSONObject(i) ?: continue
-                    val id = item.optString("id", "").trim()
-                    val summary = item.optString("summary", "").trim()
-                    if (id.isNotBlank() && summary.isNotBlank()) {
-                        sb.append("• **$id:** ${summary.take(180)}...\n")
-                        cits.add(WikiCitation("NVD Advisory: $id", "https://nvd.nist.gov/vuln/detail/$id", "Dark Web & Cyber Wiki"))
-                    }
-                }
-                sb.toString().trim() to cits
-            }
-        } catch (_: Exception) {
-            "" to emptyList()
-        }
-    }
-
-    internal fun fetchTorOnionooTelemetry(
-        query: String,
-        httpClient: OkHttpClient,
-        baseUrlOverride: String? = null
-    ): Pair<String, WikiCitation?> {
-        return try {
-            val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://onionoo.torproject.org/"
-            val url = "${base}summary?limit=3&running=true"
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return "" to null
-                val body = resp.body?.string() ?: return "" to null
-                val json = JSONObject(body)
-                val relays = json.optJSONArray("relays") ?: JSONArray()
-                val bridges = json.optJSONArray("bridges") ?: JSONArray()
-                val published = json.optString("relays_published", "").trim()
-                if (relays.length() == 0 && published.isBlank()) return "" to null
-                val sampleNicknames = (0 until minOf(3, relays.length())).mapNotNull { idx ->
-                    val r = relays.optJSONObject(idx) ?: return@mapNotNull null
-                    val nick = r.optString("n", "unnamed")
-                    val running = r.optBoolean("r", false)
-                    if (running) nick else null
-                }
-                val text = buildString {
-                    append("**Live Tor Project Onionoo Network Telemetry:**\n")
-                    if (published.isNotBlank()) append("• **Directory Published (UTC):** $published\n")
-                    if (sampleNicknames.isNotEmpty()) {
-                        append("• **Sample Active Guard/Middle Relays:** ${sampleNicknames.joinToString(", ")}\n")
-                    }
-                    append("• **Protocol Verification:** Live directory consensus fetched over public HTTPS clearnet API (`onionoo.torproject.org`).")
-                }
-                text to WikiCitation(
-                    title = "Tor Project Onionoo Live Relay Directory",
-                    url = "https://metrics.torproject.org/rs.html",
-                    layer = "Dark Web & Cyber Wiki"
-                )
-            }
-        } catch (_: Exception) {
-            "" to null
         }
     }
 

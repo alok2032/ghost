@@ -145,7 +145,7 @@ object DeviceSecurityInspector {
                     val tokenLen = resp.token()?.length ?: 0
                     cont.resume(
                         IntegrityVerdictStatus.UNKNOWN to
-                            "Integrity token obtained ($tokenLen chars) — send to AYRA backend to decrypt & verify verdict."
+                            "Integrity token obtained ($tokenLen chars) — send to Ghost AI backend to decrypt & verify verdict."
                     )
                 }
                 .addOnFailureListener { err ->

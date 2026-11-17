@@ -183,7 +183,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         override val isExternal = false
         override val requiresConfirmation = true
         override suspend fun execute(args: JSONObject): AgentToolOutput {
-            val title = args.optString("title", "Ayra Event").trim().ifBlank { "Ayra Event" }
+            val title = args.optString("title", "Ghost AI Event").trim().ifBlank { "Ghost AI Event" }
             val desc = args.optString("description", "")
             val loc = args.optString("location", "")
             val offsetHrs = args.optInt("offset_hours", 1).coerceIn(0, 720)
@@ -202,7 +202,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         override suspend fun execute(args: JSONObject): AgentToolOutput {
             val hour = args.optInt("hour", 7).coerceIn(0, 23)
             val minute = args.optInt("minute", 0).coerceIn(0, 59)
-            val label = args.optString("label", "Ayra Alarm").ifBlank { "Ayra Alarm" }
+            val label = args.optString("label", "Ghost AI Alarm").ifBlank { "Ghost AI Alarm" }
             val action = ProposedAction.SetAlarm(hour, minute, label)
             return AgentToolOutput(true, "Proposed alarm for ${action.formattedTime} awaiting user confirmation.", requiresConfirmationAction = action)
         }
@@ -210,7 +210,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
 
     private fun reminderScheduleTool() = object : AgentTool {
         override val name = "reminder_schedule"
-        override val description = "Schedule a local reminder prompt in Ayra Scheduler."
+        override val description = "Schedule a local reminder prompt in Ghost AI Scheduler."
         override val parametersSchemaJson = """{"type":"object","properties":{"prompt":{"type":"string"}},"required":["prompt"]}"""
         override val isExternal = false
         override val requiresConfirmation = false
@@ -277,7 +277,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         override val requiresConfirmation = true
         override suspend fun execute(args: JSONObject): AgentToolOutput {
             val to = args.optString("to", "").trim()
-            val subject = args.optString("subject", "Message from Ayra AI").trim()
+            val subject = args.optString("subject", "Message from Ghost AI").trim()
             val body = args.optString("body", "").trim()
             return AgentToolOutput(true, "Proposed email draft confirmation.", requiresConfirmationAction = ProposedAction.ComposeEmail(to, subject, body))
         }
@@ -314,7 +314,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
 
     private fun fileReadTool() = object : AgentTool {
         override val name = "file_read"
-        override val description = "Read an artifact inside Ayra's private files/exports directory or list saved workspace files."
+        override val description = "Read an artifact inside Ghost AI's private files/exports directory or list saved workspace files."
         override val parametersSchemaJson = """{"type":"object","properties":{"filename":{"type":"string"}},"required":[]}"""
         override val isExternal = false
         override val requiresConfirmation = false
@@ -340,7 +340,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         }
     }
 
-    private fun imageGenerateTool() = mediaDelegatedTool("image_generate", "Generate an image with Ayra Creative Studio.", "/image")
+    private fun imageGenerateTool() = mediaDelegatedTool("image_generate", "Generate an image with Ghost AI Creative Studio.", "/image")
     private fun videoGenerateTool() = mediaDelegatedTool("video_generate", "Generate a video storyboard & frames.", "/video")
     private fun songGenerateTool() = mediaDelegatedTool("song_generate", "Compose a song melody & lyrics.", "/song")
     private fun model3dGenerateTool() = mediaDelegatedTool("model3d_generate", "Generate a 3D hologram/CAD model.", "/3d")

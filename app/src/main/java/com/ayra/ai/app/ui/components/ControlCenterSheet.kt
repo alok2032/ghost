@@ -20,7 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayra.ai.app.vpn.AyraVpnPrivacyController
 import com.ayra.ai.app.vpn.WireGuardConfig
 import androidx.compose.material.icons.Icons
@@ -90,7 +90,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ayra.ai.app.ai.AiModelTier
+import com.ayra.ai.app.ai.providers.ModelTier
 import com.ayra.ai.app.automation.DeviceAutomationController
 import com.ayra.ai.app.voice.UserSentiment
 import java.util.Locale
@@ -108,13 +108,15 @@ fun ControlCenterSheet(
     sheetState: SheetState,
     automationController: DeviceAutomationController,
     messageCount: Int,
-    currentPersona: String = "GF_COMPANION",
+    currentPersona: String = "AI_ASSISTANT",
     onPersonaChange: (String) -> Unit = {},
     selectedModelTier: String = "auto",
     onModelTierChange: (String) -> Unit = {},
     wakeWordEnabled: Boolean = true,
     onWakeWordToggle: (Boolean) -> Unit = {},
-    onRequestAllPermissions: () -> Unit = {},
+    onRequestSinglePermission: (String) -> Unit = {},
+    canScheduleExactAlarms: Boolean = true,
+    onOpenExactAlarmSettings: () -> Unit = {},
     currentSentiment: UserSentiment = UserSentiment.NEUTRAL_CARING,
     dynamicVoiceModulationEnabled: Boolean = true,
     onToggleDynamicVoiceModulation: (Boolean) -> Unit = {},
@@ -140,7 +142,8 @@ fun ControlCenterSheet(
     var lockScreenWakeEnabled by remember { mutableStateOf(AyraPreferences.isLockScreenWakeEnabled(context)) }
     var selectedLanguage by remember { mutableStateOf(AyraPreferences.getPreferredLanguage(context)) }
     var isKeySectionExpanded by remember { mutableStateOf(false) }
-    val vpnStatus by AyraVpnPrivacyController.vpnStatus.collectAsState()
+    var showCompanionAgeGateDialog by remember { mutableStateOf(false) }
+    val vpnStatus by AyraVpnPrivacyController.vpnStatus.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -181,7 +184,7 @@ fun ControlCenterSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Ayra Logo",
+                        contentDescription = "Ghost AI Logo",
                         tint = Color.Black,
                         modifier = Modifier.size(24.dp)
                     )
@@ -190,12 +193,37 @@ fun ControlCenterSheet(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Ayra AI • Control Center",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Ghost AI",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF131B2E))
+                                .border(0.8.dp, NeonCyan.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "By Alok",
+                                color = NeonCyan,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "• Control Center",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary
+                        )
+                    }
                     Text(
                         text = "সম্পূর্ণ ডিভাইস কন্ট্রোল, AI মডেল নির্বাচন ও পারসোনা",
                         style = MaterialTheme.typography.bodySmall,
@@ -214,50 +242,104 @@ fun ControlCenterSheet(
 
             HorizontalDivider(color = Color(0x3300FFFF), thickness = 0.8.dp)
 
-            // Section 0: All Device Permissions Grant Card
-            Row(
+            // Section 0: Just-in-Time Device Permissions Status Card (Granular, On-Demand)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
                     .background(GlassSurfaceDark)
-                    .border(1.2.dp, NeonGreen.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
-                    .clickable {
-                        onRequestAllPermissions()
-                        onQuickFeedback("সব পারমিশন ডায়ালগ খোলা হয়েছে 🛡️")
-                    }
+                    .border(1.2.dp, NeonGreen.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                     .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(NeonGreen.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Security, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Just-in-Time Device Permissions",
+                            color = TextPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "প্রয়োজন অনুযায়ী শুধুমাত্র নির্দিষ্ট ফিচারের পারমিশন চালু বা যাচাই করুন",
+                            color = TextSecondary,
+                            fontSize = 10.5.sp
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Grant All Permissions / সব পারমিশন অনুমোদন",
-                        color = TextPrimary,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Audio, Calls, Camera, Location, Contacts ও Alarms সক্রিয় করুন",
-                        color = NeonGreen,
-                        fontSize = 10.5.sp
-                    )
+                val permissionEntries = buildList {
+                    add("Mic" to android.Manifest.permission.RECORD_AUDIO)
+                    add("Camera" to android.Manifest.permission.CAMERA)
+                    add("Location" to android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    add("Contacts" to android.Manifest.permission.READ_CONTACTS)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        add("Alerts" to android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(NeonGreen)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(text = "GRANT", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    permissionEntries.forEach { (label, perm) ->
+                        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            perm
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (granted) NeonGreen.copy(alpha = 0.16f)
+                                    else Color(0xFF1A2236)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (granted) NeonGreen.copy(alpha = 0.6f) else NeonCyan.copy(alpha = 0.35f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable(enabled = !granted) {
+                                    onRequestSinglePermission(perm)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("jit_perm_${label.lowercase(Locale.ROOT)}")
+                        ) {
+                            Text(
+                                text = if (granted) "$label ✓" else "$label • Allow",
+                                color = if (granted) NeonGreen else NeonCyan,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (canScheduleExactAlarms) NeonGreen.copy(alpha = 0.16f)
+                                    else NeonRose.copy(alpha = 0.18f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (canScheduleExactAlarms) NeonGreen.copy(alpha = 0.6f) else NeonRose.copy(alpha = 0.7f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable(enabled = !canScheduleExactAlarms) {
+                                    onOpenExactAlarmSettings()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("jit_perm_exact_alarm")
+                        ) {
+                            Text(
+                                text = if (canScheduleExactAlarms) "Exact Alarms ✓" else "Exact Alarms • Fix",
+                                color = if (canScheduleExactAlarms) NeonGreen else NeonRose,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
@@ -319,8 +401,8 @@ fun ControlCenterSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                AiModelTier.entries.forEach { tier ->
-                    val isSelected = selectedModelTier == tier.id
+                ModelTier.entries.filter { it.isSelectableTier }.forEach { tier ->
+                    val isSelected = ModelTier.canonicalizeId(selectedModelTier) == tier.id
                     val tierColor = Color(tier.accentColorHex)
 
                     Box(
@@ -603,12 +685,12 @@ fun ControlCenterSheet(
 
             HorizontalDivider(color = Color(0x2200FFFF), thickness = 0.8.dp)
 
-            // Section 2: AI Assistant Persona Selector (GF Companion vs Normal Assistant)
+            // Section 2: AI Assistant Persona Selector (Neutral Default vs Companion 18+ Gated)
             Text(
-                text = "💖 AI Persona / সহকারীর আচরণ ও ব্যক্তিত্ব",
+                text = "🎭 AI Persona / সহকারীর আচরণ ও ব্যক্তিত্ব",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = NeonRose,
+                color = NeonCyan,
                 fontSize = 13.sp
             )
 
@@ -616,7 +698,45 @@ fun ControlCenterSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // GF Mode Card
+                // Neutral AI Assistant Mode Card (Default)
+                val isNeutral = currentPersona == "AI_ASSISTANT" || currentPersona == "PROFESSIONAL"
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isNeutral) NeonCyan.copy(alpha = 0.22f) else GlassSurfaceDark)
+                        .border(
+                            1.2.dp,
+                            if (isNeutral) NeonCyan else Color(0x3300FFFF),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable {
+                            onPersonaChange("AI_ASSISTANT")
+                            onQuickFeedback("🤖 AI Assistant Mode সক্রিয় করা হলো!")
+                        }
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "AI Assistant",
+                                color = if (isNeutral) NeonCyan else TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            )
+                        }
+                        Text(
+                            text = "নির্ভরযোগ্য ও সরাসরি পেশাদার সহকারী। কোডিং, গবেষণা ও দৈনন্দিন কাজের জন্য ডিফল্ট মোড।",
+                            color = TextSecondary,
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+
+                // 18+ Gated Companion Mode Card
                 val isGf = currentPersona == "GF_COMPANION"
                 Box(
                     modifier = Modifier
@@ -629,8 +749,12 @@ fun ControlCenterSheet(
                             RoundedCornerShape(14.dp)
                         )
                         .clickable {
-                            onPersonaChange("GF_COMPANION")
-                            onQuickFeedback("💖 Sweet GF Companion Mode সক্রিয় করা হলো!")
+                            if (AyraPreferences.isCompanionAgeVerified(context)) {
+                                onPersonaChange("GF_COMPANION")
+                                onQuickFeedback("💖 Companion Mode (18+) সক্রিয় করা হলো!")
+                            } else {
+                                showCompanionAgeGateDialog = true
+                            }
                         }
                         .padding(12.dp)
                 ) {
@@ -639,58 +763,59 @@ fun ControlCenterSheet(
                             Icon(Icons.Default.Favorite, contentDescription = null, tint = NeonRose, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Sweet GF Mode",
+                                text = "Companion (18+)",
                                 color = if (isGf) NeonRose else TextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.5.sp
                             )
                         }
                         Text(
-                            text = "মিষ্টি, যত্নশীল পার্সোনাল সঙ্গী। খোঁজখবর, আবদার, কেয়ারিং কথা ও গান শোনাবে।",
+                            text = "আন্তরিক ও যত্নশীল কথোপকথন মোড (১৮+ বছর বয়সীদের জন্য ঐচ্ছিক অপ্ট-ইন)।",
                             color = TextSecondary,
                             fontSize = 10.5.sp,
                             lineHeight = 14.sp
                         )
                     }
                 }
+            }
 
-                // Normal Assistant Mode Card
-                val isNormal = currentPersona == "PROFESSIONAL"
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isNormal) NeonCyan.copy(alpha = 0.22f) else GlassSurfaceDark)
-                        .border(
-                            1.2.dp,
-                            if (isNormal) NeonCyan else Color(0x3300FFFF),
-                            RoundedCornerShape(14.dp)
-                        )
-                        .clickable {
-                            onPersonaChange("PROFESSIONAL")
-                            onQuickFeedback("💼 Professional Assistant Mode সক্রিয় করা হলো!")
-                        }
-                        .padding(12.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Settings, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Normal Assistant",
-                                color = if (isNormal) NeonCyan else TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
-                            )
-                        }
+            if (showCompanionAgeGateDialog) {
+                AlertDialog(
+                    onDismissRequest = { showCompanionAgeGateDialog = false },
+                    title = {
                         Text(
-                            text = "ফরমাল ও সরাসরি প্রফেশনাল সহকারী। কোডিং, গবেষণা ও টু-দ্য-পয়েন্ট উত্তর।",
-                            color = TextSecondary,
-                            fontSize = 10.5.sp,
-                            lineHeight = 14.sp
+                            text = "18+ Companion Persona Confirmation",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-                }
+                    },
+                    text = {
+                        Text(
+                            text = "Companion Mode uses affectionate, personal conversational tones intended only for adults (18+). Please confirm you are 18 or older to enable this optional persona.",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                AyraPreferences.setCompanionAgeVerified(context, true)
+                                showCompanionAgeGateDialog = false
+                                onPersonaChange("GF_COMPANION")
+                                onQuickFeedback("💖 Companion Mode (18+) সক্রিয় করা হলো!")
+                            },
+                            modifier = Modifier.testTag("confirm_18_plus_companion_button")
+                        ) {
+                            Text("Confirm 18+ & Enable")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCompanionAgeGateDialog = false }) {
+                            Text("Keep Neutral AI", color = TextSecondary)
+                        }
+                    },
+                    containerColor = Color(0xFF131B2E)
+                )
             }
 
             HorizontalDivider(color = Color(0x2200FFFF), thickness = 0.8.dp)
@@ -1158,8 +1283,8 @@ fun ControlCenterSheet(
             // Lock Screen Wake Toggle
             SettingToggleRow(
                 icon = Icons.Default.Lock,
-                title = "Lock Screen Wake ('Ayra')",
-                subtitle = "ফোন লক থাকলেও 'আয়রা' বা 'Ayra' বললেই সহকারী অন হবে",
+                title = "Lock Screen Wake ('Ghost')",
+                subtitle = "ফোন লক থাকলেও 'Ghost' বললেই সহকারী অন হবে",
                 checked = lockScreenWakeEnabled,
                 onCheckedChange = {
                     lockScreenWakeEnabled = it
@@ -1172,7 +1297,7 @@ fun ControlCenterSheet(
             SettingToggleRow(
                 icon = Icons.Default.Mic,
                 title = "Always-On Voice Trigger",
-                subtitle = "গুগল বা সিরি-র মত 'Ayra' ডাকলে স্বয়ংক্রিয় সক্রিয়",
+                subtitle = "গুগল বা সিরি-র মত 'Ghost' ডাকলে স্বয়ংক্রিয় সক্রিয়",
                 checked = wakeWordEnabled,
                 onCheckedChange = {
                     onWakeWordToggle(it)
@@ -1246,11 +1371,48 @@ fun ControlCenterSheet(
                     fontSize = 13.sp
                 )
                 Text(
-                    text = "AlarmManager RTC",
-                    color = NeonGreen,
+                    text = if (canScheduleExactAlarms) "AlarmManager RTC (Exact)" else "AlarmManager (Inexact Fallback)",
+                    color = if (canScheduleExactAlarms) NeonGreen else NeonRose,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && !canScheduleExactAlarms) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(NeonRose.copy(alpha = 0.12f))
+                        .border(1.dp, NeonRose.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                        .testTag("exact_alarm_disabled_banner"),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "⚠️ Exact Alarms Permission Disabled",
+                        color = NeonRose,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Scheduled reminders & call prompts currently fall back to inexact battery-deferred timing. Grant 'Alarms & reminders' access for exact trigger timing.",
+                        color = TextPrimary,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                    OutlinedButton(
+                        onClick = onOpenExactAlarmSettings,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("open_exact_alarm_settings_button")
+                    ) {
+                        Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open Alarm Settings", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             if (scheduledTasks.isEmpty()) {

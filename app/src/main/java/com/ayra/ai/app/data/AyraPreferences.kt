@@ -43,6 +43,7 @@ object AyraPreferences {
     private const val KEY_BIOMETRIC_FOR_EXPORT = "sec_biometric_for_export"
     private const val KEY_DEVICE_ID = "sec_device_uuid"
     private const val KEY_REMOTE_MODEL_CATALOG_JSON = "remote_model_catalog_json"
+    private const val KEY_COMPANION_AGE_VERIFIED = "sec_companion_age_verified_18_plus"
 
     private const val KEY_ACCENT_PRESET = "ui_accent_preset"
     private const val KEY_CUSTOM_ACCENT_HEX = "ui_custom_accent_hex"
@@ -548,20 +549,43 @@ object AyraPreferences {
 
     // --- Persona & Routing Preferences ---
 
+    fun isCompanionAgeVerified(context: Context): Boolean =
+        getSensitivePrefs(context).getBoolean(KEY_COMPANION_AGE_VERIFIED, false)
+
+    fun setCompanionAgeVerified(context: Context, verified: Boolean) {
+        getSensitivePrefs(context).putBoolean(KEY_COMPANION_AGE_VERIFIED, verified)
+    }
+
+    /**
+     * Prevents the 18+ Companion persona from activating unless explicitly confirmed by the user.
+     */
+    fun resolveSafePersona(context: Context?, requestedPersona: String?): String {
+        val clean = requestedPersona?.trim().takeUnless { it.isNullOrEmpty() } ?: "AI_ASSISTANT"
+        if (clean.equals("GF_COMPANION", ignoreCase = true)) {
+            val verified = context?.let { isCompanionAgeVerified(it) } ?: false
+            if (!verified) return "AI_ASSISTANT"
+        }
+        return clean
+    }
+
     fun savePersona(context: Context, persona: String) {
-        getPrefs(context).edit().putString(KEY_ACTIVE_PERSONA, persona).apply()
+        val safe = resolveSafePersona(context, persona)
+        getPrefs(context).edit().putString(KEY_ACTIVE_PERSONA, safe).apply()
     }
 
     fun getSavedPersona(context: Context): String {
-        return getPrefs(context).getString(KEY_ACTIVE_PERSONA, "AI_ASSISTANT") ?: "AI_ASSISTANT"
+        val stored = getPrefs(context).getString(KEY_ACTIVE_PERSONA, "AI_ASSISTANT") ?: "AI_ASSISTANT"
+        return resolveSafePersona(context, stored)
     }
 
     fun saveModelTier(context: Context, tier: String) {
-        getPrefs(context).edit().putString(KEY_SELECTED_MODEL_TIER, tier).apply()
+        val canonical = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(tier)
+        getPrefs(context).edit().putString(KEY_SELECTED_MODEL_TIER, canonical).apply()
     }
 
     fun getSavedModelTier(context: Context): String {
-        return getPrefs(context).getString(KEY_SELECTED_MODEL_TIER, "auto") ?: "auto"
+        val stored = getPrefs(context).getString(KEY_SELECTED_MODEL_TIER, "auto") ?: "auto"
+        return com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(stored)
     }
 
     fun saveSelectedProvider(context: Context, providerId: String) {
@@ -596,11 +620,11 @@ object AyraPreferences {
 
     fun getRoutingMode(context: Context): String {
         val raw = getPrefs(context).getString(KEY_ROUTING_MODE, "auto") ?: "auto"
-        return if (raw == "qwen_uncensored") "open_weights" else raw
+        return com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(raw)
     }
 
     fun setRoutingMode(context: Context, mode: String) {
-        val clean = if (mode == "qwen_uncensored") "open_weights" else mode
+        val clean = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(mode)
         getPrefs(context).edit().putString(KEY_ROUTING_MODE, clean).apply()
     }
 

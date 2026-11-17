@@ -1,5 +1,5 @@
 {
-  "name": "Ayra AI",
+  "name": "Ghost AI",
   "description": "Multi-Model AI Voice Companion & Device Assistant for Android",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

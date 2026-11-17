@@ -123,7 +123,7 @@ class VoiceCommandWorkflowTest {
         // Wake word + command -> strips prefix & invokes AI command
         manager.onResults(
             Bundle().apply {
-                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("Hey Ayra explain quantum tunneling"))
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("Hey Ghost explain quantum tunneling"))
             }
         )
         assertEquals(listOf("explain quantum tunneling"), dispatchedCommands)

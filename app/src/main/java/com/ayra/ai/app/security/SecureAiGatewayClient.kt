@@ -107,7 +107,7 @@ object SecureAiGatewayClient {
         }
 
         val user = FirebaseAuth.getInstance().currentUser
-            ?: return@withContext Result.failure(SecurityException("Firebase authentication required for AYRA Backend."))
+            ?: return@withContext Result.failure(SecurityException("Firebase authentication required for Ghost AI Backend."))
 
         val tokenResult = runCatching {
             val task = user.getIdToken(false)

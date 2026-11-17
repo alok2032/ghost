@@ -51,8 +51,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -121,12 +121,12 @@ fun PromptEngineeringScreen(
     var searchQuery by remember { mutableStateOf("") }
     val templates by remember(searchQuery) {
         if (searchQuery.isBlank()) dao.observePromptTemplates() else dao.searchPromptTemplates(searchQuery.trim())
-    }.collectAsState(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     var versionHistoryTarget by remember { mutableStateOf<PromptTemplateEntity?>(null) }
     val versions by remember(versionHistoryTarget?.id) {
         versionHistoryTarget?.let { dao.observePromptVersions(it.id) }
             ?: kotlinx.coroutines.flow.flowOf(emptyList())
-    }.collectAsState(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     // Lab tester state
     val arenaEngine = remember { AiComparisonEngine(context) }

@@ -230,7 +230,7 @@ object AyraAudioSynthesizer {
         val dataByteCount = totalSamples * 2
 
         val dir = java.io.File(context.filesDir, "generated_audio").apply { if (!exists()) mkdirs() }
-        val safeTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ayra_track" }
+        val safeTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ghost_track" }
         val outFile = java.io.File(dir, "${safeTitle}_${System.currentTimeMillis()}.wav")
 
         java.io.DataOutputStream(java.io.BufferedOutputStream(java.io.FileOutputStream(outFile))).use { dos ->

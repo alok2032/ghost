@@ -38,8 +38,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,7 +78,7 @@ fun GitHubPluginHubSection(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val installedPlugins by GitHubPluginRegistry.pluginsFlow.collectAsState()
+    val installedPlugins by GitHubPluginRegistry.pluginsFlow.collectAsStateWithLifecycle()
     val pluginEngine = remember { GitHubPluginEngine(context) }
 
     var repoInput by remember { mutableStateOf("") }

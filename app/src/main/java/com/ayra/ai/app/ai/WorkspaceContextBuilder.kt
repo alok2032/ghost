@@ -63,12 +63,13 @@ object WorkspaceContextBuilder {
             runCatching { dao.getAssistantById(assistantId) }.getOrNull()
         } else null
 
-        val effectivePersona = when {
+        val rawPersona = when {
             assistant != null && requestedPersona == "AI_ASSISTANT" -> assistant.personaStyle
             else -> requestedPersona
         }
+        val effectivePersona = AyraPreferences.resolveSafePersona(context, rawPersona)
 
-        val effectiveTier = when {
+        val rawTier = when {
             requestedTier != "auto" -> requestedTier
             assistant != null && assistant.defaultModelTier.isNotBlank() && assistant.defaultModelTier != "auto" ->
                 assistant.defaultModelTier
@@ -76,6 +77,7 @@ object WorkspaceContextBuilder {
                 project.defaultModelTier
             else -> "auto"
         }
+        val effectiveTier = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(rawTier)
 
         val effectiveThinking = when {
             globalThinking != "balanced" -> globalThinking

@@ -115,7 +115,7 @@ class ComfyUiClient @JvmOverloads constructor(
             put("9", JSONObject().apply {
                 put("class_type", "SaveImage")
                 put("inputs", JSONObject().apply {
-                    put("filename_prefix", "AyraComfy")
+                    put("filename_prefix", "GhostComfy")
                     put("images", org.json.JSONArray(listOf("8", 0)))
                 })
             })
@@ -184,7 +184,7 @@ class ComfyUiClient @JvmOverloads constructor(
             put("8", JSONObject().apply {
                 put("class_type", "SaveImage")
                 put("inputs", JSONObject().apply {
-                    put("filename_prefix", "AyraImg2Img")
+                    put("filename_prefix", "GhostImg2Img")
                     put("images", org.json.JSONArray(listOf("7", 0)))
                 })
             })
@@ -263,7 +263,7 @@ class ComfyUiClient @JvmOverloads constructor(
                     put("images", org.json.JSONArray(listOf("8", 0)))
                     put("frame_rate", 16)
                     put("format", "video/h264-mp4")
-                    put("filename_prefix", "AyraVideo")
+                    put("filename_prefix", "GhostVideo")
                     put("save_output", true)
                 })
             })
@@ -459,7 +459,7 @@ class ComfyUiClient @JvmOverloads constructor(
     suspend fun uploadImage(
         baseUrl: String,
         imageBytes: ByteArray,
-        filename: String = "ayra_ref_${System.currentTimeMillis()}.png"
+        filename: String = "ghost_ref_${System.currentTimeMillis()}.png"
     ): String? = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trim().trimEnd('/')
         if (cleanBase.isBlank() || imageBytes.isEmpty()) return@withContext null

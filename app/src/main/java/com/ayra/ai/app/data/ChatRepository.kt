@@ -36,7 +36,7 @@ class ChatRepository(
             return mostRecent
         }
         return createNewSession(
-            title = "Ayra Main Chat",
+            title = "Ghost Main Chat",
             personaMode = AyraPreferences.getSavedPersona(context),
             modelTier = AyraPreferences.getSavedModelTier(context)
         )
@@ -102,7 +102,7 @@ class ChatRepository(
         if (session != null &&
             message.role == "user" &&
             session.messageCount == 0 &&
-            (session.title == "New Conversation" || session.title == "Ayra Main Chat")
+            (session.title == "New Conversation" || session.title == "Ghost Main Chat" || session.title == "Ayra Main Chat")
         ) {
             val autoTitle = deriveSessionTitle(message.content)
             sessionDao.renameSession(effectiveSessionId, autoTitle, message.timestamp)
@@ -129,7 +129,7 @@ class ChatRepository(
         sessionDao.deleteSessionById(sessionId)
         val fallback = sessionDao.getMostRecentSession()
             ?: createNewSession(
-                title = "Ayra Main Chat",
+                title = "Ghost Main Chat",
                 personaMode = AyraPreferences.getSavedPersona(context),
                 modelTier = AyraPreferences.getSavedModelTier(context)
             )

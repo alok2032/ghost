@@ -16,17 +16,20 @@ Enterprise-hardened Multi-Model AI Companion, Multimodal Studio, and Local/Cloud
 
 ### 1. Android Unit, Robolectric & Firebase Emulator Tests
 ```bash
-firebase emulators:exec --project demo-no-project --only firestore,auth "./gradlew :app:testDebugUnitTest --console=plain"
+firebase emulators:exec --project demo-no-project --only firestore,auth "gradle :app:testDebugUnitTest --console=plain"
 ```
 
 ### 2. Android Debug & R8-Minified Release APKs
 ```bash
-./gradlew :app:assembleDebug :app:assembleRelease
+gradle :app:assembleDebug :app:assembleRelease
 ```
-> **Note for Play Store Distribution:** Release builds in this repository preserve the container's `debug.keystore` signing config (`signingConfigs.release`) so local/CI APKs build reproducibly. For Play Store distribution, generate a dedicated upload keystore (see `keystore.properties.example`), configure Play App Signing in your CI release pipeline, and back up your keystore & passwords securely.
+> **Note for Play Store Distribution & Google Sign-In:**
+> 1. In-container `release` builds in this workspace intentionally retain `signingConfigs.release` (`debug.keystore`) per AI Studio container policy so local builds remain reproducible without modifying `signingConfigs`.
+> 2. **Fresh clones / Play Store uploads CANNOT ship `debug.keystore`:** `debug.keystore` is gitignored and uses debug credentials. Before distributing publicly or uploading `.aab`/`.apk` to Google Play Console, configure a private production upload keystore via `keystore.properties` (see `keystore.properties.example`) or encrypted CI secrets, and enroll in Play App Signing.
+> 3. **Production Google Sign-In Requirement:** `app/google-services.json` currently lists only the debug signing key SHA-1 (`app/google-services.json`). You **must** register your production upload key **and** Google Play App Signing key SHA-1 / SHA-256 fingerprints in **Firebase Console -> Project settings -> Your apps (`com.ayra.ai.app`) -> Add fingerprint**, then download the updated `app/google-services.json` before releasing; otherwise `CredentialManager` Google Sign-In will fail in production.
 
 ### 3. Firebase Configuration (`google-services.json`) & API Key Security
-- `app/google-services.json` is already aligned to `package_name = "com.ayra.ai.app"` (Firebase project `gen-lang-client-0643978985`).
+- `app/google-services.json` is aligned to `package_name = "com.ayra.ai.app"` (Firebase project `gen-lang-client-0643978985`).
 - If `app/google-services.json` is missing in a fresh clone, copy `app/google-services.json.example` to `app/google-services.json` only for placeholder builds, or download your real `google-services.json` from **Firebase Console -> Project settings -> Your apps -> Add app -> Android (`com.ayra.ai.app`)** with your debug and release SHA-1/SHA-256 certificates (`gradle :app:signingReport`).
 - **API Key Restriction:** In Google Cloud Console -> APIs & Services -> Credentials, restrict the Android API key to package `com.ayra.ai.app` + your SHA-1/SHA-256 signing fingerprints, and enforce **Firebase App Check**.
 

@@ -34,8 +34,9 @@ Last verified: 16 Nov 2026 | Total Kotlin files in `app/src/main`: 121 (~46,600 
 | `ai/BuildYourOwnXKnowledgeEngine.kt` | 848 | Curated engineering/architecture tutorial corpus |
 | `ai/GlobalWebKnowledgeGateway.kt` | 287 | External web/wiki gateway guarded by explicit consent & SSRF checks |
 | `ai/PromptQualityAnalyzer.kt` | — | Heuristic prompt clarity/quality scorer |
-| `ai/qwen/Qwen38UncensoredEngine.kt` | 110 | **Phase 1 Task 1.3 rename target -> `OpenModelEngine` (remove no-refusal framing)** |
-| `ai/godmode/GodModePliniusEngine.kt` | 103 | **Phase 1 Task 1.3 rename target -> `SecurityResearchEngine` (safe defensive framing)** |
+| `ai/providers/ModelTierSpec.kt` | 283 | Single source of truth `@Immutable enum class ModelTier` for tiers, aliases, pool modes & specialist directives |
+| `ai/openmodel/OpenModelEngine.kt` | 110 | Open-weights objective local/cloud reasoning engine |
+| `ai/securityresearch/SecurityResearchEngine.kt` | 103 | Defensive cybersecurity, OWASP & CVE mitigation grounding engine |
 | `ai/deepseek/DeepSeekHarnessEngine.kt` | — | CoT/harness prompt wrapper |
 | `ai/ecc/EnterpriseCognitiveEngine.kt` | — | Structured enterprise reasoning wrapper |
 | `ai/gemini/GeminiCliEngine.kt` | — | CLI-style structured coding/shell helper |

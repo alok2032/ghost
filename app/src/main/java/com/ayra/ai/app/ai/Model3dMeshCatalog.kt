@@ -219,7 +219,7 @@ object Model3dMeshCatalog {
     fun buildWavefrontObj(mesh: MeshData, title: String = mesh.kind): String {
         val safeObjName = title.replace(Regex("[^A-Za-z0-9_\\-]"), "_").ifBlank { mesh.kind }
         val sb = StringBuilder()
-        sb.append("# Ayra AI Wavefront .OBJ Export\n")
+        sb.append("# Ghost AI Wavefront .OBJ Export\n")
         sb.append("# Vertices: ${mesh.vertexCount}, Faces: ${mesh.faceCount}, Edges: ${mesh.edgeCount}\n")
         sb.append("o $safeObjName\n")
         mesh.vertices.forEach { (x, y, z) ->

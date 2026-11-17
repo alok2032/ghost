@@ -39,8 +39,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,14 +63,7 @@ import com.ayra.ai.app.ai.rag.DocumentRagEngine
 import com.ayra.ai.app.ai.rag.RagSearchHit
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.StorageHelper
-import com.ayra.ai.app.ui.theme.CosmicBackground
-import com.ayra.ai.app.ui.theme.GlassSurfaceDark
-import com.ayra.ai.app.ui.theme.NeonCyan
-import com.ayra.ai.app.ui.theme.NeonGreen
-import com.ayra.ai.app.ui.theme.NeonPurple
-import com.ayra.ai.app.ui.theme.NeonRose
-import com.ayra.ai.app.ui.theme.TextPrimary
-import com.ayra.ai.app.ui.theme.TextSecondary
+import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -182,9 +175,9 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
         com.ayra.ai.app.ai.rag.VectorKnowledgeRepository(db.vectorKnowledgeDao(), context)
     }
 
-    val totalSources by vectorRepo.observeSourceCount().collectAsState(initial = 0)
-    val totalChunks by vectorRepo.observeChunkCount().collectAsState(initial = 0)
-    val layerCounts by vectorRepo.observeLayerChunkCounts().collectAsState(initial = emptyList())
+    val totalSources by vectorRepo.observeSourceCount().collectAsStateWithLifecycle(initialValue = 0)
+    val totalChunks by vectorRepo.observeChunkCount().collectAsStateWithLifecycle(initialValue = 0)
+    val layerCounts by vectorRepo.observeLayerChunkCounts().collectAsStateWithLifecycle(initialValue = emptyList())
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { vectorRepo.ensureSeeded() }
@@ -248,20 +241,20 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
-            .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             text = "Multi-Layer Wiki & Offline Vector Vault",
-            color = NeonCyan,
+            color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp
         )
         Text(
             text = "Live clearnet Wiki (Wikipedia, Wikidata, DDG, OpenAlex, arXiv, PubMed, CVE, Tor Onionoo) auto-vectorized into a 256-dim Room Vector DB for instant offline Dark/Deep Web search.",
-            color = TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.5.sp
         )
 
@@ -270,8 +263,8 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(CosmicBackground)
-                .border(1.dp, NeonGreen.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -283,14 +276,14 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Room Vector DB: $totalSources sources • $totalChunks vectors",
-                        color = NeonGreen,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         modifier = Modifier.testTag("vector_db_stats_text")
                     )
                     Text(
                         text = "Dark Web: $darkChunks • Deep Web: $deepChunks • Surface: $surfaceChunks (256d Cosine + BM25)",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.5.sp
                     )
                 }
@@ -412,7 +405,7 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
         }
 
         statusNote?.let { note ->
-            Text(text = note, color = NeonGreen, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text(text = note, color = MaterialTheme.colorScheme.secondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
 
         if (vectorHits.isNotEmpty()) {
@@ -420,14 +413,14 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(CosmicBackground)
-                    .border(1.dp, NeonPurple.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = "Semantic Vector DB Matches (${vectorHits.size})",
-                    color = NeonPurple,
+                    color = MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp
                 )
@@ -436,7 +429,7 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(GlassSurfaceDark)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                             .clickable { runCatching { uriHandler.openUri(hit.sourceUrl) } }
                             .padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(3.dp)
@@ -444,18 +437,18 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                         val originLabel = if (hit.originType == "LIVE_CACHED") "LIVE CACHED" else "CURATED"
                         Text(
                             text = "${hit.title} • ${hit.similarityPercent}% match [$originLabel]",
-                            color = NeonCyan,
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = "${hit.layer} • ${hit.providerName} • Cosine ${String.format("%.2f", hit.cosineSimilarity)}",
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp
                         )
                         Text(
                             text = hit.excerpt.take(220) + if (hit.excerpt.length > 220) "..." else "",
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp
                         )
                     }
@@ -496,13 +489,13 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(CosmicBackground)
-                            .border(1.dp, NeonPurple.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text("AI Synthesized Brief", color = NeonPurple, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                        Text(syn, color = TextPrimary, fontSize = 12.5.sp, lineHeight = 18.sp)
+                        Text("AI Synthesized Brief", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Text(syn, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, lineHeight = 18.sp)
                     }
                 }
 
@@ -510,21 +503,21 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                     val surfaceText = listOf(res.surfaceWiki, res.wikidataEntities, res.ddgInstant)
                         .filter { it.isNotBlank() }.joinToString("\n\n")
                     if (surfaceText.isNotBlank()) {
-                        WikiSectionCard("Surface Wiki (Wikipedia • Wikidata • DDG)", surfaceText, NeonCyan)
+                        WikiSectionCard("Surface Wiki (Wikipedia • Wikidata • DDG)", surfaceText, MaterialTheme.colorScheme.primary)
                     }
                 }
                 if (layerFilter == WikiLayerFilter.ALL || layerFilter == WikiLayerFilter.DEEP_WEB) {
                     val deepText = listOf(res.deepAcademic, res.pubmedArticles, res.cveIntel)
                         .filter { it.isNotBlank() }.joinToString("\n\n")
                     if (deepText.isNotBlank()) {
-                        WikiSectionCard("Deep Web Wiki (OpenAlex • arXiv • CrossRef • PubMed • CVE)", deepText, NeonPurple)
+                        WikiSectionCard("Deep Web Wiki (OpenAlex • arXiv • CrossRef • PubMed • CVE)", deepText, MaterialTheme.colorScheme.tertiary)
                     }
                 }
                 if (layerFilter == WikiLayerFilter.ALL || layerFilter == WikiLayerFilter.DARK_WEB) {
                     val darkText = listOf(res.liveTorNetwork, res.darkWebTech)
                         .filter { it.isNotBlank() }.joinToString("\n\n")
                     if (darkText.isNotBlank()) {
-                        WikiSectionCard("Dark Web & Overlay Network Technical Wiki (Live Onionoo + Specs)", darkText, NeonGreen)
+                        WikiSectionCard("Dark Web & Overlay Network Technical Wiki (Live Onionoo + Specs)", darkText, MaterialTheme.colorScheme.secondary)
                     }
                 }
 
@@ -533,12 +526,12 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(CosmicBackground)
-                            .border(1.dp, NeonCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Verified Clickable Sources", color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Verified Clickable Sources", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         res.citations.distinctBy { it.url }.take(8).forEach { cit ->
                             Row(
                                 modifier = Modifier
@@ -552,10 +545,10 @@ private fun MultiLayerWikiExplorerPanel(context: Context) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(cit.title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                    Text("${cit.layer} • ${cit.url}", color = TextSecondary, fontSize = 10.5.sp, maxLines = 1)
+                                    Text(cit.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    Text("${cit.layer} • ${cit.url}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1)
                                 }
-                                Icon(Icons.Default.OpenInNew, contentDescription = "Open source", tint = NeonCyan, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.OpenInNew, contentDescription = "Open source", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -571,13 +564,13 @@ private fun WikiSectionCard(title: String, body: String, accentColor: androidx.c
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(CosmicBackground)
+            .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(text = title, color = accentColor, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-        Text(text = body, color = TextPrimary, fontSize = 12.5.sp, lineHeight = 18.sp)
+        Text(text = body, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, lineHeight = 18.sp)
     }
 }
 
@@ -643,8 +636,8 @@ private fun DeepResearchPanel(context: Context) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
-            .border(1.dp, NeonCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -762,7 +755,7 @@ private fun DeepResearchPanel(context: Context) {
 
         if (reportText.isNotBlank()) {
             modelLabel?.let {
-                Text(text = "Source Engine: $it", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "Source Engine: $it", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Row(
@@ -820,13 +813,13 @@ private fun DeepResearchPanel(context: Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(CosmicBackground)
-                    .border(1.dp, NeonCyan.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
                     .padding(12.dp)
             ) {
                 Text(
                     text = reportText,
-                    color = TextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 13.sp,
                     lineHeight = 19.sp
                 )
@@ -840,7 +833,7 @@ private fun KnowledgeRagPanel(context: Context) {
     val scope = rememberCoroutineScope()
     val db = remember { ChatDatabase.getDatabase(context) }
     val ragEngine = remember { DocumentRagEngine(db.knowledgeDocumentDao()) }
-    val docs by ragEngine.observeDocuments().collectAsState(initial = emptyList())
+    val docs by ragEngine.observeDocuments().collectAsStateWithLifecycle(initialValue = emptyList())
     val pool = remember { ProviderPool(context) }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -881,8 +874,8 @@ private fun KnowledgeRagPanel(context: Context) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceDark)
-            .border(1.dp, NeonPurple.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -896,12 +889,12 @@ private fun KnowledgeRagPanel(context: Context) {
                     text = "Persistent Documents (${docs.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = NeonPurple
+                    color = MaterialTheme.colorScheme.tertiary
                 )
                 Text(
                     text = "PDF, DOCX, XLSX, PPTX, CSV & text stay indexed across restarts.",
                     fontSize = 11.sp,
-                    color = TextSecondary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Button(
@@ -931,11 +924,11 @@ private fun KnowledgeRagPanel(context: Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(CosmicBackground)
-                    .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
                     .padding(10.dp)
             ) {
-                Text(text = preview, color = TextPrimary, fontSize = 11.5.sp)
+                Text(text = preview, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.5.sp)
             }
         }
 
@@ -944,19 +937,19 @@ private fun KnowledgeRagPanel(context: Context) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(CosmicBackground)
+                    .background(MaterialTheme.colorScheme.surface)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = doc.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text(text = "${doc.chunkCount} chunks • ${doc.charCount} chars", color = TextSecondary, fontSize = 11.sp)
+                    Text(text = doc.title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(text = "${doc.chunkCount} chunks • ${doc.charCount} chars", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 IconButton(
                     onClick = { scope.launch { ragEngine.deleteDocument(doc.id) } },
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete ${doc.title}", tint = NeonRose)
+                    Icon(Icons.Default.Delete, contentDescription = "Delete ${doc.title}", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -1007,11 +1000,11 @@ private fun KnowledgeRagPanel(context: Context) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(CosmicBackground)
-                        .border(1.dp, NeonGreen.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                         .padding(12.dp)
                 ) {
-                    Text(text = ans, color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp)
+                    Text(text = ans, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 19.sp)
                 }
             }
 
@@ -1020,19 +1013,19 @@ private fun KnowledgeRagPanel(context: Context) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(CosmicBackground)
+                        .background(MaterialTheme.colorScheme.surface)
                         .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = "${hit.citationTag} • Score ${String.format("%.2f", hit.score)}",
-                        color = NeonCyan,
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = hit.excerpt.take(360),
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.5.sp
                     )
                 }

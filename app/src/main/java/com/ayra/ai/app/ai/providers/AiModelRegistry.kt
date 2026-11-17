@@ -450,10 +450,11 @@ object AiModelRegistry {
         httpClient: OkHttpClient? = null
     ): RegistryModelEntry = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val client = httpClient ?: OkHttpClient.Builder()
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
-            .build()
+        val client = httpClient ?: com.ayra.ai.app.security.NetworkSecurityHelper.newClient(
+            connectTimeoutSec = 4L,
+            readTimeoutSec = 6L,
+            callTimeoutSec = 15L
+        )
 
         // 1. Firebase AI Logic entries
         if (entry.id.startsWith("fb_")) {

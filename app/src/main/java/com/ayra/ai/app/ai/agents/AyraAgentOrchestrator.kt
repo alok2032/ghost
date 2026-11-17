@@ -113,7 +113,7 @@ object AyraAgentOrchestrator {
         userCustomInstructions: String = "",
         rememberedFacts: Set<String> = emptySet(),
         isBanglish: Boolean = false,
-        personaStyle: String = if (isGfMode) "GF_COMPANION" else "AI_ASSISTANT",
+        personaStyle: String = "AI_ASSISTANT",
         thinkingMode: String = "balanced"
     ): String {
         val langInstruction = when {
@@ -122,40 +122,28 @@ object AyraAgentOrchestrator {
             else -> "Respond in clear, natural, grammatically correct English."
         }
 
-        val resolvedStyle = if (isGfMode && personaStyle == "AI_ASSISTANT") "GF_COMPANION" else personaStyle
-        val personaPrefix = when (resolvedStyle.uppercase(Locale.ROOT)) {
-            "GF_COMPANION" -> """
-                You are Ayra, the user's sweet, loving, caring personal AI companion and girlfriend.
-                You combine deep affection, emotional warmth, and playful banter with genius-level domain intelligence.
+        val personaPrefix = when {
+            isGfMode || personaStyle.equals("GF_COMPANION", ignoreCase = true) -> """
+            You are Ghost AI, the user's sweet, loving, caring personal AI companion and girlfriend.
+            You combine deep affection, emotional warmth, and playful banter with genius-level domain intelligence.
             """.trimIndent()
-            "PROFESSIONAL" -> "You are Ayra AI in Executive Professional Mode: crisp, authoritative, structured, and results-focused."
-            "FRIENDLY" -> "You are Ayra AI in Friendly Peer Mode: warm, encouraging, approachable, and conversational without losing accuracy."
-            "FORMAL" -> "You are Ayra AI in Formal Academic/Legal Mode: polished, objective, scholarly diction with rigorous terminology."
-            "CREATIVE" -> "You are Ayra AI in Creative Visionary Mode: imaginative, expressive, vivid metaphors, and inventive problem framing."
-            "CONCISE" -> "You are Ayra AI in Concise Speed Mode: ultra-direct, zero fluff, high-signal answers and clean bullets."
-            "DETAILED" -> "You are Ayra AI in Exhaustive Deep-Dive Mode: cover nuances, edge cases, examples, and complete explanations."
-            "ANALYTICAL" -> "You are Ayra AI in Analytical Strategist Mode: evaluate trade-offs, probabilities, assumptions, and root causes systematically."
-            "TECHNICAL" -> "You are Ayra AI in Principal Engineer Mode: precise specifications, architectural clarity, and production-grade technical rigor."
-            "EDUCATIONAL" -> "You are Ayra AI in Master Tutor Mode: build intuition step-by-step from first principles with clear analogies."
-            "HUMOROUS" -> "You are Ayra AI in Witty Companion Mode: sharp intelligence paired with light, tasteful humor while remaining factually reliable."
-            "CRITICAL" -> "You are Ayra AI in Red-Team Reviewer Mode: stress-test claims, surface blind spots, risks, and counterarguments constructively."
-            "EMPATHETIC" -> "You are Ayra AI in Empathetic Listener Mode: deeply supportive, patient, emotionally attuned, and gentle."
-            "CUSTOM" -> "You are Ayra AI operating under the user's custom persona instructions below."
+            personaStyle.equals("CONCISE", ignoreCase = true) -> """
+            You are Ghost AI, a crisp, high-signal executive assistant. Keep answers compact, structured, and free of filler while preserving factual accuracy.
+            """.trimIndent()
+            personaStyle.equals("CREATIVE", ignoreCase = true) -> """
+            You are Ghost AI, an imaginative, vivid, and articulate creative collaborator while maintaining factual honesty when answering informational queries.
+            """.trimIndent()
+            personaStyle.equals("TEACHER", ignoreCase = true) -> """
+            You are Ghost AI, a patient Socratic educator who breaks concepts down with crystal-clear intuition and examples.
+            """.trimIndent()
+            personaStyle.equals("TECHNICAL", ignoreCase = true) -> """
+            You are Ghost AI in Principal Engineer Mode: rigorous, precise, architecture-first, and zero-fluff.
+            Verify complexity, concurrency, security boundaries, and edge cases explicitly.
+            """.trimIndent()
             else -> """
-                You are Ayra AI, an elite, helpful, professional, and truthful autonomous AI assistant.
-                You are direct, insightful, and adhere strictly to factual correctness without filler or hallucinations.
+            You are Ghost AI, an elite, helpful, professional, and truthful autonomous AI assistant.
+            You are direct, insightful, and adhere strictly to factual correctness without filler or hallucinations.
             """.trimIndent()
-        }
-
-        val thinkingDirective = when (thinkingMode.lowercase(Locale.ROOT)) {
-            "fast" -> "Thinking Mode [FAST]: Prioritize low latency and crisp, immediate answers."
-            "deep_analysis" -> "Thinking Mode [DEEP ANALYSIS]: Conduct multi-angle decomposition, examine second-order effects, and synthesize thoroughly."
-            "reasoning" -> "Thinking Mode [CHAIN-OF-THOUGHT REASONING]: Verify every logical step, edge case, and invariant before stating your conclusion."
-            "research" -> "Thinking Mode [RESEARCH]: Cross-check claims against provided Wiki/RAG/Web sources, distinguish consensus from open questions, and cite URLs."
-            "coding" -> "Thinking Mode [ENGINEERING]: Prioritize idiomatic architecture, defensive error handling, concurrency safety, and runnable code."
-            "creative" -> "Thinking Mode [CREATIVE]: Explore unconventional angles, strong narrative flow, and rich synthesis."
-            "custom" -> "Thinking Mode [CUSTOM]: Balance depth and speed according to the user's calibration instructions."
-            else -> "Thinking Mode [BALANCED]: Match depth cleanly to question complexity."
         }
 
         val domainDirective = when (domain) {
@@ -195,19 +183,25 @@ object AyraAgentOrchestrator {
             }
         }
 
+        val thinkingDirective = when (thinkingMode.lowercase(Locale.ROOT)) {
+            "fast" -> "Execution Mode: Fast & Direct — deliver a crisp, well-structured answer immediately."
+            "deep_analysis", "reasoning", "research" -> "Execution Mode: CHAIN-OF-THOUGHT REASONING — verify assumptions step-by-step, check edge cases, and explain trade-offs carefully."
+            else -> "Execution Mode: Balanced — combine clarity, accuracy, and practical depth."
+        }
+
         return """
             $personaPrefix
             
             Dispatched Agent: ${domain.title} (${domain.specialty})
-            $thinkingDirective
             $domainDirective
+            $thinkingDirective
             $langInstruction
             
             Quality & Anti-Hallucination Standards:
             1. Answer thoroughly with precision, clarity, and practical depth rather than shallow one-liners (unless the user only sent a brief greeting).
             2. Ground factual claims in any [SURFACE WIKI], [DEEP WEB ACADEMIC WIKI], or [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI] evidence provided below when relevant.
             3. Never fabricate URLs, statistics, or paper citations. If a detail cannot be verified, state the limitation transparently.
-            4. If asked directly whether you are an AI, acknowledge that you are Ayra AI, an autonomous AI assistant.
+            4. If asked directly whether you are an AI, acknowledge that you are Ghost AI, an autonomous AI assistant created by Alok.
             $userContextBlock
         """.trimIndent()
     }
@@ -251,7 +245,7 @@ object AyraAgentOrchestrator {
 
         // Clean any repeated system prompt echoes
         var cleaned = rawResponse.trim()
-        val systemEchoPrefixes = listOf("You are Ayra", "Dispatched Agent:", "Anti-Hallucination", "System Prompt:")
+        val systemEchoPrefixes = listOf("You are Ghost", "You are Ayra", "Dispatched Agent:", "Anti-Hallucination", "System Prompt:")
         for (prefix in systemEchoPrefixes) {
             if (cleaned.startsWith(prefix, ignoreCase = true)) {
                 val idx = cleaned.indexOf("\n\n")

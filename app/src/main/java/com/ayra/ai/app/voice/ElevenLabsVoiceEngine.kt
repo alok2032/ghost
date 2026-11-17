@@ -19,10 +19,11 @@ import java.util.concurrent.TimeUnit
  */
 class ElevenLabsVoiceEngine(private val context: Context) {
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val httpClient = com.ayra.ai.app.security.NetworkSecurityHelper.newClient(
+        connectTimeoutSec = 15L,
+        readTimeoutSec = 30L,
+        callTimeoutSec = 45L
+    )
 
     // Default Rachel voice ID
     companion object {

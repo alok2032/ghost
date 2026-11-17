@@ -411,7 +411,7 @@ class FirebaseAiEngine(private val context: Context?) {
         return buildString {
             append("=== CONVERSATION CONTEXT ===\n")
             recent.forEach { msg ->
-                val speaker = if (msg.role == "user") "User" else "Ayra"
+                val speaker = if (msg.role == "user") "User" else "Ghost AI"
                 append("$speaker: ${msg.content.take(900)}\n")
             }
             append("=== CURRENT REQUEST ===\n")

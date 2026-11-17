@@ -34,7 +34,7 @@ object AiAppAndCodeStudio {
             """
             ⚠️ **লাইভ কোড জেনারেশন অফলাইন বা API কী কনফিগার করা নেই**
 
-            "**$cleanSubject**"-এর জন্য আসল, কাস্টম কোড তৈরি করতে একটি সক্রিয় এআই প্রোভাইডার (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, বা OpenRouter) এবং ইন্টারনেট সংযোগ প্রয়োজন। আয়রা কোনো নকল বা আগে থেকে বানানো টেমপ্লেট কোড দেখায় না।
+            "**$cleanSubject**"-এর জন্য আসল, কাস্টম কোড তৈরি করতে একটি সক্রিয় এআই প্রোভাইডার (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, বা OpenRouter) এবং ইন্টারনেট সংযোগ প্রয়োজন। Ghost AI কোনো নকল বা আগে থেকে বানানো টেমপ্লেট কোড দেখায় না।
 
             **পরবর্তী পদক্ষেপ:**
             1. **Tools → AI Provider Keys**-এ গিয়ে ফ্রি-টিয়ার API কী যোগ করুন (অথবা অনলাইনে থাকুন)।
@@ -44,7 +44,7 @@ object AiAppAndCodeStudio {
             """
             ⚠️ **Live Code Generation Unavailable (Offline / No Provider Key Configured)**
 
-            Generating real, custom source code for **"$cleanSubject"** requires an active network connection and at least one configured LLM provider (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, or OpenRouter). Ayra does not emit canned static templates in place of real AI synthesis.
+            Generating real, custom source code for **"$cleanSubject"** requires an active network connection and at least one configured LLM provider (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, or OpenRouter). Ghost AI does not emit canned static templates in place of real AI synthesis.
 
             **Next Steps:**
             1. Add a free-tier API key in **Tools → AI Provider Keys** (or reconnect to the internet).
