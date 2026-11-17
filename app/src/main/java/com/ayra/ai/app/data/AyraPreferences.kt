@@ -42,6 +42,7 @@ object AyraPreferences {
     private const val KEY_CLIPBOARD_AUTO_CLEAR = "sec_clipboard_auto_clear"
     private const val KEY_BIOMETRIC_FOR_EXPORT = "sec_biometric_for_export"
     private const val KEY_DEVICE_ID = "sec_device_uuid"
+    private const val KEY_REMOTE_MODEL_CATALOG_JSON = "remote_model_catalog_json"
 
     private const val KEY_ACCENT_PRESET = "ui_accent_preset"
     private const val KEY_CUSTOM_ACCENT_HEX = "ui_custom_accent_hex"
@@ -594,11 +595,13 @@ object AyraPreferences {
     private const val KEY_PREFERRED_LANGUAGE = "preferred_language_code"
 
     fun getRoutingMode(context: Context): String {
-        return getPrefs(context).getString(KEY_ROUTING_MODE, "auto") ?: "auto"
+        val raw = getPrefs(context).getString(KEY_ROUTING_MODE, "auto") ?: "auto"
+        return if (raw == "qwen_uncensored") "open_weights" else raw
     }
 
     fun setRoutingMode(context: Context, mode: String) {
-        getPrefs(context).edit().putString(KEY_ROUTING_MODE, mode).apply()
+        val clean = if (mode == "qwen_uncensored") "open_weights" else mode
+        getPrefs(context).edit().putString(KEY_ROUTING_MODE, clean).apply()
     }
 
     /**
@@ -911,6 +914,13 @@ object AyraPreferences {
 
     fun setBiometricRequiredForExport(context: Context, required: Boolean) {
         getSensitivePrefs(context).putBoolean(KEY_BIOMETRIC_FOR_EXPORT, required)
+    }
+
+    fun getRemoteModelCatalogJson(context: Context): String =
+        getSensitivePrefs(context).getString(KEY_REMOTE_MODEL_CATALOG_JSON, "")
+
+    fun setRemoteModelCatalogJson(context: Context, json: String) {
+        getSensitivePrefs(context).putString(KEY_REMOTE_MODEL_CATALOG_JSON, json)
     }
 
     fun getOrCreateDeviceId(context: Context): String {

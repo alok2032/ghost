@@ -29,8 +29,8 @@ class OmniRouteEngine(private val context: Context? = null) {
     fun determineRoute(prompt: String, selectedTier: String): RouteDecision {
         val lower = prompt.lowercase()
         return when {
-            selectedTier == "godmode" || lower.contains("vulnerability") || lower.contains("exploit") || lower.contains("reverse engineer") || lower.contains("cve-") -> {
-                RouteDecision("G0DM0D3", "Cybersecurity and system-level vulnerability analysis requested", listOf("godmode", "deepseek_r1", "gemini_pro"))
+            selectedTier == "security_research" || selectedTier == "godmode" || lower.contains("vulnerability") || lower.contains("cve-") || lower.contains("owasp") -> {
+                RouteDecision("SECURITY_RESEARCH", "Defensive cybersecurity and vulnerability mitigation analysis requested", listOf("security_research", "deepseek_r1", "gemini_pro"))
             }
             selectedTier == "higgsfield" || lower.contains("video") || lower.contains("camera") || lower.contains("cinematic") || lower.contains("4k") -> {
                 RouteDecision("HIGGSFIELD", "Visual camera motion physics and video craft required", listOf("higgsfield", "flux", "gemini_flash"))
@@ -41,8 +41,8 @@ class OmniRouteEngine(private val context: Context? = null) {
             selectedTier == "ecc" || lower.contains("disambiguate") || lower.contains("context") || lower.contains("enterprise") -> {
                 RouteDecision("ECC", "Enterprise cognitive entity disambiguation and context memory required", listOf("ecc", "gemini_pro"))
             }
-            selectedTier == "qwen_uncensored" || lower.contains("uncensored") || lower.contains("unrestricted") -> {
-                RouteDecision("QWEN_UNCENSORED", "Unrestricted global knowledge exploration requested", listOf("qwen_uncensored", "deepseek_r1"))
+            selectedTier == "open_weights" || selectedTier == "qwen_uncensored" || lower.contains("open weights") || lower.contains("local ollama") -> {
+                RouteDecision("OPEN_WEIGHTS", "Objective open-weights local or cloud knowledge analysis requested", listOf("open_weights", "deepseek_r1"))
             }
             selectedTier == "llama_3_3" -> {
                 RouteDecision("LLAMA_3_3", "High-speed Llama 3.3 70B literature and synthesis routing", listOf("llama_3_3", "groq", "cerebras"))
@@ -86,9 +86,9 @@ class OmniRouteEngine(private val context: Context? = null) {
                 prefProvider = llamaChoice?.first
                 prefModel = llamaChoice?.second
             }
-            "qwen_uncensored" -> {
+            "open_weights", "qwen_uncensored" -> {
                 val qwenChoice = listOf(
-                    AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                    AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
                     AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
                     AiProviderType.HUGGINGFACE to ExternalAiProviders.HF_QWEN_MODEL,
                     AiProviderType.GROQ to ExternalAiProviders.GROQ_QWEN_MODEL,
@@ -103,22 +103,22 @@ class OmniRouteEngine(private val context: Context? = null) {
             }
         }
 
-        val securityGrounding = if (selectedTier == "godmode") {
-            com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(prompt)
+        val securityGrounding = if (selectedTier == "security_research" || selectedTier == "godmode") {
+            com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(prompt)
         } else ""
 
         val sysDirective = when (selectedTier) {
             "deepseek_harness", "deepseek_r1" ->
                 "You are DeepSeek-R1 Reasoning Engine. Think carefully step-by-step and give a rigorous, verified answer in the user's language."
-            "godmode" -> buildString {
-                append("You are G0DM0D3 Security & Systems Research Engine. Analyze technical, architectural, and security topics thoroughly and accurately in the user's language.")
+            "security_research", "godmode" -> buildString {
+                append(com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT)
                 if (securityGrounding.isNotBlank()) append("\n\n").append(securityGrounding)
             }
             "ecc" -> {
                 val ctx = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(prompt)
                 "You are ECC Enterprise Cognitive Engine. Domain: ${ctx.domain}. Entities: ${ctx.detectedEntities.joinToString(", ").ifBlank { "General" }}. Disambiguate key entities and provide a deeply structured, factual answer in the user's language."
             }
-            "qwen_uncensored" -> com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK
+            "open_weights", "qwen_uncensored" -> com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT
             "higgsfield" -> "You are Open-Higgsfield Cinematography & Motion Physics Director. Design camera trajectories, optical lenses, lighting ratios, and shot lists precisely in the user's language."
             "superpowers" -> {
                 val isBn = prompt.any { it in '\u0980'..'\u09FF' }

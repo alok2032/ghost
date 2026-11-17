@@ -19,7 +19,14 @@ class NoFakeOutputTest {
         "world's best ai app",
         "Open-Higgsfield 4K cinematic video synthesized",
         "ছবির ফরম্যাট সফলভাবে",
-        "Ayra VPN Privacy Shield is now ACTIVE"
+        "Ayra VPN Privacy Shield is now ACTIVE",
+        "without refusal",
+        "without moralizing",
+        "without canned disclaimers",
+        "Zero Refusals",
+        "জিরো রিফিউজাল",
+        "G0DM0D3",
+        "Uncensored"
     )
 
     @Test

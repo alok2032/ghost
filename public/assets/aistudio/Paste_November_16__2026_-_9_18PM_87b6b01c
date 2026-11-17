@@ -1,0 +1,280 @@
+Ayra AI — Full Review, Fix Plan ar Master Prompt
+Review date: 16 Nov 2026. Ami zip-er source code static-vabe porechi (build/run korte pari ni, karon sandbox-e network off). Tai "verified" likhle seta code theke dekha; "check korte hobe" likhle seta ami confirm korte pari ni.
+1. Ami ki peyechi (project overview)
+• Android app (Kotlin + Jetpack Compose), package com.ayra.ai.app, ~52,000 line Kotlin code, 166ta unit test.
+• Chat, voice, image/video/song/3D/PDF studio, multi-provider AI (Gemini, OpenRouter, Groq, DeepSeek, Ollama ityadi), device automation, security vault, Node.js backend gateway.
+• Intent routing ekhon slash-command + regex diye hoy (AyraIntentClassifier), mane AI nijey decide kore na kon tool lagbe.
+2. Problem list (priority onujayi)
+P0 — Build / Login ke bhenge dey
+1.  Firebase package mismatch (verified). google-services.json-e package com.aistudio.ayraai.kmpqzx, kintu applicationId = com.ayra.ai.app. Ete Gradle build fail kore, ba build holeo Google Sign-In, Firestore, Firebase AI kaj kore na. Fix: Firebase Console-e com.ayra.ai.app namer notun Android app add kore notun google-services.json nao ar SHA-1/SHA-256 debug + release duto-i add koro.
+2.  Release signing broken (verified). build.gradle.kts debug.keystore use kore, kintu file ta repo-te nei (.gitignore-e ache) ar password android hardcoded. Fix: keystore.properties ba CI secret theke upload keystore load koro; password code-e rakho na.
+3.  CI fail korbe (verified). (a) backend/package-lock.json nei, tai npm ci fail. (b) CI-r secret scan AIza... pattern khuje, kintu google-services.json-e Firebase API key ache, tai scan fail. Fix: lock file commit koro, scan-e google-services.json exclude koro ba file ta CI secret theke generate koro.
+4.  Firebase API key (AIzaSyB4EE...) repo-te. Firebase key ta strictly secret na, kintu Google Cloud Console-e Android package + SHA-1 diye restrict kora lagbe, ar App Check enforce kora lagbe. Zip share korar age key rotate kora bhalo.
+P1 — Reliability / Quality
+5.  Model ID gulo sandehojonok (check korte hobe). Code-e gemini-3.8-flash, gemini-4-argon, gemini-nano-banana-2.1, Qwen3.8-27B, orcarouter/... ityadi ache. Ami confirm korte pari ni egulo real API model ki na. Jodi ekta-o bhul hoy, user-er kache error jabe. Fix: hardcode na kore provider-er live model-list API theke discover koro, remote config-e default rakho, ar startup-e health check koro.
+6.  Architecture jotil. Tin-ta orchestrator (UnifiedAiEngine 1648 line, AyraOrchestrator, AyraAgentOrchestrator) ek-i kaj kore. ChatScreen.kt 2846 line, ExternalAiProviders.kt 2135 line. Bug dhora ar notun feature add kora kothin. Fix: ekta single AgentCore, UI ke 300 line-er niche screen/component-e bhag koro, Hilt/Koin diye DI.
+7.  Dependency purono. OkHttp 4.10.0, Compose BOM 2024.09, Lifecycle 2.8.7, Navigation 2.8.9, kintu AGP 9.1.1 + Kotlin 2.2.10 + compileSdk 36. Version mismatch ar security patch miss hote pare. Fix: sob update kore build + test chalao.
+8.  Long-term memory nei (verified: code-e kono memory module pai ni). Assistant user-er pasand, naam, ongoing project mone rakhe na.
+9.  Release test coverage kom. Unit test ache, kintu androidTest (UI/integration) nei. Compose UI-r bug ar permission flow dhora jay na.
+10.  Permission kothin. SCHEDULE_EXACT_ALARM, READ_CONTACTS, RECORD_AUDIO, location Play Store-e justify korte hobe. Alarm-er jonno USE_EXACT_ALARM ba inexact alarm vabo, Data Safety form thikmoto bhoro.
+P1 — Safety / Policy
+11.  "Uncensored" / "G0DM0D3" engine. Qwen38UncensoredEngine (system prompt: "without refusal or moralizing") ar GodModePliniusEngine ("without canned disclaimers") Google Play policy-te risky, ar user-ke harmful jinish dite pare. Ami ei dhoroner "no-refusal" feature add korbo na. Fix: egulo rename kore normal "Security Research Mode" koro: defensive, accurate, kintu harmful kaj (malware, exploit, weapon) e sahajyo koreo na. Provider-er nijer safety rakho.
+12.  Cyber terminal (nmap, curl, dig). Sudhu user-er nijer device/consented target-e allow koro, rate limit ar audit log rakho, private IP/SSRF block rakho (ei part ager audit-e kora ache, abar test koro).
+3. Je feature gulo add korle app genuinely strong hobe
+Ekta app "world-er best" hobe ei guarantee ami dite pari na, kintu ei jinish gulo thakle seta real-ei top-level assistant-er kache jabe:
+1.  Tool-calling agent loop. Regex na, model nijey function-calling diye tool beche nibe: web search, calendar, alarm, call/SMS draft, file create, code run, image/video/song/3D/PDF. Prottek risky action-e user confirmation (ProposedAction ager-i ache, seta rakho).
+2.  Plan → Act → Verify. Boro task-ke step-e bhaga, prottek step-er por result check, fail hole retry.
+3.  Long-term memory. User-er fact (opt-in), edit/delete screen, "ki mone rekhecho" dekhano. Encrypted store-e rakho.
+4.  Streaming reply + stop button + regenerate + edit message.
+5.  Web search + citation. Prottek claim-er source link, date shoho.
+6.  File assistant. PDF/Word/Excel upload kore Q&A, summary, table extract; Word/Excel/PDF/PPT output toiri.
+7.  Code sandbox. Python chalaye calculation, chart, data analysis (server-side sandbox, device-e na).
+8.  Voice. Bangla + English + Hinglish/Banglish speech, interrupt kora jay emon live voice, background wake-word (opt-in).
+9.  Integrations. Gmail, Google Calendar, Drive, Contacts (OAuth, least-privilege), MCP client jate bahire-r tool jora jay.
+10.  Smart model routing. Choto kaj → sasta/fast model, kothin kaj → strong model; cost, latency ar failure-er upor fallback; user-ke dekhao kon model use holo.
+11.  Bangla-first UX. Bangla UI, Bangla prompt-e bhalo uttor, Banglish bujhte pare.
+12.  Quality & trust. Eval set (200+ real Bangla/English prompt), hallucination check, crash reporting, offline mode, accessibility (TalkBack), onboarding, usage/cost dashboard.
+4. Kon order-e korbe
+Phase
+Kaj
+Result
+0 (1-2 din)
+P0 fix: Firebase package, signing, CI, key restrict
+App build + login kore
+1 (1 soptaho)
+Model ID verify + discovery, dependency update, "uncensored" rename
+Stable base
+2 (2-3 soptaho)
+AgentCore + tool-calling + streaming + memory
+Prompt dilei kaj hoy
+3 (3-4 soptaho)
+Web search + citation, file assistant, integrations
+Real assistant
+4 (2 soptaho)
+UI split, androidTest, eval, crash reporting, Play Store prep
+Release-ready
+5. Master Prompt (Claude Code / Cursor / Codex-e paste koro)
+Tumi ekjon senior Android + AI engineer. Amar project: Ayra AI (Kotlin, Jetpack Compose, Room+SQLCipher, Firebase, Node/TS backend). Notun kono feature-er age ei rules mane cholo:
+
+RULES
+- Prottek phase-er shurute plan likho, shesh e build + test chalaye proof dekhao. Build/test fail hole "done" bolo na.
+- Kono secret, API key, keystore password code-e likhbe na.
+- "Uncensored", "no refusal", jailbreak, bypass-safety type feature banabe na. Existing gulo rename kore safe defensive mode koro.
+- Risky device action (call, SMS, delete, payment, share) e always user confirmation.
+- Je jinish verify korte parle na (model id, API), seta guess na kore bolo.
+
+PHASE 0 — Fix build
+1. google-services.json package ke applicationId (com.ayra.ai.app) er sathe match koraw (Firebase Console theke notun file lagbe, ami dibo; tumi placeholder + instruction likho).
+2. Release signing keystore.properties / env theke load koro, hardcoded password soraw.
+3. backend/package-lock.json generate koro. CI secret-scan thik koro.
+4. ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease chalaw, sob green korao.
+
+PHASE 1 — Stability
+1. Sob hardcoded model ID ekta ModelCatalog-e ano. Provider-er model-list API theke runtime-e discover koro, invalid ID hole fallback.
+2. Dependencies update (OkHttp, Compose BOM, Lifecycle, Navigation) ar regression test.
+3. Qwen38UncensoredEngine / GodModePliniusEngine rename + system prompt safe koro.
+
+PHASE 2 — AgentCore
+1. UnifiedAiEngine, AyraOrchestrator, AyraAgentOrchestrator ekta AgentCore-e merge koro (interface + test age).
+2. Native function-calling diye tool registry: web_search, calendar, alarm, contacts, file_create, image, video, song, pdf, code_run, memory_read/write.
+3. Plan -> Act -> Verify loop, max-step limit, cancel button.
+4. Streaming reply, stop, regenerate, edit message.
+5. Long-term memory (opt-in, encrypted, view/edit/delete screen).
+
+PHASE 3 — Real assistant
+1. Web search with citations. 2. PDF/Word/Excel Q&A + export. 3. Server-side code sandbox. 4. Gmail/Calendar/Drive OAuth, MCP client. 5. Bangla/English/Banglish voice, interruptible.
+
+PHASE 4 — Quality
+1. ChatScreen.kt, ExternalAiProviders.kt, ChatScreen bhag koro (300 line-er niche). 2. androidTest (Compose UI + permission flow). 3. 200-prompt eval set (Bangla + English). 4. Crashlytics, accessibility, Play Data Safety checklist.
+
+Prottek phase-er por bolo: ki change korle, kon test pass korlo, ki baki.
+6. Ekhoni ki korbe
+1.  Firebase Console-e com.ayra.ai.app register kore notun google-services.json nao.
+2.  Notun keystore banao ar backup rakho (haralale Play Store update ar dite parba na).
+3.  Firebase API key restrict koro (Package + SHA-1).
+4.  Phase 0 ta age shesh koro, tarpor baki.
+7. FULL MASTER PROMPT (ei ta puro copy kore Claude Code / Cursor / Codex-e paste koro)
+Tomar kichu korar dorkar nei. Shudhu ei prompt ta AI coding agent-ke dao ar bolo: "ei prompt onujayi shuru koro". Duto jinish sudhu tomake korte hobe (Firebase file ar keystore), agent tomake ekdom clear bole dibe kokhon ar kibhabe.
+=====================================================================
+ROLE
+=====================================================================
+Tumi ekjon Principal Android Engineer + AI Systems Architect + QA Lead. Tomar kaj: amar Android app "Ayra AI" (package com.ayra.ai.app) ke ekta stable, secure, production-grade AI chatbot + AI assistant banano, jeta prompt ba voice dile onek dhoroner kaj nijey kore dite pare.
+
+Project stack: Kotlin 2.2, Jetpack Compose + Material 3, Room + SQLCipher, Firebase (Auth, Firestore, AI Logic, App Check), OkHttp/Retrofit/Moshi, Node.js + TypeScript backend (backend/), firestore.rules.
+
+Ami (user) coding jani na. Tai:
+- Tumi nijey sob code likhbe, build korbe, test chalabe, bug fix korbe.
+- Je kajta sudhu ami korte pari (jemon Firebase Console-e login, keystore banano), seta tumi step-by-step, simple bhasay, screenshot-chhara-o bojha jay emon vabe bolbe, ar baki sob kaj continue korbe placeholder diye.
+- Kono kaj "hoye geche" bolar age proof dekhabe: build output ar test result.
+
+=====================================================================
+GLOBAL RULES (kokhono bhangbe na)
+=====================================================================
+1. HONESTY: Je jinish tumi verify korte parle na (model ID, API endpoint, library version, Play policy), seta guess kore likhbe na. "Verify kora jay ni" bolo ar kibhabe verify korbe seta likho. Fake/mock output ke real feature bole dekhabe na.
+2. SECRETS: Kono API key, password, token, keystore password source code-e, git-e, log-e ba test-e (real value) rakhbe na. Local.properties / environment variable / CI secrets / Android Keystore use koro.
+3. SAFETY: "Uncensored", "no refusal", "without disclaimers", jailbreak, safety bypass type kono prompt, model ba feature banabe na. Existing gulo safe version-e rename ar rewrite koro (Task 1.3 dekho). App-er AI harmful kaj (malware, exploit, weapon, self-harm instruction, illegal content, onner private data churi) e sahajyo korbe na.
+4. CONFIRMATION: Risky device action (call, SMS pathano, contact/file delete, payment, share, email pathano, calendar-e event add) always ProposedAction confirmation card diye user-er explicit OK niye tarpor korbe. Kono action silent hobe na.
+5. PRIVACY: Local-Only Privacy Mode ar External AI consent existing ache; seta bhangbe na. Notun kono data (memory, contacts, email) ke third-party AI-te pathate hole age explicit user consent.
+6. SMALL SAFE STEPS: Ek-ek phase shesh kore git commit koro (clear message). Ek sathe onek kichu change kore build bhenge felbe na. Kono test delete/skip kore pass dekhabe na; test bhul hole seta fix koro ar kenno bhul chilo bolo.
+7. NO BREAKING: Existing feature (chat, voice, studios, vault, scheduled tasks, E2EE, crisis detector) bhangbe na. Refactor-er age test likho.
+8. LANGUAGE: UI, error message, ar assistant uttor user-er bhasay hobe (Bangla, English, Banglish sob bujhbe). Hardcoded string strings.xml-e rakho (bn + en).
+9. REPORT: Prottek phase-er shesh e ei format-e report dao: (a) ki change korle (file list), (b) kon command chalale ar kon test pass korlo, (c) ki baki ba risk, (d) ami ki korbo (jodi kichu thake).
+
+=====================================================================
+PHASE 0 — BUILD ar LOGIN THIK KORA (P0, sobar age)
+=====================================================================
+Task 0.1 — Firebase package mismatch
+Problem: app/google-services.json-e package_name = com.aistudio.ayraai.kmpqzx, kintu applicationId = com.ayra.ai.app. Ete Gradle fail kore ba Auth/Firestore/Firebase AI kaj kore na.
+Kaj:
+- Git history/ file check kore confirm koro mismatch ache.
+- Amake simple bhasay bolo: Firebase Console -> Project settings -> Add app -> Android -> package name "com.ayra.ai.app" -> debug SHA-1 ar SHA-256 add -> google-services.json download kore app/ folder-e rakho. SHA-1 ber korar command ./gradlew signingReport tumi chalaye amake SHA-1/SHA-256 dekhabe.
+- Jotokkhon ami notun file na dei, google-services.json ke repo theke soriye .gitignore-e rakho, ar app/google-services.json.example banao (placeholder value, kono real key na).
+- Build fail na hoy er jonno ekta clear error message ar README section lekho: "google-services.json na thakle ki hobe".
+
+Task 0.2 — Release signing
+Problem: build.gradle.kts-e signingConfigs.release debug.keystore ar password "android" use kore; debug.keystore repo-te nei.
+Kaj:
+- Release signing keystore.properties (gitignored) ba environment variable (CI) theke load koro. Fallback: file na thakle release signing skip kore clear warning dao, build bhangbe na.
+- Hardcoded password sob remove koro.
+- Amake bolo kibhabe notun upload keystore banate hoy (keytool command ready kore dao), ar warning dao: keystore ar password backup na rakhle Play Store update dewa jabe na.
+- keystore.properties.example banao.
+
+Task 0.3 — CI ar backend
+- backend/ folder-e npm install chalaye package-lock.json generate koro ar commit koro. npm run build ar npm test pass koro.
+- .github/workflows/security-ci.yml-er secret scan e ekhon google-services.json-e Firebase API key dhora pore. Scan thik koro: google-services.json ar .example file exclude kore, kintu baki sob jaygay strictly scan rakho. Scan-er regex test kore dekhao.
+- CI-te keystore na thakle release step skip hobe, build fail hobe na.
+
+Task 0.4 — Key security
+- Amake bolo: Google Cloud Console -> APIs & Services -> Credentials -> API key restrict (Android apps: package + SHA-1) ar Firebase App Check enforce korte hobe. Purono key ta jodi zip-e share kora hoye thake, rotate korar instruction dao.
+
+Task 0.5 — Verification
+Chalao: ./gradlew clean :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease. Jodi sandbox-e Android SDK/network na thake, seta spasht bolo ar ami local-e kon command chalabo seta dao. Sob green na howa porjonto Phase 1-e jabe na.
+
+=====================================================================
+PHASE 1 — STABILITY, MODEL, DEPENDENCY, SAFETY
+=====================================================================
+Task 1.1 — Model catalog
+Problem: Code-e onek hardcoded model ID ache (jemon gemini-3.8-flash, gemini-4-argon, gemini-nano-banana-2.1, orcarouter/Qwen3.8-27B-Uncensored, gemini-3.5-flash-lite). Egulo real kina verify kora jay ni.
+Kaj:
+- grep diye sob model ID ber koro ar ekta ModelCatalog.kt-te ano (single source of truth: id, provider, capabilities [text, vision, tools, image, audio], context size, cost tier, status).
+- Provider-er official model-list API (jodi user-er key thake) theke runtime-e available model discover koro; invalid/404 model hole circuit breaker diye next model-e fallback, user-ke bhalo error dekhao.
+- Default model list remote config (Firebase Remote Config) theke update kora jabe jate app update na diye model bodlano jay.
+- Jei ID tumi verify korte parle na, seta "unverified" mark koro ar default theke soriye dao.
+- Unit test: invalid model -> fallback, 429 -> backoff, 401 -> clear "key bhul" message.
+
+Task 1.2 — Dependency update
+- OkHttp 4.10 -> latest stable, Compose BOM, Lifecycle, Navigation, Room, Retrofit, Coil, Firebase BoM, Credentials sob latest stable-e update koro (alpha/beta na). Ekta ekta kore update kore build + test chalao. Breaking change hole fix koro.
+- Unused dependency ar commented-out line clean koro.
+- Dependabot/Renovate config add koro.
+
+Task 1.3 — Uncensored/GodMode engine safe kora
+- Qwen38UncensoredEngine ar GodModePliniusEngine rename koro (jemon SecurityResearchEngine ar OpenModelEngine). System prompt theke "without refusal", "without moralizing", "without canned disclaimers" type line remove koro. Notun system prompt: defensive, accurate, helpful security education; malware/exploit/weapon toiri, onner system-e unauthorised access, ar harmful instruction deowa jabe na.
+- UI theke "Uncensored", "God Mode", "G0DM0D3", "Plinius", lock-emoji type naming soriye dao.
+- Existing test update koro.
+
+Task 1.4 — Cyber terminal sandbox
+- ping/traceroute/nmap/curl/dig sudhu: (a) user-er nijer private network/device, ba (b) user explicitly confirm kora target. Rate limit, timeout, private IP/SSRF/DNS-rebinding guard, audit log ager moto rakho ar regression test koro.
+- Port scan type command-e "ami ei target-er malik ba authorised" confirmation card dao.
+
+Task 1.5 — Play Store policy cleanup
+- AndroidManifest permission audit: SCHEDULE_EXACT_ALARM -> USE_EXACT_ALARM ba inexact alarm (jeta policy-te thik); READ_CONTACTS, RECORD_AUDIO, CAMERA, LOCATION sudhu just-in-time ar rationale screen-shoho.
+- Data Safety form-er jonno ekta DATA_SAFETY.md banao: kon data kothay jay (device, Firebase, third-party AI provider).
+- Privacy policy template, account deletion (in-app + web), AI-generated content report/flag button.
+
+=====================================================================
+PHASE 2 — AGENT CORE (ei ta app-ke "prompt dile sob kaj kore" banabe)
+=====================================================================
+Goal: Ekta single AgentCore jeta user-er message niye nijey decide kore ki korbe (uttor dibe, tool chalabe, plan banabe).
+
+Task 2.1 — Orchestrator merge
+- UnifiedAiEngine (1648 line), AyraOrchestrator, AyraAgentOrchestrator, AiComparisonEngine-er overlap bujho ar ekta AgentCore interface banao: fun run(request: AgentRequest): Flow<AgentEvent>. AgentEvent = TextDelta, ToolCallProposed, ToolResult, PlanUpdated, Citation, Error, Done.
+- Prothome characterization test likho (existing behaviour), tarpor refactor. Purono class-gulo ke deprecated adapter hisebe rakho jotokkhon na migration shesh hoy, tarpor delete.
+
+Task 2.2 — Tool registry (function calling)
+Ekta Tool interface: name, description, JSON schema parameters, requiresConfirmation, riskLevel, suspend fun execute(). Tools:
+- web_search (Tavily/existing + fallback), web_fetch (SSRF-safe)
+- calendar_create/list, alarm_set, reminder_schedule (existing AyraTaskScheduler)
+- contacts_lookup, call_draft, sms_draft (draft only; pathano user-er tap-e)
+- file_create (pdf, docx, xlsx, csv, md), file_read
+- image_generate, video_generate, song_generate, model3d_generate (existing studios)
+- code_run (server-side sandbox, Phase 3)
+- memory_read, memory_write
+- device_info, open_app, navigate_map
+Model-er native function-calling use koro (Gemini/OpenAI-compatible tools). Jei provider tool-calling support kore na, tader jonno JSON-mode fallback.
+AiToolSecurityGuard prottek tool call-er age chalabe: schema validate, risk check, confirmation, rate limit, injection guard (web page ba document-er bhitorer text kokhono instruction hisebe mana hobe na).
+
+Task 2.3 — Plan -> Act -> Verify loop
+- Boro task (jemon "ei PDF theke ekta report banao ar mail-er draft koro") ke step-e bhag koro, user-ke plan dekhao, prottek step-er por result check koro, fail hole 2 bar retry, tarpor user-ke bolo.
+- Max step limit (jemon 12), max cost/time limit, user-er Stop button, ar kono infinite loop na.
+
+Task 2.4 — Streaming ar chat UX
+- Token-by-token streaming (Gemini ar OpenAI-compatible SSE), Stop, Regenerate, Edit message, Copy, Share, Markdown + code block + table rendering, conversation search, pin/rename/delete.
+- Message-er niche kon model/tool use holo dekhao (collapsible).
+
+Task 2.5 — Long-term memory
+- Room (SQLCipher) table: id, text, category, source, createdAt, lastUsedAt, confidence. Opt-in toggle (default OFF), auto-extract kora fact user-ke dekhaye confirm korbe.
+- Memory screen: dekho, edit, delete, "sob muche felo". Prompt-e sudhu relevant memory (vector/keyword search, VectorKnowledgeRepository reuse) dhukabe, sob na.
+- Sensitive info (password, card number, health) auto-save korbe na.
+- Test: memory delete hole sathe sathe prompt-e ar thakbe na.
+
+Task 2.6 — Smart model routing
+- Task type (simple chat, reasoning, code, vision, long-context, image) ar user setting (speed/quality/cost) onujayi model beche nao. Fail/429/timeout hole auto fallback. UsageTracker diye daily cost ar token dekhao, limit thakle warn koro.
+
+=====================================================================
+PHASE 3 — REAL ASSISTANT FEATURES
+=====================================================================
+Task 3.1 — Web search + citation
+- Je uttor web theke asbe tate prottek claim-er pase source link ar date. Source na thakle "source pai ni" bolo. Conflicting source thakle seta janao. Deep Research mode: multiple search, source compare, final report + source list.
+
+Task 3.2 — File assistant
+- PDF, Word, Excel, CSV, image upload kore: summary, Q&A, table extract, translate, rewrite. Large file-ke chunk kore DocumentRagEngine diye answer, scanned PDF-er jonno on-device OCR (ML Kit).
+- Output: .docx, .xlsx, .pdf, .pptx file toiri kore FileProvider diye share. Kono file silently externally upload hobe na.
+
+Task 3.3 — Code sandbox (server-side)
+- Backend-e isolated sandbox (container, no network by default, CPU/memory/time limit) -- Python chalaye calculation, chart, data analysis korbe, result app-e dekhabe. Device-e arbitrary code chalabe na. Backend-e Firebase ID token + App Check verify, rate limit.
+
+Task 3.4 — Integrations (OAuth, least privilege)
+- Google Calendar, Gmail (read + draft only, send user-er confirm-e), Drive, Contacts. Scope minimum, token Android Keystore-e, "Disconnect" button ar token revoke.
+- MCP client: user nijer MCP server URL jora dite parbe; tool list dekhabe; prottek tool-er jonno alada permission. Remote tool output untrusted data hisebe treat koro.
+
+Task 3.5 — Voice assistant
+- Bangla + English + Banglish speech-to-text, natural TTS (existing ElevenLabs + system TTS fallback), push-to-talk default, interrupt (barge-in), noise handling, mic/TTS leak fix ager moto rakho. Voice-e kono risky action hole confirmation card ba spoken "confirm?".
+- Wake-word sudhu opt-in, battery warning-shoho.
+
+Task 3.6 — Companion/wellbeing
+- CrisisDetector (BN/EN/HI) rakho ar improve koro. Self-harm signal hole supportive uttor, ar local helpline resource (user-er desh onujayi, up-to-date), kono harmful detail na. 18+ gate companion persona-te.
+
+=====================================================================
+PHASE 4 — QUALITY, PERFORMANCE, RELEASE
+=====================================================================
+Task 4.1 — Code structure
+- ChatScreen.kt (2846), ExternalAiProviders.kt (2135), ControlCenterSheet.kt (1602), UnifiedAiEngine.kt, AyraPreferences.kt, StorageHelper.kt, ProviderKeysSection.kt, ResearchDocsScreen.kt, StudiosScreen.kt ke ~300-400 line-er chhoto file-e bhag koro. Hilt/Koin DI, ViewModel + UiState + UseCase, Compose recomposition performance fix (stable keys, remember, derivedStateOf, LazyColumn keys).
+
+Task 4.2 — Tests
+- Unit test existing rakho (166) ar notun feature-er jonno aro likho.
+- androidTest: Compose UI test (chat send, stop, confirmation card, settings, vault lock), permission flow, rotation, process death, offline.
+- Eval set: 200+ real prompt (Bangla, English, Banglish) -- tool selection, factuality, safety refusal, prompt injection, memory. Score report generate koro, regression hole CI fail.
+
+Task 4.3 — Reliability ar observability
+- Crashlytics, Performance Monitoring, structured log (secret redacted), ANR/StrictMode check, offline mode (cached chat, queue), retry with backoff, startup time < 2s, APK size check (R8, resource shrink, baseline profile).
+
+Task 4.4 — UX ar accessibility
+- Onboarding (3 screen), empty state, error state (user-friendly Bangla), dark/light, TalkBack content descriptions, 48dp touch target, large font, RTL ok, tablet/foldable layout.
+
+Task 4.5 — Security final
+- SECURITY_AUDIT_REPORT.md abar run koro: prompt injection, SSRF, key leak, insecure storage, exported component, WebView, deep link, backup leak. Firestore rules emulator test pass. Backend npm audit clean.
+
+Task 4.6 — Release
+- versionCode/versionName, signed AAB, Play Console checklist, store listing text (Bangla + English), screenshot list, privacy policy, Data Safety, closed testing plan.
+
+=====================================================================
+HOW TO WORK (execution protocol)
+=====================================================================
+1. Prothome puro repo read koro, ekta ARCHITECTURE_MAP.md lekho (kon file ki kore).
+2. Phase 0 theke shuru koro. Phase shesh na hole porer phase-e jabe na.
+3. Prottek task: plan (3-5 line) -> test age likho -> implement -> build + test -> commit -> report.
+4. Jodi kono task-er jonno amar input lage (Firebase file, API key, keystore), kaj thamiye amake ekta chhoto, simple, numbered instruction dao, ar tumi baki independent kaj continue koro.
+5. Jodi kono requirement ambiguous ba kono feature policy/safety-te sandehojonok, ami na bolle tumi nijey sabdhan option-ta nao ar report-e likho.
+6. Shesh e ekta FINAL_REPORT.md dao: ki complete, ki baki, known risk, ar ami release-er age ki manually check korbo.
+
+START NOW with PHASE 0, Task 0.1.

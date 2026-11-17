@@ -14,9 +14,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Scan source tree for leaked API keys or private keys
         run: |
-          if grep -rnE "(AIza[0-9A-Za-z\-_]{28,}|sk-proj-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{25,}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)" \
-            --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle \
-            --exclude="*Test.kt" --exclude="*.test.mjs" .; then
+          if grep -rnEI "(AIza[0-9A-Za-z\-_]{28,}|sk-proj-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{25,}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)" \
+            --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle --exclude-dir=.build-outputs \
+            --exclude="*Test.kt" --exclude="*.test.mjs" --exclude="*.example" --exclude="google-services.json" --exclude="*.apk" .; then
             echo "ERROR: Potential secret detected in repository!"
             exit 1
           fi

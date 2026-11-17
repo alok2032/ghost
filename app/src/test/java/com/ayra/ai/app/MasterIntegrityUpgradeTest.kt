@@ -14,7 +14,7 @@ import com.ayra.ai.app.ai.code.GeneratedProjectFile
 import com.ayra.ai.app.ai.code.ProjectWorkspaceManager
 import com.ayra.ai.app.ai.providers.ChatRequest
 import com.ayra.ai.app.ai.providers.ProviderPool
-import com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine
+import com.ayra.ai.app.ai.openmodel.OpenModelEngine
 import com.ayra.ai.app.ai.rag.DocumentRagEngine
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
@@ -61,15 +61,15 @@ class MasterIntegrityUpgradeTest {
     }
 
     @Test
-    fun testQwenTestConnectionRejects404AndAccepts200Or401() = runBlocking {
-        val qwen = Qwen38UncensoredEngine(context)
+    fun testOpenModelTestConnectionRejects404AndAccepts200Or401() = runBlocking {
+        val openModel = OpenModelEngine(context)
 
         // All 3 probe paths (/api/tags, /v1/models, /) return 404 -> must throw
         repeat(3) { server.enqueue(MockResponse().setResponseCode(404).setBody("Not Found")) }
         val baseUrl = server.url("/").toString().trimEnd('/')
         var failed404 = false
         try {
-            qwen.testConnection(baseUrl)
+            openModel.testConnection(baseUrl)
         } catch (_: Exception) {
             failed404 = true
         }
@@ -77,13 +77,13 @@ class MasterIntegrityUpgradeTest {
 
         // /api/tags returns 200 -> succeeds cleanly
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"models":[]}"""))
-        val latency200 = qwen.testConnection(baseUrl)
+        val latency200 = openModel.testConnection(baseUrl)
         assertTrue(latency200 >= 1L)
 
         // /api/tags 404, /v1/models returns 401 auth challenge -> accepted
         server.enqueue(MockResponse().setResponseCode(404))
         server.enqueue(MockResponse().setResponseCode(401).setBody("Unauthorized"))
-        val latency401 = qwen.testConnection(baseUrl)
+        val latency401 = openModel.testConnection(baseUrl)
         assertTrue(latency401 >= 1L)
     }
 
@@ -297,8 +297,8 @@ class MasterIntegrityUpgradeTest {
         AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
         AyraPreferences.setExternalAiConsent(context, false)
         try {
-            val plinius = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context)
-            val grounding = plinius.buildSecurityGrounding("Analyze CVE-2024-12345 and OWASP top 10")
+            val secEngine = com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context)
+            val grounding = secEngine.buildSecurityGrounding("Analyze CVE-2024-12345 and OWASP top 10")
             assertFalse("Local-Only mode must skip external CVE lookup", grounding.contains("[LIVE CVE INTEL"))
             assertTrue("Local offline OWASP handbook still grounds cleanly", grounding.contains("[OWASP SECURITY REFERENCE]"))
 

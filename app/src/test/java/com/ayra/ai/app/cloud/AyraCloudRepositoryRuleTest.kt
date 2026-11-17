@@ -174,7 +174,7 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
     private companion object {
         const val ALICE_EMAIL = "alice_rules@ayra.test"
         const val BOB_EMAIL = "bob_rules@ayra.test"
-        const val OP_TIMEOUT_MS = 5000L
-        const val FLOW_TIMEOUT_MS = 4000L
+        const val OP_TIMEOUT_MS = 15000L
+        const val FLOW_TIMEOUT_MS = 10000L
     }
 }

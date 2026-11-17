@@ -123,7 +123,7 @@ fun ProjectsAndAssistantsScreen(
                         iconEmoji = "🛡️",
                         systemPrompt = "Act as a Zero-Trust Security & Network Engineer specializing in OWASP, CVE triage, TLS/cryptography, and Tor/I2P network internals.",
                         personaStyle = "CRITICAL",
-                        defaultModelTier = "godmode",
+                        defaultModelTier = "security_research",
                         thinkingMode = "deep_analysis",
                         isBuiltInPreset = true
                     ),
@@ -414,7 +414,7 @@ private fun ProjectEditorDialog(
                 OutlinedTextField(value = instructions, onValueChange = { instructions = it }, label = { Text("Project Custom Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = memoryNotes, onValueChange = { memoryNotes = it }, label = { Text("Project Memory Notes / Specs") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto", "gemini_pro", "omniroute", "deepseek_harness", "qwen_uncensored").forEach { t ->
+                    listOf("auto", "gemini_pro", "omniroute", "deepseek_harness", "open_weights").forEach { t ->
                         FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 11.sp) })
                     }
                 }
@@ -478,7 +478,7 @@ private fun AssistantEditorDialog(
                 }
                 Text("Default Tier:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto", "omniroute", "gemini_pro", "gemini_flash", "deepseek_harness", "llama_3_3", "qwen_uncensored", "godmode").forEach { t ->
+                    listOf("auto", "omniroute", "gemini_pro", "gemini_flash", "deepseek_harness", "llama_3_3", "open_weights", "security_research").forEach { t ->
                         FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 10.sp) })
                     }
                 }

@@ -244,4 +244,49 @@ class CyberTerminalAndRegistryTest {
         outDir.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun cyberTerminalEnforcesAuthorizationGateRateLimitAndAuditLog() {
+        CyberTerminalEngine.resetRateLimiterForTesting()
+        com.ayra.ai.app.security.SecurityAuditLogger.clearAll(context)
+
+        // Unconfirmed non-loopback probe must be blocked & audited when userAuthorizedTarget = false
+        val blocked = CyberTerminalEngine.executeCommand(
+            rawInput = "curl -I https://example.com",
+            context = context,
+            userAuthorizedTarget = false
+        )
+        assertTrue(blocked.isError)
+        assertTrue(blocked.output.contains("authorization confirmation required", ignoreCase = true))
+
+        // Read-only / local sandbox commands don't require target probe confirmation
+        assertFalse(CyberTerminalEngine.requiresAuthorizationConfirmation("owasp top10"))
+        assertFalse(CyberTerminalEngine.requiresAuthorizationConfirmation("ping localhost"))
+        assertTrue(CyberTerminalEngine.requiresAuthorizationConfirmation("curl -I https://example.com"))
+
+        // Rate limiter trips cleanly after MAX_PROBES_PER_MINUTE
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ok"))
+        val okProbe = CyberTerminalEngine.executeCommand(
+            rawInput = "headers ${server.url("/test").toString()}",
+            context = context,
+            httpClientOverride = OkHttpClient(),
+            userAuthorizedTarget = true,
+            enforceRateLimit = true
+        )
+        assertFalse(okProbe.isError)
+
+        repeat(CyberTerminalEngine.MAX_PROBES_PER_MINUTE - 1) {
+            assertTrue(CyberTerminalEngine.checkAndRecordProbeRateLimit())
+        }
+        val throttled = CyberTerminalEngine.executeCommand(
+            rawInput = "headers https://example.com",
+            context = context,
+            userAuthorizedTarget = true,
+            enforceRateLimit = true
+        )
+        assertTrue(throttled.isError)
+        assertTrue(throttled.output.contains("Rate limit exceeded", ignoreCase = true))
+        assertTrue(com.ayra.ai.app.security.SecurityAuditLogger.events.value.isNotEmpty())
+        CyberTerminalEngine.resetRateLimiterForTesting()
+    }
 }

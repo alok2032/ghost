@@ -151,6 +151,23 @@ class GoogleAuthManager(
         auth.signOut()
     }
 
+    suspend fun deleteCurrentAccount(): Result<Unit> {
+        val user = auth.currentUser ?: return Result.success(Unit)
+        return try {
+            user.delete().awaitResult()
+            runCatching {
+                credentialManager.clearCredentialState(ClearCredentialStateRequest())
+            }
+            auth.signOut()
+            Result.success(Unit)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Firebase account deletion failed", e)
+            Result.failure(e)
+        }
+    }
+
     companion object {
         private const val TAG = "GoogleAuthManager"
     }

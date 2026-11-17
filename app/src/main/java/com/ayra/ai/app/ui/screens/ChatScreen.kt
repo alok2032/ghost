@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
@@ -212,6 +213,9 @@ fun ChatScreen(
     var showControlCenterSheet by remember { mutableStateOf(false) }
     var showSessionsSheet by remember { mutableStateOf(false) }
     var isFallbackVoiceMode by remember { mutableStateOf(false) }
+    var pendingPermissionRationale by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var flaggingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var flagReasonInput by remember { mutableStateOf("Inaccurate or unsafe response") }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var expandedImageUri by remember { mutableStateOf<String?>(null) }
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -837,6 +841,12 @@ fun ChatScreen(
                                         dispatchPrompt("Continue from where you stopped and expand concisely:\n\n${msg.content.takeLast(500)}")
                                     }
                                 },
+                                onFlag = if (msg.role != "user") {
+                                    {
+                                        flagReasonInput = "Inaccurate or misleading"
+                                        flaggingMessage = msg
+                                    }
+                                } else null,
                                 onRunPluginPrompt = { pluginPrompt ->
                                     dispatchPrompt(pluginPrompt)
                                 }
@@ -1102,7 +1112,7 @@ fun ChatScreen(
                         Manifest.permission.RECORD_AUDIO
                     ) == PackageManager.PERMISSION_GRANTED
                     if (!hasRecord) {
-                        audioRecordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        pendingPermissionRationale = "audio_transcribe" to "Ayra needs microphone access solely while recording your voice note for transcription."
                     } else if (!isRecordingAudio) {
                         audioCaptureManager.startRecording().onFailure { err ->
                             Toast.makeText(context, "Could not start recording: ${err.localizedMessage}", Toast.LENGTH_SHORT).show()
@@ -1143,7 +1153,7 @@ fun ChatScreen(
                     ) == PackageManager.PERMISSION_GRANTED
 
                     if (!hasRecord) {
-                        voiceCommandPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        pendingPermissionRationale = "voice_cmd" to "Ayra uses microphone access only when you tap the mic for hands-free voice commands."
                     } else if (isFallbackVoiceMode && isRecordingAudio) {
                         audioCaptureManager.cancelRecording()
                         isFallbackVoiceMode = false
@@ -1234,7 +1244,7 @@ fun ChatScreen(
                                         fontSize = 16.sp
                                     )
                                     Text(
-                                        text = "OmniRoute • DeepSeek • Higgsfield • Qwen • G0DM0D3",
+                                        text = "OmniRoute • DeepSeek • Higgsfield • Open-Weights • Security Lab",
                                         color = TextSecondary,
                                         fontSize = 10.sp
                                     )
@@ -1279,7 +1289,7 @@ fun ChatScreen(
                                             Toast.makeText(context, "Camera launch failed: ${e.localizedMessage ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
                                         }
                                     } else {
-                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        pendingPermissionRationale = "camera" to "Ayra uses your camera only when you choose to take a photo for multimodal visual analysis."
                                     }
                                 }
                                 .padding(12.dp)
@@ -1405,7 +1415,7 @@ fun ChatScreen(
                             }
                         }
 
-                        // 6. Qwen 3.8 27B Uncensored
+                        // 6. Open-Weights Studio
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -1415,21 +1425,21 @@ fun ChatScreen(
                                 .border(1.dp, Color(0xFFFF5722).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    viewModel.setModelTier("qwen_uncensored")
-                                    aiEngine.selectedModelTier = "qwen_uncensored"
-                                    viewModel.updateInputText("Qwen Uncensored: কোনো অস্বীকৃতি ছাড়া সরাসরি সত্য ও বিস্তারিত উত্তর দাও")
+                                    viewModel.setModelTier("open_weights")
+                                    aiEngine.selectedModelTier = "open_weights"
+                                    viewModel.updateInputText("Open-Weights Studio: স্পষ্ট ও বিস্তারিত প্রযুক্তিগত বিশ্লেষণ দাও")
                                 }
                                 .padding(12.dp)
                         ) {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFF5722), modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text("Qwen 3.8 27B Uncensored 🔓", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
-                                Text("লেয়ার-৩৮ অর্থোগোনাল ডি-সেন্সর্ড মডেল — জিরো রিফিউজাল", color = TextSecondary, fontSize = 10.5.sp)
+                                Text("Open-Weights Studio 🌐", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text("ওপেন-ওয়েটস লোকাল ও ক্লাউড মডেল — কাস্টম কোড ও গবেষণা", color = TextSecondary, fontSize = 10.5.sp)
                             }
                         }
 
-                        // 7. G0DM0D3 Plinius Defensive Lab
+                        // 7. Defensive Security Research Mode
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -1439,17 +1449,17 @@ fun ChatScreen(
                                 .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    viewModel.setModelTier("godmode")
-                                    aiEngine.selectedModelTier = "godmode"
-                                    viewModel.updateInputText("G0DM0D3: ডিপ সাইবার ডিফেন্স, রিভার্স ইঞ্জিনিয়ারিং ও ভালনারেবিলিটি অডিট")
+                                    viewModel.setModelTier("security_research")
+                                    aiEngine.selectedModelTier = "security_research"
+                                    viewModel.updateInputText("Security Research: ডিফেন্সিভ সাইবার সিকিউরিটি, OWASP এবং ভালনারেবিলিটি অডিট")
                                 }
                                 .padding(12.dp)
                         ) {
                             Icon(Icons.Default.Code, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text("G0DM0D3 Plinius Uncensored 🧬", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
-                                Text("অবাধ সাইবার সিকিউরিটি, রিভার্স ইঞ্জিনিয়ারিং ও সিস্টেম অডিট", color = TextSecondary, fontSize = 10.5.sp)
+                                Text("Security Research Mode 🛡️", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text("ডিফেন্সিভ সাইবার সিকিউরিটি, CVE বিশ্লেষণ এবং সিস্টেম অডিট", color = TextSecondary, fontSize = 10.5.sp)
                             }
                         }
 
@@ -1839,6 +1849,87 @@ fun ChatScreen(
             )
         }
 
+        pendingPermissionRationale?.let { (permType, explanation) ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { pendingPermissionRationale = null },
+                title = { Text("Permission Rationale", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                text = { Text(explanation, color = TextSecondary) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            pendingPermissionRationale = null
+                            when (permType) {
+                                "audio_transcribe" -> audioRecordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                "voice_cmd" -> voiceCommandPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                "camera" -> cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        modifier = Modifier.testTag("permission_rationale_continue_button")
+                    ) {
+                        Text("Continue", color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { pendingPermissionRationale = null }) {
+                        Text("Not Now", color = TextSecondary)
+                    }
+                },
+                containerColor = Color(0xFF1E293B)
+            )
+        }
+
+        flaggingMessage?.let { targetMsg ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { flaggingMessage = null },
+                title = { Text("Report AI Response", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Help improve Ayra's safety and accuracy by logging this response for review (never uploaded without consent).",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                        OutlinedTextField(
+                            value = flagReasonInput,
+                            onValueChange = { flagReasonInput = it },
+                            label = { Text("Reason") },
+                            singleLine = false,
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth().testTag("flag_reason_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            val snippet = targetMsg.content.take(80).replace("\n", " ")
+                            com.ayra.ai.app.security.SecurityAuditLogger.log(
+                                context = context,
+                                category = com.ayra.ai.app.security.SecurityAuditCategory.AI_POLICY,
+                                severity = com.ayra.ai.app.security.SecurityAuditSeverity.WARN,
+                                message = "AI response flagged [msg=${targetMsg.id}, reason=${flagReasonInput.trim()}]: $snippet"
+                            )
+                            flaggingMessage = null
+                            Toast.makeText(
+                                context,
+                                "Response flagged in Audit Log. Thank you!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        modifier = Modifier.testTag("flag_confirm_button")
+                    ) {
+                        Text("Submit Report", color = NeonRose, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { flaggingMessage = null }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                },
+                containerColor = Color(0xFF1E293B)
+            )
+        }
+
         if (showKeyOnboarding) {
             val keySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
@@ -2061,6 +2152,7 @@ private fun GlassMessageBubble(
     onEdit: (String) -> Unit,
     onRegenerate: (() -> Unit)? = null,
     onContinue: (() -> Unit)? = null,
+    onFlag: (() -> Unit)? = null,
     onRunPluginPrompt: (String) -> Unit = {}
 ) {
     val isUser = message.role == "user"
@@ -2386,6 +2478,11 @@ private fun GlassMessageBubble(
                         if (onContinue != null) {
                             IconButton(onClick = onContinue, modifier = Modifier.size(48.dp).testTag("continue_message_button")) {
                                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Continue Response", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                            }
+                        }
+                        if (onFlag != null) {
+                            IconButton(onClick = onFlag, modifier = Modifier.size(48.dp).testTag("flag_message_button")) {
+                                Icon(Icons.Default.Flag, contentDescription = "Report AI Response", tint = NeonRose.copy(alpha = 0.85f), modifier = Modifier.size(17.dp))
                             }
                         }
                     }

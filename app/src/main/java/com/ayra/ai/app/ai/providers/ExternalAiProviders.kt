@@ -75,10 +75,17 @@ enum class AiRoutingMode(val id: String, val title: String, val icon: String, va
     BEST_QUALITY("quality", "Best Quality", "👑", "Multi-AI consensus synthesis across frontier reasoning models"),
     FAST("fast", "Ultra Fast", "🚀", "Lowest-latency streaming specialist model for the query"),
     REASONING("reasoning", "Deep Reasoning", "🧠", "Deliberate step-by-step math, science & logic verification"),
-    CODING("coding", "Software & Coding", "💻", "Full-stack coding ensemble (GLM 5.3, Gemini 4 Argon, MiniMax M3.1, Qwen Coder)"),
+    CODING("coding", "Software & Coding", "💻", "Full-stack coding ensemble across verified Frontier & Open-Weights models"),
     PRIVACY_LOCAL("local", "Private / Local LAN", "🏠", "Private local LLM endpoint running on your LAN/Ollama"),
     COST_EFFICIENT("cost", "Cost Efficient / Free", "🌱", "Fast zero/low-cost cloud models and Global Free AI Pool"),
-    QWEN_UNCENSORED("qwen_uncensored", "Qwen 3.8 Uncensored", "🔓", "Direct unrestricted answers via Qwen 3.8 / OpenRouter / NIM")
+    OPEN_WEIGHTS("open_weights", "Open-Weights Engine", "🌐", "Direct objective answers via local Ollama or OpenRouter / Groq open-weights models");
+
+    companion object {
+        fun fromId(raw: String): AiRoutingMode {
+            val clean = if (raw.equals("qwen_uncensored", ignoreCase = true)) "open_weights" else raw
+            return entries.firstOrNull { it.id.equals(clean, ignoreCase = true) } ?: AUTO
+        }
+    }
 }
 
 data class ProviderResponse(
@@ -93,9 +100,11 @@ sealed class ProviderError(val displayMessage: String) : Exception(displayMessag
     class NoKeyConfigured(provider: AiProviderType) :
         ProviderError("No API key configured for ${provider.displayName}. Tap Settings -> Keys to configure.")
     class RateLimited(message: String) :
-        ProviderError("Provider rate limit reached (HTTP 429). Falling back to alternate AI...")
+        ProviderError("Provider rate limit reached (HTTP 429). Please retry shortly or switch provider.")
     class Unauthorized(provider: AiProviderType) :
         ProviderError("Invalid or unauthorized API key for ${provider.displayName}. Please check Settings -> Keys.")
+    class ModelNotFound(val provider: AiProviderType, val modelId: String, details: String = "") :
+        ProviderError("Model '$modelId' unavailable on ${provider.displayName} (HTTP 404). ${details.take(120)}")
     class ServerError(code: Int, message: String) :
         ProviderError("Remote server error (HTTP $code): $message")
     class Timeout(message: String = "Request timed out while waiting for model inference.") :
@@ -277,9 +286,9 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiModelInfo("qwen/qwen-2.5-72b-instruct", "Qwen 2.5 72B Instruct 🐉", AiProviderType.OPENROUTER, "Multilingual STEM & reasoning", "128k tokens", false, false, false),
             AiModelInfo("qwen/qwen-2.5-coder-32b-instruct", "Qwen 2.5 Coder 32B 💻", AiProviderType.OPENROUTER, "Coding and bug-fixing specialist", "128k tokens", false, false, false),
 
-            // Local Ollama & Qwen 3.8 Uncensored
-            AiModelInfo("orcarouter/Qwen3.8-27B-Uncensored:q4_k_m", "Qwen 3.8 27B Uncensored 🔓", AiProviderType.LOCAL_OLLAMA, "Local/LAN abliterated Qwen weights", "32k+ tokens", false, true, true),
-            AiModelInfo("llama3.3", "Local Ollama / LM Studio 🏠", AiProviderType.LOCAL_OLLAMA, "Zero-cloud local LLM on your LAN", "8k+ tokens", false, false, false),
+            // Local Ollama & Open-Weights
+            AiModelInfo("qwen2.5:14b", "Local Ollama Qwen 2.5 14B 🌐", AiProviderType.LOCAL_OLLAMA, "Local/LAN open-weights Qwen model", "32k tokens", false, true, false),
+            AiModelInfo("llama3.3", "Local Ollama / LM Studio 🏠", AiProviderType.LOCAL_OLLAMA, "Zero-cloud local LLM on your LAN", "32k tokens", false, false, true),
 
             // Global Free AI Pool (Expanded Specialists)
             AiModelInfo("openai", "Global Free AI Pool (GPT/OSS) 🌐", AiProviderType.POLLINATIONS_FREE, "Keyless free cloud AI fallback & ensemble backup", "32k tokens", false, false, false),
@@ -742,6 +751,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         }
 
         // 1. If explicit provider preferred and configured, try it first
+        var lastCriticalError: ProviderError? = null
+
         if (preferredProvider == AiProviderType.OMNI_ROUTE) {
             try {
                 val omniEngine = context?.let { com.ayra.ai.app.ai.omniroute.OmniRouteEngine(it) }
@@ -756,6 +767,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                         )
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {}
         } else if (preferredProvider != null) {
             if (allowExternalWikiGrounding) {
@@ -764,38 +777,73 @@ class ExternalAiProviders @JvmOverloads constructor(
                     throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ayra Zero-Trust policy.")
                 }
             }
-            val model = preferredModelId ?: getDefaultModelForProvider(preferredProvider)
-            val key = getKeyForProviderAndModel(preferredProvider, model)
+            val initialModel = preferredModelId ?: (ModelCatalog.defaultModelFor(preferredProvider)?.id ?: getDefaultModelForProvider(preferredProvider))
+            val key = getKeyForProviderAndModel(preferredProvider, initialModel)
             if ((key.isNotBlank() || preferredProvider == AiProviderType.LOCAL_OLLAMA || preferredProvider == AiProviderType.POLLINATIONS_FREE) &&
                 circuitBreaker.canExecute(preferredProvider)
             ) {
-                try {
-                    val callStart = System.currentTimeMillis()
-                    val resultText = callSpecificProvider(preferredProvider, model, turns, key, withSearchGrounding)
-                    val callLatency = (System.currentTimeMillis() - callStart).coerceAtLeast(1L)
-                    if (resultText.isNotBlank()) {
-                        AiUsageTracker.recordCall(context, preferredProvider, true, callLatency)
-                        circuitBreaker.recordSuccess(preferredProvider)
-                        if (imageBase64 == null && history.isNullOrEmpty()) {
-                            circuitBreaker.putCachedResponse(cacheKey, resultText)
+                val triedModels = mutableSetOf<String>()
+                var candidateModel: String? = initialModel
+                var rateLimitRetries = 0
+                while (candidateModel != null && triedModels.size < 3) {
+                    val activeModel = candidateModel ?: break
+                    triedModels.add(activeModel)
+                    try {
+                        val callStart = System.currentTimeMillis()
+                        val resultText = callSpecificProvider(preferredProvider, activeModel, turns, key, withSearchGrounding)
+                        val callLatency = (System.currentTimeMillis() - callStart).coerceAtLeast(1L)
+                        if (resultText.isNotBlank()) {
+                            AiUsageTracker.recordCall(context, preferredProvider, true, callLatency)
+                            circuitBreaker.recordSuccess(preferredProvider)
+                            if (imageBase64 == null && history.isNullOrEmpty()) {
+                                circuitBreaker.putCachedResponse(cacheKey, resultText)
+                            }
+                            return@withContext ProviderResponse(
+                                text = resultText,
+                                modelUsed = "${preferredProvider.displayName} ($activeModel)",
+                                provider = preferredProvider,
+                                latencyMs = System.currentTimeMillis() - startTime
+                            )
                         }
-                        return@withContext ProviderResponse(
-                            text = resultText,
-                            modelUsed = "${preferredProvider.displayName} ($model)",
-                            provider = preferredProvider,
-                            latencyMs = System.currentTimeMillis() - startTime
-                        )
-                    }
-                } catch (e: Exception) {
-                    AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
-                    if (e is ProviderError.Unauthorized || preferredModelId == null) {
+                        candidateModel = null
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: ProviderError.ModelNotFound) {
+                        AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
+                        ModelCatalog.markModelUnavailable(preferredProvider, activeModel, 404, e.displayMessage)
+                        candidateModel = ModelCatalog.nextFallbackModel(preferredProvider, activeModel)
+                            ?.takeIf { it !in triedModels }
+                        if (candidateModel == null) {
+                            lastCriticalError = e
+                        }
+                    } catch (e: ProviderError.RateLimited) {
+                        AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
+                        lastCriticalError = e
+                        if (rateLimitRetries < 2) {
+                            rateLimitRetries++
+                            kotlinx.coroutines.delay(if (customHttpClient != null) 25L * rateLimitRetries else 300L * rateLimitRetries)
+                            triedModels.remove(activeModel)
+                        } else {
+                            circuitBreaker.recordFailure(preferredProvider)
+                            candidateModel = null
+                        }
+                    } catch (e: ProviderError.Unauthorized) {
+                        AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
                         circuitBreaker.recordFailure(preferredProvider)
+                        lastCriticalError = e
+                        candidateModel = null
+                    } catch (e: Exception) {
+                        AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
+                        if (preferredModelId == null) {
+                            circuitBreaker.recordFailure(preferredProvider)
+                        }
+                        candidateModel = null
                     }
                 }
             }
         }
 
-        // 2. Specialist Channel Auto-Router across Gemini, NVIDIA NIM (all 4 models), Groq, Cerebras, SambaNova, OpenRouter, etc.
+        // 2. Specialist Channel Auto-Router across configured providers
         val channels = getActiveChannels(hasImage = !imageBase64.isNullOrBlank())
         for (channel in channels) {
             val chStart = System.currentTimeMillis()
@@ -816,6 +864,34 @@ class ExternalAiProviders @JvmOverloads constructor(
                         latencyMs = System.currentTimeMillis() - startTime
                     )
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: ProviderError.ModelNotFound) {
+                AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
+                ModelCatalog.markModelUnavailable(channel.provider, channel.modelId, 404, e.displayMessage)
+                circuitBreaker.recordChannelFailure(channel.id)
+                val fallbackId = ModelCatalog.nextFallbackModel(channel.provider, channel.modelId)
+                if (fallbackId != null) {
+                    runCatching {
+                        val fbText = callSpecificProvider(channel.provider, fallbackId, turns, resolveChannelKey(channel, context), withSearchGrounding)
+                        if (fbText.isNotBlank()) {
+                            return@withContext ProviderResponse(
+                                text = fbText,
+                                modelUsed = "${channel.provider.displayName} ($fallbackId)",
+                                provider = channel.provider,
+                                latencyMs = System.currentTimeMillis() - startTime
+                            )
+                        }
+                    }
+                }
+            } catch (e: ProviderError.Unauthorized) {
+                AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
+                circuitBreaker.recordChannelFailure(channel.id)
+                if (lastCriticalError == null) lastCriticalError = e
+            } catch (e: ProviderError.RateLimited) {
+                AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
+                circuitBreaker.recordChannelFailure(channel.id)
+                if (lastCriticalError == null) lastCriticalError = e
             } catch (_: Exception) {
                 AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
                 circuitBreaker.recordChannelFailure(channel.id)
@@ -840,9 +916,14 @@ class ExternalAiProviders @JvmOverloads constructor(
                         latencyMs = System.currentTimeMillis() - startTime
                     )
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
 
+        if (lastCriticalError != null) {
+            throw lastCriticalError
+        }
         throw ProviderError.NetworkFailure("All AI providers are currently unreachable. Please check your internet connection or API keys in Settings.")
     }
 
@@ -1357,8 +1438,17 @@ class ExternalAiProviders @JvmOverloads constructor(
         return resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
+            if (response.code == 404) {
+                val errBody = response.body?.string() ?: ""
+                throw ProviderError.ModelNotFound(provider, model, errBody)
+            }
             if (!response.isSuccessful) {
                 val errBody = response.body?.string() ?: ""
+                if (errBody.contains("model_not_found", ignoreCase = true) ||
+                    errBody.contains("does not exist", ignoreCase = true)
+                ) {
+                    throw ProviderError.ModelNotFound(provider, model, errBody)
+                }
                 throw ProviderError.ServerError(response.code, errBody.ifBlank { response.message })
             }
 
@@ -1429,6 +1519,10 @@ class ExternalAiProviders @JvmOverloads constructor(
         resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
+            if (response.code == 404) {
+                val err = response.body?.string() ?: response.message
+                throw ProviderError.ModelNotFound(provider, model, err)
+            }
             if (!response.isSuccessful) {
                 val err = response.body?.string() ?: response.message
                 throw ProviderError.ServerError(response.code, err.ifBlank { response.message })
@@ -1923,14 +2017,13 @@ class ExternalAiProviders @JvmOverloads constructor(
                 configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MINIMAX_MODEL)
                 else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_LITE_MODEL)
             }
-            AiRoutingMode.QWEN_UNCENSORED -> when {
-                configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "orcarouter/Qwen3.8-27B-Uncensored:q4_k_m")
+            AiRoutingMode.OPEN_WEIGHTS -> when {
+                configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: "qwen2.5:14b")
                 configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-72b-instruct")
                 configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, HF_QWEN_MODEL)
                 configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, GROQ_QWEN_MODEL)
                 configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, CEREBRAS_QWEN_MODEL)
                 configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, SAMBANOVA_QWEN_MODEL)
-                configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, NVIDIA_MUSE_MODEL)
                 else -> Pair(AiProviderType.GEMINI, GEMINI_FLASH_MODEL)
             }
             AiRoutingMode.AUTO -> {
@@ -2069,6 +2162,7 @@ class ExternalAiProviders @JvmOverloads constructor(
 
         if (discovered.isNotEmpty()) {
             dynamicModelCache[provider] = discovered
+            ModelCatalog.registerLiveDiscoveredModels(provider, discovered)
             discovered
         } else {
             CURATED_MODELS.filter { it.provider == provider }

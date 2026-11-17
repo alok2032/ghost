@@ -613,14 +613,20 @@ fun SecurityCenterScreen(
                         showErasureDialog = false
                         scope.launch {
                             val report = DataErasureManager.performCompleteCryptographicErasure(context, includeCloudPurge = true)
-                            erasureReportNote = "Vault wiped (${report.wipedVaultFiles} files, ${report.deletedCloudDocuments} cloud docs). ${report.honestHardwareDisclosure}"
+                            val authDeleteRes = com.ayra.ai.app.cloud.GoogleAuthManager(context).deleteCurrentAccount()
+                            val accountNote = if (authDeleteRes.isSuccess) {
+                                "Firebase account & credential session cleared."
+                            } else {
+                                "Cloud documents erased; re-sign-in may be needed to permanently delete Firebase Auth user (${authDeleteRes.exceptionOrNull()?.localizedMessage ?: "auth check"})."
+                            }
+                            erasureReportNote = "Vault wiped (${report.wipedVaultFiles} files, ${report.deletedCloudDocuments} cloud docs). $accountNote ${report.honestHardwareDisclosure}"
                             refreshAllState()
                             onVaultWiped()
                         }
                     },
                     modifier = Modifier.heightIn(min = 48.dp).testTag("erasure_confirm_execute_button").rejectObscuredTouches()
                 ) {
-                    Text("Erase Forever")
+                    Text("Delete Account & Erase")
                 }
             },
             dismissButton = {

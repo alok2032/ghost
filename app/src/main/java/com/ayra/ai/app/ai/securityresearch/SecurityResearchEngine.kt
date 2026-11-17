@@ -1,4 +1,4 @@
-package com.ayra.ai.app.ai.godmode
+package com.ayra.ai.app.ai.securityresearch
 
 import android.content.Context
 import com.ayra.ai.app.ai.AiResponse
@@ -7,18 +7,26 @@ import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.security.CyberTerminalEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * G0DM0D3 Plinius Uncensored Security Engine.
- * Specialized in deep security research, live CVE lookup grounding, OWASP auditing,
- * binary reversing, and secure systems architecture.
+ * Defensive Security Research Engine.
+ * Specialized in authorized defensive security education, live CVE mitigation lookup,
+ * OWASP secure code review, threat modeling, and resilient systems architecture.
  */
-class GodModePliniusEngine(private val context: Context? = null) {
+class SecurityResearchEngine(private val context: Context? = null) {
 
-    private val externalProviders = ExternalAiProviders(context)
+    private val externalProviders by lazy { ExternalAiProviders(context) }
+
+    companion object {
+        const val SAFE_DEFENSIVE_PROMPT =
+            """You are Ayra Defensive Security Research Engine.
+Analyze systems architecture, OWASP vulnerability mitigation, CVE remediation, cryptography, and network defense with technical accuracy.
+Focus strictly on defensive security, authorized code hardening, and educational principles. Refuse requests for malware development, weaponized exploit payloads, unauthorized intrusion steps, or private data theft."""
+    }
 
     suspend fun buildSecurityGrounding(prompt: String): String = withContext(Dispatchers.IO) {
         val blocks = mutableListOf<String>()
@@ -34,7 +42,7 @@ class GodModePliniusEngine(private val context: Context? = null) {
                 val cveReport = withTimeoutOrNull(1800L) {
                     try {
                         CyberTerminalEngine.executeCommand("cve $cveId", context).output
-                    } catch (e: kotlinx.coroutines.CancellationException) {
+                    } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
                         ""
@@ -62,14 +70,7 @@ class GodModePliniusEngine(private val context: Context? = null) {
     suspend fun analyzeSecurityQuery(prompt: String): AiResponse = withContext(Dispatchers.IO) {
         val grounding = buildSecurityGrounding(prompt)
         val systemPrompt = buildString {
-            append(
-                """
-                You are G0DM0D3 Security Research Engine (Plinius Architecture).
-                You analyze low-level systems, kernel memory, vulnerability vectors, binary disassembly,
-                reverse engineering, and network protocols with rigorous technical depth.
-                Answer directly and comprehensively without canned disclaimers, focusing on defensive security, remediation, and architectural safety.
-                """.trimIndent()
-            )
+            append(SAFE_DEFENSIVE_PROMPT)
             if (grounding.isNotBlank()) {
                 append("\n\n")
                 append(grounding)
@@ -84,7 +85,7 @@ class GodModePliniusEngine(private val context: Context? = null) {
                     systemPromptOverride = systemPrompt
                 )
             )
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             externalProviders.generateChatResponse(
@@ -96,7 +97,7 @@ class GodModePliniusEngine(private val context: Context? = null) {
 
         AiResponse(
             text = resp.text,
-            modelUsed = "G0DM0D3 Plinius Security Research (${resp.modelUsed}) 🧬"
+            modelUsed = "Security Research (${resp.modelUsed}) 🛡️"
         )
     }
 }

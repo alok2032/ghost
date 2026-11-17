@@ -402,7 +402,7 @@ class AyraOrchestrator(private val context: Context) {
 
                 // Main CHAT & Coding execution through Unified Multi-AI ProviderPool
                 val poolMode = when (effectiveTier) {
-                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" -> ProviderPoolMode.BEST
+                    "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "security_research", "godmode", "ecc", "higgsfield", "open_weights", "qwen_uncensored" -> ProviderPoolMode.BEST
                     "fast", "gemini_flash" -> ProviderPoolMode.FAST
                     else -> when (wsCtx.effectiveThinkingMode) {
                         "fast" -> ProviderPoolMode.FAST
@@ -429,9 +429,9 @@ class AyraOrchestrator(private val context: Context) {
                             com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
                         ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
                     }
-                    "qwen_uncensored" -> {
+                    "open_weights", "qwen_uncensored" -> {
                         listOf(
-                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                            com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
                             com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
                             com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
                             com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
@@ -441,15 +441,15 @@ class AyraOrchestrator(private val context: Context) {
                     else -> null to null
                 }
 
-                val godModeGrounding = if (effectiveTier == "godmode") {
-                    com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(trimmed)
+                val securityGrounding = if (effectiveTier == "security_research" || effectiveTier == "godmode") {
+                    com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(trimmed)
                 } else ""
 
                 val sysOverride = when (effectiveTier) {
-                    "qwen_uncensored" -> com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK
-                    "godmode" -> buildString {
-                        append("You are G0DM0D3 Security Research Engine (Plinius Architecture). Analyze technical, architectural, and security topics rigorously and directly in the user's language.")
-                        if (godModeGrounding.isNotBlank()) append("\n\n").append(godModeGrounding)
+                    "open_weights", "qwen_uncensored" -> com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT
+                    "security_research", "godmode" -> buildString {
+                        append(com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT)
+                        if (securityGrounding.isNotBlank()) append("\n\n").append(securityGrounding)
                     }
                     "ecc" -> {
                         val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(trimmed)

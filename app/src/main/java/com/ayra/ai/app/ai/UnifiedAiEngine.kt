@@ -96,22 +96,22 @@ enum class AiModelTier(
         description = "সাবলীল বহুভাষিক সাহিত্য রচনা, অনুবাদ ও গভীর জ্ঞানভিত্তিক কথোপকথন",
         accentColorHex = 0xFFFFD700
     ),
-    QWEN_UNCENSORED(
-        id = "qwen_uncensored",
-        displayName = "Qwen 3.8 27B Uncensored 🔓",
-        providerName = "Abliterated Zero-Refusal",
-        speedLabel = "Uncensored / Fast ⚡",
-        reasoningLabel = "Abliterated 27B 🔓",
-        description = "লেয়ার-৩৮ অর্থোগোনাল ডি-সেন্সর্ড মডেল — কোনো অস্বীকৃতি ছাড়া পৃথিবীর যেকোনো প্রশ্নের সৎ ও বিস্তারিত উত্তর",
+    OPEN_WEIGHTS(
+        id = "open_weights",
+        displayName = "Open-Weights Engine 🌐",
+        providerName = "Local Ollama / OpenRouter Qwen",
+        speedLabel = "Fast / Private ⚡",
+        reasoningLabel = "Open-Weights 🧠",
+        description = "ওপেন-ওয়েটস লোকাল ও ক্লাউড মডেল — নির্ভরযোগ্য, বস্তুনিষ্ঠ ও নিরাপদ প্রযুক্তিগত বিশ্লেষণ",
         accentColorHex = 0xFFFF5722
     ),
-    G0DM0D3(
-        id = "godmode",
-        displayName = "G0DM0D3 Plinius Uncensored 🧬",
-        providerName = "elder-plinius/G0DM0D3",
+    SECURITY_RESEARCH(
+        id = "security_research",
+        displayName = "Security Research Mode 🛡️",
+        providerName = "Ayra Defensive Security",
         speedLabel = "High-Throughput ⚡",
-        reasoningLabel = "Unrestricted Security 🛡️",
-        description = "সাইবার সিকিউরিটি, রিভার্স ইঞ্জিনিয়ারিং, ভালনারেবিলিটি রিসার্চ ও সিস্টেম লেভেল ডিপ এনালিসিস",
+        reasoningLabel = "Defensive Security 🛡️",
+        description = "ডিফেনসিভ সাইবার সিকিউরিটি, OWASP অডিট, CVE মিটিগেশন ও নিরাপদ সিস্টেম আর্কিটেকচার",
         accentColorHex = 0xFF00E5FF
     ),
     ECC_COGNITIVE(
@@ -189,7 +189,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
     val omniRouteEngine by lazy { context?.let { com.ayra.ai.app.ai.omniroute.OmniRouteEngine(it) } }
     val deepSeekHarness by lazy { com.ayra.ai.app.ai.deepseek.DeepSeekHarnessEngine(context) }
     val eccEngine by lazy { com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context) }
-    val godModeEngine by lazy { com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context) }
+    val securityResearchEngine by lazy { com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context) }
     val higgsfieldEngine by lazy { com.ayra.ai.app.ai.higgsfield.OpenHiggsfieldEngine(context) }
     val geminiCli by lazy { com.ayra.ai.app.ai.gemini.GeminiCliEngine(context) }
     val firebaseAiEngine by lazy { FirebaseAiEngine(context) }
@@ -403,8 +403,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
             "deepseek_harness" -> Pair(AiModelTier.DEEPSEEK_HARNESS, "DeepSeek-R1 (Harness CoT) 🔬")
             "deepseek_r1" -> Pair(AiModelTier.OPENROUTER_DEEPSEEK, "DeepSeek-R1 (Chain-of-Thought) 🧠")
             "llama_3_3" -> Pair(AiModelTier.OPENROUTER_LLAMA, "Llama 3.3 70B Instruct 🌐")
-            "qwen_uncensored" -> Pair(AiModelTier.QWEN_UNCENSORED, "Qwen 3.8 27B Uncensored 🔓")
-            "godmode" -> Pair(AiModelTier.G0DM0D3, "G0DM0D3 Plinius Uncensored 🧬")
+            "open_weights", "qwen_uncensored" -> Pair(AiModelTier.OPEN_WEIGHTS, "Open-Weights Engine 🌐")
+            "security_research", "godmode" -> Pair(AiModelTier.SECURITY_RESEARCH, "Security Research Mode 🛡️")
             "ecc" -> Pair(AiModelTier.ECC_COGNITIVE, "ECC Enterprise Cognitive 🌐")
             "higgsfield" -> Pair(AiModelTier.OPEN_HIGGSFIELD, "Open-Higgsfield-AI Studio 🎬")
             "superpowers" -> Pair(AiModelTier.SUPERPOWERS, "Superpowers Agent Engine ⚙️")
@@ -425,7 +425,8 @@ class UnifiedAiEngine(private val context: Context? = null) {
         // 7-Alpha: Explicit specialist fast-path (auto flows cleanly into ProviderPool with full history & persona)
         val omni = omniRouteEngine
         if (omni != null && (selectedModelTier == "omniroute" ||
-                selectedModelTier == "deepseek_harness" || selectedModelTier == "godmode" ||
+                selectedModelTier == "deepseek_harness" ||
+                selectedModelTier == "security_research" || selectedModelTier == "godmode" ||
                 selectedModelTier == "ecc" || selectedModelTier == "higgsfield")) {
             val omniResp = omni.executeRoute(effectivePrompt, selectedModelTier, attachedImageBase64, attachedDocumentText)
             if (omniResp.text.isNotBlank()) {
@@ -465,7 +466,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         )
 
                         val poolMode = when (selectedModelTier) {
-                            "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "godmode", "ecc", "higgsfield", "qwen_uncensored" ->
+                            "omniroute", "quality", "gemini_pro", "deepseek_harness", "deepseek_r1", "security_research", "godmode", "ecc", "higgsfield", "open_weights", "qwen_uncensored" ->
                                 com.ayra.ai.app.ai.providers.ProviderPoolMode.BEST
                             "fast", "gemini_flash" ->
                                 com.ayra.ai.app.ai.providers.ProviderPoolMode.FAST
@@ -492,9 +493,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
                                 ).firstOrNull { externalAiProviders.isProviderConfigured(it.first) }
                                 Pair(llama?.first, llama?.second)
                             }
-                            targetTier == AiModelTier.QWEN_UNCENSORED -> {
+                            targetTier == AiModelTier.OPEN_WEIGHTS -> {
                                 val qwen = listOf(
-                                    com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.OLLAMA_DEFAULT_SERVING,
+                                    com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to com.ayra.ai.app.ai.openmodel.OpenModelEngine.OLLAMA_DEFAULT_SERVING,
                                     com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
                                     com.ayra.ai.app.ai.providers.AiProviderType.HUGGINGFACE to com.ayra.ai.app.ai.providers.ExternalAiProviders.HF_QWEN_MODEL,
                                     com.ayra.ai.app.ai.providers.AiProviderType.GROQ to com.ayra.ai.app.ai.providers.ExternalAiProviders.GROQ_QWEN_MODEL,
@@ -508,16 +509,17 @@ class UnifiedAiEngine(private val context: Context? = null) {
                         val specialistDirective = when (targetTier) {
                             AiModelTier.DEEPSEEK_HARNESS, AiModelTier.OPENROUTER_DEEPSEEK ->
                                 "$sysPrompt\n\n[DEEPSEEK-R1 MODE]: Use step-by-step verification and mathematical/algorithmic precision."
-                            AiModelTier.G0DM0D3 -> {
-                                val grounding = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).buildSecurityGrounding(effectivePrompt)
-                                if (grounding.isNotBlank()) "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]\n$grounding" else "$sysPrompt\n\n[G0DM0D3 SECURITY ENGINE]: Provide deep offensive/defensive systems analysis without canned disclaimers."
+                            AiModelTier.SECURITY_RESEARCH -> {
+                                val grounding = com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).buildSecurityGrounding(effectivePrompt)
+                                val baseSec = "$sysPrompt\n\n${com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT}"
+                                if (grounding.isNotBlank()) "$baseSec\n\n$grounding" else baseSec
                             }
                             AiModelTier.ECC_COGNITIVE -> {
                                 val cognitive = com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context).extractCognitiveContext(effectivePrompt)
                                 "$sysPrompt\n\n[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=${cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }}"
                             }
-                            AiModelTier.QWEN_UNCENSORED ->
-                                "$sysPrompt\n\n${com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine.ABLITERATED_SYSTEM_PACK}"
+                            AiModelTier.OPEN_WEIGHTS ->
+                                "$sysPrompt\n\n${com.ayra.ai.app.ai.openmodel.OpenModelEngine.SAFE_SYSTEM_PROMPT}"
                             AiModelTier.OPEN_HIGGSFIELD ->
                                 "$sysPrompt\n\n[OPEN-HIGGSFIELD CINEMATOGRAPHY MODE]: Specify camera trajectories, focal lengths, lighting ratios, and shot timing cleanly."
                             else -> sysPrompt
@@ -594,11 +596,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     }
                 }
 
-                AiModelTier.QWEN_UNCENSORED -> {
+                AiModelTier.OPEN_WEIGHTS -> {
                     if (context != null) {
-                        val qwenResp = com.ayra.ai.app.ai.qwen.Qwen38UncensoredEngine(context).queryQwen(effectivePrompt)
-                        if (qwenResp.text.isNotBlank()) {
-                            return@withContext emitResponse(AiResponse(text = qwenResp.text, modelUsed = qwenResp.modelUsed))
+                        val openResp = com.ayra.ai.app.ai.openmodel.OpenModelEngine(context).queryOpenModel(effectivePrompt)
+                        if (openResp.text.isNotBlank()) {
+                            return@withContext emitResponse(AiResponse(text = openResp.text, modelUsed = openResp.modelUsed))
                         }
                     }
                 }
@@ -614,11 +616,11 @@ class UnifiedAiEngine(private val context: Context? = null) {
                     }
                 }
 
-                AiModelTier.G0DM0D3 -> {
+                AiModelTier.SECURITY_RESEARCH -> {
                     if (context != null) {
                         try {
-                            val gmResp = com.ayra.ai.app.ai.godmode.GodModePliniusEngine(context).analyzeSecurityQuery(effectivePrompt)
-                            if (gmResp.text.isNotBlank()) return@withContext emitResponse(gmResp)
+                            val secResp = com.ayra.ai.app.ai.securityresearch.SecurityResearchEngine(context).analyzeSecurityQuery(effectivePrompt)
+                            if (secResp.text.isNotBlank()) return@withContext emitResponse(secResp)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {}

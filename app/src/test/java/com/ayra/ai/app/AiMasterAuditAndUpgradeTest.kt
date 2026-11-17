@@ -94,8 +94,8 @@ class AiMasterAuditAndUpgradeTest {
         AyraPreferences.setSambaNovaKey(context, "")
 
         AyraPreferences.setHuggingFaceKey(context, "hf_test_routing_key")
-        val uncensoredRoute = providers.getOptimalModelForRoutingMode(AiRoutingMode.QWEN_UNCENSORED)
-        assertEquals(AiProviderType.HUGGINGFACE, uncensoredRoute.first)
+        val openWeightsRoute = providers.getOptimalModelForRoutingMode(AiRoutingMode.OPEN_WEIGHTS)
+        assertEquals(AiProviderType.HUGGINGFACE, openWeightsRoute.first)
         AyraPreferences.setHuggingFaceKey(context, "")
     }
 
@@ -132,8 +132,10 @@ class AiMasterAuditAndUpgradeTest {
         val omni = OmniRouteEngine(context)
         assertEquals("DEEPSEEK_HARNESS", omni.determineRoute("normal query", "deepseek_r1").selectedEngine)
         assertEquals("LLAMA_3_3", omni.determineRoute("normal query", "llama_3_3").selectedEngine)
-        assertEquals("QWEN_UNCENSORED", omni.determineRoute("normal query", "qwen_uncensored").selectedEngine)
-        assertEquals("G0DM0D3", omni.determineRoute("normal query", "godmode").selectedEngine)
+        assertEquals("OPEN_WEIGHTS", omni.determineRoute("normal query", "open_weights").selectedEngine)
+        assertEquals("OPEN_WEIGHTS", omni.determineRoute("normal query", "qwen_uncensored").selectedEngine)
+        assertEquals("SECURITY_RESEARCH", omni.determineRoute("normal query", "security_research").selectedEngine)
+        assertEquals("SECURITY_RESEARCH", omni.determineRoute("normal query", "godmode").selectedEngine)
         assertEquals("ECC", omni.determineRoute("normal query", "ecc").selectedEngine)
         assertEquals("HIGGSFIELD", omni.determineRoute("normal query", "higgsfield").selectedEngine)
         assertEquals("SUPERPOWERS", omni.determineRoute("normal query", "superpowers").selectedEngine)

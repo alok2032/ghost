@@ -23,14 +23,19 @@ firebase emulators:exec --project demo-no-project --only firestore,auth "./gradl
 ```bash
 ./gradlew :app:assembleDebug :app:assembleRelease
 ```
-> **Note for Play Store Distribution:** Release builds in this repository inherit `debug.keystore` from the template build config for local/container verification. Configure your dedicated Play App Signing / hardware-backed upload keystore in your CI release pipeline before publishing.
+> **Note for Play Store Distribution:** Release builds in this repository preserve the container's `debug.keystore` signing config (`signingConfigs.release`) so local/CI APKs build reproducibly. For Play Store distribution, generate a dedicated upload keystore (see `keystore.properties.example`), configure Play App Signing in your CI release pipeline, and back up your keystore & passwords securely.
 
-### 3. Firestore Rules Verification
+### 3. Firebase Configuration (`google-services.json`) & API Key Security
+- `app/google-services.json` is already aligned to `package_name = "com.ayra.ai.app"` (Firebase project `gen-lang-client-0643978985`).
+- If `app/google-services.json` is missing in a fresh clone, copy `app/google-services.json.example` to `app/google-services.json` only for placeholder builds, or download your real `google-services.json` from **Firebase Console -> Project settings -> Your apps -> Add app -> Android (`com.ayra.ai.app`)** with your debug and release SHA-1/SHA-256 certificates (`gradle :app:signingReport`).
+- **API Key Restriction:** In Google Cloud Console -> APIs & Services -> Credentials, restrict the Android API key to package `com.ayra.ai.app` + your SHA-1/SHA-256 signing fingerprints, and enforce **Firebase App Check**.
+
+### 4. Firestore Rules Verification
 ```bash
 firebase emulators:exec --project demo-no-project --only firestore "node --test firestore.test.js"
 ```
 
-### 4. Backend Build & Security Suite
+### 5. Backend Build & Security Suite
 ```bash
 npm --prefix backend ci
 npm --prefix backend run build
@@ -38,6 +43,7 @@ npm --prefix backend test
 ```
 
 ## Further Documentation
+- `ARCHITECTURE_MAP.md` — Complete codebase & module responsibility map
 - `SECURITY_ARCHITECTURE.md` — Key hierarchy, SQLCipher, E2EE, and zero-trust planes
 - `SECURITY_AUDIT_REPORT.md` — Complete findings & remediation matrix (`FINDING-01`..`FINDING-10`)
 - `AUDIT.md` — Chronological remediation log (`F01`..`F21`, Phases 0–21)

@@ -35,10 +35,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -85,17 +89,44 @@ fun CyberTerminalCard(
 
     val scope = rememberCoroutineScope()
     var isExecuting by remember { mutableStateOf(false) }
+    var pendingAuthorizedCmd by remember { mutableStateOf<String?>(null) }
+    var authChecked by remember { mutableStateOf(false) }
+
+    fun executeConfirmed(cmdToRun: String, authorized: Boolean) {
+        inputCmd = ""
+        isExecuting = true
+        scope.launch {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                CyberTerminalEngine.executeCommand(
+                    rawInput = cmdToRun,
+                    context = context,
+                    userAuthorizedTarget = authorized
+                )
+            }
+            history.add(result)
+            isExecuting = false
+        }
+    }
 
     // Execute initial command if provided
     LaunchedEffect(initialCommand) {
         if (!initialCommand.isNullOrBlank()) {
-            isExecuting = true
-            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                CyberTerminalEngine.executeCommand(initialCommand, context = context)
+            if (CyberTerminalEngine.requiresAuthorizationConfirmation(initialCommand)) {
+                authChecked = false
+                pendingAuthorizedCmd = initialCommand.trim()
+            } else {
+                isExecuting = true
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    CyberTerminalEngine.executeCommand(
+                        rawInput = initialCommand,
+                        context = context,
+                        userAuthorizedTarget = false
+                    )
+                }
+                history.add(result)
+                isExecuting = false
+                listState.animateScrollToItem(history.size - 1)
             }
-            history.add(result)
-            isExecuting = false
-            listState.animateScrollToItem(history.size - 1)
         }
     }
 
@@ -115,15 +146,13 @@ fun CyberTerminalCard(
             return
         }
 
-        inputCmd = ""
-        isExecuting = true
-        scope.launch {
-            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                CyberTerminalEngine.executeCommand(trimmed, context = context)
-            }
-            history.add(result)
-            isExecuting = false
+        if (CyberTerminalEngine.requiresAuthorizationConfirmation(trimmed)) {
+            authChecked = false
+            pendingAuthorizedCmd = trimmed
+            return
         }
+
+        executeConfirmed(trimmed, authorized = false)
     }
 
     LaunchedEffect(history.size) {
@@ -338,5 +367,67 @@ fun CyberTerminalCard(
                 }
             }
         }
+    }
+
+    pendingAuthorizedCmd?.let { cmdToConfirm ->
+        val host = CyberTerminalEngine.extractProbeTarget(cmdToConfirm) ?: "target"
+        AlertDialog(
+            onDismissRequest = { pendingAuthorizedCmd = null },
+            title = { Text("Authorize Network Probe", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Command: $cmdToConfirm\nTarget: $host\n\nAll probes are logged to the tamper-evident Audit Log (limit ${CyberTerminalEngine.MAX_PROBES_PER_MINUTE}/min).",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 12.sp
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { authChecked = !authChecked }
+                    ) {
+                        Checkbox(
+                            checked = authChecked,
+                            onCheckedChange = { authChecked = it },
+                            modifier = Modifier.testTag("cyber_auth_checkbox")
+                        )
+                        Text(
+                            text = "I am the owner / authorized to test this target",
+                            color = NeonCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = authChecked,
+                    onClick = {
+                        pendingAuthorizedCmd = null
+                        executeConfirmed(cmdToConfirm, authorized = true)
+                    },
+                    modifier = Modifier.testTag("cyber_auth_confirm_button")
+                ) {
+                    Text("Run Authorized Probe", color = if (authChecked) NeonGreen else TextSecondary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingAuthorizedCmd = null
+                    history.add(
+                        TerminalOutput(
+                            command = cmdToConfirm,
+                            output = "Cancelled: Target ownership/authorization not confirmed.",
+                            isError = true
+                        )
+                    )
+                }) {
+                    Text("Cancel", color = NeonRose)
+                }
+            },
+            containerColor = Color(0xFF0F172A)
+        )
     }
 }

@@ -260,7 +260,7 @@ fun AiRoutingAndMemoryCard(context: Context) {
             Triple("auto", "Auto ⚡", "Adaptive selection"),
             Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 3.7"),
             Triple("fast", "Ultra Fast 🚀", "Gemini 3.8 Flash / Groq"),
-            Triple("qwen_uncensored", "Qwen 3.8 🔓", "Abliterated 27B — Zero Refusals"),
+            Triple("open_weights", "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
             Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek R1 / o3-mini"),
             Triple("coding", "Coding & STEM 💻", "GLM 5.3 / Codestral"),
             Triple("local", "Private LAN 🏠", "Local Ollama / LM Studio")

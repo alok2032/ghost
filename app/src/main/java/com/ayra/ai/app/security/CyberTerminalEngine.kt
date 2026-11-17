@@ -38,12 +38,65 @@ object CyberTerminalEngine {
     private val defaultHttpClient: OkHttpClient
         get() = NetworkSecurityHelper.hardenedPooledClient
 
+    private val ACTIVE_PROBE_COMMANDS = setOf(
+        "ping", "traceroute", "tracert", "whois", "dig", "nslookup",
+        "curl", "headers", "security-headers", "portscan", "nmap"
+    )
+    private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
+    private const val RATE_LIMIT_WINDOW_MS = 60_000L
+    const val MAX_PROBES_PER_MINUTE = 15
+
+    private val recentProbeTimestamps = ArrayDeque<Long>()
+
+    fun isNetworkProbeCommand(rawInput: String): Boolean {
+        val cmd = rawInput.trim().split(Regex("\\s+")).firstOrNull()?.lowercase(Locale.ROOT) ?: return false
+        return cmd in ACTIVE_PROBE_COMMANDS
+    }
+
+    fun extractProbeTarget(rawInput: String): String? {
+        val tokens = rawInput.trim().split(Regex("\\s+"))
+        if (tokens.size < 2) return null
+        val candidate = tokens.drop(1).lastOrNull { !it.startsWith("-") } ?: return null
+        return candidate
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .substringBefore("/")
+            .substringBefore(":")
+            .trim()
+            .takeIf { it.isNotBlank() }
+    }
+
+    fun requiresAuthorizationConfirmation(rawInput: String): Boolean {
+        if (!isNetworkProbeCommand(rawInput)) return false
+        val host = extractProbeTarget(rawInput)?.lowercase(Locale.ROOT) ?: return false
+        return host !in LOOPBACK_HOSTS
+    }
+
+    @Synchronized
+    internal fun checkAndRecordProbeRateLimit(nowMs: Long = System.currentTimeMillis()): Boolean {
+        while (recentProbeTimestamps.isNotEmpty() && nowMs - recentProbeTimestamps.first() > RATE_LIMIT_WINDOW_MS) {
+            recentProbeTimestamps.removeFirst()
+        }
+        if (recentProbeTimestamps.size >= MAX_PROBES_PER_MINUTE) {
+            return false
+        }
+        recentProbeTimestamps.addLast(nowMs)
+        return true
+    }
+
+    @Synchronized
+    internal fun resetRateLimiterForTesting() {
+        recentProbeTimestamps.clear()
+    }
+
     @JvmOverloads
     fun executeCommand(
         rawInput: String,
         context: Context? = null,
         httpClientOverride: OkHttpClient? = null,
-        cveApiBaseUrl: String = "https://cve.circl.lu/api/cve/"
+        cveApiBaseUrl: String = "https://cve.circl.lu/api/cve/",
+        userAuthorizedTarget: Boolean = (context == null),
+        enforceRateLimit: Boolean = (context != null)
     ): TerminalOutput {
         val trimmed = rawInput.trim()
         if (trimmed.isEmpty()) return TerminalOutput("", "")
@@ -52,6 +105,42 @@ object CyberTerminalEngine {
         val tokens = trimmed.split(Regex("\\s+"))
         val cmd = tokens[0].lowercase(Locale.ROOT)
         val args = tokens.drop(1)
+
+        val needsAuth = requiresAuthorizationConfirmation(trimmed)
+        if (needsAuth && !userAuthorizedTarget) {
+            val host = extractProbeTarget(trimmed) ?: "target"
+            if (context != null) {
+                SecurityAuditLogger.log(
+                    context = context,
+                    category = SecurityAuditCategory.NETWORK,
+                    severity = SecurityAuditSeverity.WARN,
+                    message = "CyberTerminal blocked unconfirmed probe '$cmd' -> $host"
+                )
+            }
+            return TerminalOutput(
+                command = rawInput,
+                output = "Error: Target ownership/authorization confirmation required before running '$cmd' against '$host'. Confirm \"I am the owner / authorized to test this target\" in the terminal prompt.",
+                isError = true
+            )
+        }
+
+        if (enforceRateLimit && isNetworkProbeCommand(trimmed)) {
+            if (!checkAndRecordProbeRateLimit()) {
+                if (context != null) {
+                    SecurityAuditLogger.log(
+                        context = context,
+                        category = SecurityAuditCategory.NETWORK,
+                        severity = SecurityAuditSeverity.WARN,
+                        message = "CyberTerminal rate limit hit for '$cmd' (>${MAX_PROBES_PER_MINUTE}/min)"
+                    )
+                }
+                return TerminalOutput(
+                    command = rawInput,
+                    output = "Error: Rate limit exceeded (max $MAX_PROBES_PER_MINUTE network probes per minute). Wait briefly before retrying.",
+                    isError = true
+                )
+            }
+        }
 
         val output = when (cmd) {
             "help", "man", "?" -> handleHelp()
@@ -112,6 +201,16 @@ object CyberTerminalEngine {
                     else -> "bash: command not found: $cmd\nType 'help' to see available diagnostic & lab commands."
                 }
             }
+        }
+
+        if (context != null && isNetworkProbeCommand(trimmed)) {
+            val host = extractProbeTarget(trimmed) ?: "unspecified"
+            SecurityAuditLogger.log(
+                context = context,
+                category = SecurityAuditCategory.NETWORK,
+                severity = SecurityAuditSeverity.INFO,
+                message = "CyberTerminal authorized probe '$cmd' -> $host"
+            )
         }
 
         return TerminalOutput(
