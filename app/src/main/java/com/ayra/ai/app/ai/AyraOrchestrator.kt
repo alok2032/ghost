@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.flowOn
 
 sealed class AyraEvent {
     data class ActionRequired(val action: ProposedAction) : AyraEvent()
+    data class PlanUpdated(val steps: List<com.ayra.ai.app.ai.agent.AgentPlanStep>) : AyraEvent()
+    data class CitationAdded(val citation: com.ayra.ai.app.ai.agent.AgentCitation) : AyraEvent()
     data class Status(val message: String) : AyraEvent()
     data class Token(val text: String) : AyraEvent()
     data class Complete(val response: AiResponse) : AyraEvent()
@@ -40,6 +42,7 @@ class AyraOrchestrator(private val context: Context) {
     private val automationController by lazy { DeviceAutomationController(context) }
     private val unifiedAiEngine by lazy { UnifiedAiEngine(context) }
     private val gitHubPluginEngine by lazy { com.ayra.ai.app.ai.plugins.GitHubPluginEngine(context) }
+    private val agentCore by lazy { com.ayra.ai.app.ai.agent.DefaultAgentCore(context, providerPool) }
 
     fun handle(
         prompt: String,
@@ -360,6 +363,31 @@ class AyraOrchestrator(private val context: Context) {
             }
             AyraToolIntent.CHAT -> {
                 val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
+                if (com.ayra.ai.app.ai.agent.DefaultAgentCore.shouldActivateMultiStepAgent(trimmed, tier)) {
+                    agentCore.run(
+                        com.ayra.ai.app.ai.agent.AgentRequest(
+                            prompt = trimmed,
+                            persona = persona,
+                            tier = tier,
+                            history = history,
+                            imageBase64 = imageBase64,
+                            documentText = documentText,
+                            documentName = documentName
+                        )
+                    ).collect { agEvent ->
+                        when (agEvent) {
+                            is com.ayra.ai.app.ai.agent.AgentEvent.PlanUpdated -> emit(AyraEvent.PlanUpdated(agEvent.steps))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.Status -> emit(AyraEvent.Status(agEvent.message))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.TextDelta -> emit(AyraEvent.Token(agEvent.text))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.ToolCallProposed -> emit(AyraEvent.ActionRequired(agEvent.action))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.ToolResult -> emit(AyraEvent.Status("Completed tool: ${agEvent.toolName}"))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.Citation -> emit(AyraEvent.CitationAdded(agEvent.citation))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.Complete -> emit(AyraEvent.Complete(agEvent.response))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.Error -> emit(AyraEvent.Error(agEvent.error))
+                        }
+                    }
+                    return@flow
+                }
                 // Stream explicit Superpowers protocol live through ProviderPool BEST
                 val superpower = com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine.detectSuperpower(trimmed)
                 if (superpower != null || tier == "superpowers") {

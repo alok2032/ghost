@@ -64,7 +64,8 @@ class VectorKnowledgeDatabaseTest {
                 ChatDatabase.MIGRATION_4_5,
                 ChatDatabase.MIGRATION_5_6,
                 ChatDatabase.MIGRATION_6_7,
-                ChatDatabase.MIGRATION_7_8
+                ChatDatabase.MIGRATION_7_8,
+                ChatDatabase.MIGRATION_8_9
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {

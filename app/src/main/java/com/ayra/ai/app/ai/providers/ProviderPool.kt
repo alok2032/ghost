@@ -153,6 +153,27 @@ class ProviderPool @JvmOverloads constructor(
         return greetingRegex.matches(clean)
     }
 
+    enum class TaskComplexity { TRIVIAL, STANDARD, COMPLEX }
+
+    internal fun classifyTaskComplexity(request: ChatRequest): TaskComplexity {
+        if (isTrivialGreeting(request.prompt)) return TaskComplexity.TRIVIAL
+        val lower = request.prompt.lowercase()
+        val hasMediaOrDoc = !request.imageBase64.isNullOrBlank() || !request.documentText.isNullOrBlank()
+        val isComplexSignal = hasMediaOrDoc ||
+            request.prompt.length > 260 ||
+            lower.contains("architecture") || lower.contains("refactor") ||
+            lower.contains("algorithm") || lower.contains("optimize") ||
+            lower.contains("compare") || lower.contains("analyze") ||
+            lower.contains("debug") || lower.contains("sql") ||
+            lower.contains("kotlin") || lower.contains("python") ||
+            lower.contains("proof") || lower.contains("research")
+        return when {
+            isComplexSignal -> TaskComplexity.COMPLEX
+            request.prompt.length <= 75 && !lower.contains("code") && !lower.contains("write") -> TaskComplexity.STANDARD
+            else -> TaskComplexity.STANDARD
+        }
+    }
+
     /**
      * Convenience synchronous/suspend execution using the exact same unified pipeline.
      */
@@ -233,10 +254,13 @@ class ProviderPool @JvmOverloads constructor(
             } else null
 
             val effectiveThinkingMode = request.thinkingMode ?: context?.let { AyraPreferences.getThinkingMode(it) } ?: "balanced"
+            val complexity = classifyTaskComplexity(request)
             val effectiveMode = when {
                 request.mode != ProviderPoolMode.AUTO -> request.mode
                 effectiveThinkingMode == "fast" -> ProviderPoolMode.FAST
                 effectiveThinkingMode in setOf("deep_analysis", "reasoning", "research") -> ProviderPoolMode.BEST
+                complexity == TaskComplexity.TRIVIAL -> ProviderPoolMode.FAST
+                complexity == TaskComplexity.COMPLEX -> ProviderPoolMode.BEST
                 else -> ProviderPoolMode.AUTO
             }
             val effectiveRequest = if (effectiveMode != request.mode) request.copy(mode = effectiveMode) else request
@@ -755,7 +779,7 @@ class ProviderPool @JvmOverloads constructor(
         collector.emit(AyraStreamEvent.Complete(resp))
     }
 
-    private fun resolveSystemPrompt(
+    private suspend fun resolveSystemPrompt(
         request: ChatRequest,
         domain: AgentDomain,
         wikiContext: String = ""
@@ -766,9 +790,19 @@ class ProviderPool @JvmOverloads constructor(
             val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
             val isBanglish = AyraAgentOrchestrator.isBanglish(request.prompt)
             val isGfMode = request.persona == "GF_COMPANION"
-            val userInstructions = context?.let { AyraPreferences.buildCombinedPersonalizationBlock(it) } ?: ""
-            val isMemoryOn = context?.let { AyraPreferences.isMemoryEnabled(it) } ?: false
-            val rememberedFacts = context?.takeIf { isMemoryOn }?.let { AyraPreferences.getRememberedFacts(it) } ?: emptySet()
+            val appContext = context
+            val userInstructions = appContext?.let { AyraPreferences.buildCombinedPersonalizationBlock(it) } ?: ""
+            val isMemoryOn = appContext?.let { AyraPreferences.isMemoryEnabled(it) } ?: false
+            val roomFacts = appContext?.takeIf { isMemoryOn }?.let { ctx ->
+                runCatching {
+                    com.ayra.ai.app.ai.memory.LongTermMemoryManager.retrieveRelevantMemories(ctx, request.prompt, topK = 6)
+                        .map { "[${it.category}] ${it.content}" }
+                }.getOrDefault(emptyList())
+            } ?: emptyList()
+            val legacyFacts = appContext?.takeIf { isMemoryOn }?.let { AyraPreferences.getRememberedFacts(it) } ?: emptySet()
+            val rememberedFacts = (roomFacts + legacyFacts)
+                .filter { !com.ayra.ai.app.ai.memory.LongTermMemoryManager.containsSensitiveCredentialOrPii(it) }
+                .toSet()
             val effectiveThinking = request.thinkingMode ?: context?.let { AyraPreferences.getThinkingMode(it) } ?: "balanced"
 
             val preferredLang = context?.let { AyraPreferences.getPreferredLanguage(it) } ?: "Auto"

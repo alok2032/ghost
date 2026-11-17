@@ -79,6 +79,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.platform.testTag
@@ -203,6 +204,9 @@ fun ChatScreen(
     val streamingAnswer by viewModel.streamingAnswer.collectAsState()
     val showKeyOnboarding by viewModel.showKeyOnboarding.collectAsState()
     val pendingAction by viewModel.pendingAction.collectAsState()
+    val agentPlanSteps by viewModel.agentPlanSteps.collectAsState()
+    val pendingMemoryCandidate by viewModel.pendingMemoryCandidate.collectAsState()
+    val dailyUsage by com.ayra.ai.app.ai.providers.AiUsageTracker.dailyStatsFlow.collectAsState()
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var selectedDocumentUri by remember { mutableStateOf<Uri?>(null) }
     var selectedDocumentName by remember { mutableStateOf<String?>(null) }
@@ -602,129 +606,45 @@ fun ChatScreen(
                 return@launch
             }
 
-            // 3. Streaming Orchestrator Execution (Q&A, Coding, Vision, Research, etc.)
-            try {
-                var base64Image: String? = null
-                if (!attachedUriStr.isNullOrBlank()) {
-                    try {
-                        val stream = com.ayra.ai.app.data.StorageHelper.openReadableAttachmentStream(context, attachedUriStr)
-                        val bytes = stream?.readBytes()
-                        stream?.close()
-                        if (bytes != null) {
-                            base64Image = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        }
-                    } catch (_: Exception) {}
-                } else if (!docBase64Image.isNullOrBlank()) {
-                    base64Image = docBase64Image
-                }
+            // Extract non-sensitive opt-in memory candidate ONLY for explicit user confirmation
+            viewModel.inspectCandidateMemory(context, trimmed)
 
-                val rawHistory = viewModel.getRecentHistory(15)
-                val history = if (rawHistory.lastOrNull()?.role == "user" && rawHistory.lastOrNull()?.content == userContent) {
-                    rawHistory.dropLast(1)
-                } else {
-                    rawHistory
-                }
-                var receivedTerminalEvent = false
-                val orchestratorJob = scope.launch {
-                    try {
-                        orchestrator.handle(
-                            prompt = trimmed,
-                            persona = currentPersona,
-                            tier = selectedModelTier,
-                            history = history,
-                            imageBase64 = base64Image,
-                            documentText = docText,
-                            documentName = docName
-                        ).collect { event ->
-                            when (event) {
-                                is com.ayra.ai.app.ai.AyraEvent.Status -> {
-                                    viewModel.setThinkingStatus(event.message)
-                                }
-                                is com.ayra.ai.app.ai.AyraEvent.Token -> {
-                                    viewModel.appendStreamingToken(event.text)
-                                }
-                                is com.ayra.ai.app.ai.AyraEvent.ActionRequired -> {
-                                    receivedTerminalEvent = true
-                                    viewModel.setPendingAction(event.action)
-                                }
-                                is com.ayra.ai.app.ai.AyraEvent.Complete -> {
-                                    receivedTerminalEvent = true
-                                    val assistantMsg = ChatMessage(
-                                        role = "assistant",
-                                        content = event.response.text,
-                                        craftType = event.response.craftType,
-                                        craftPayload = event.response.craftPayload,
-                                        actionCommand = event.response.modelUsed
-                                    )
-                                    val insertedAssistantId = viewModel.persistMessage(assistantMsg)
-                                    cloudRepo?.let { repo ->
-                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                            runCatching {
-                                                repo.syncMessageToCloud(assistantMsg.copy(id = insertedAssistantId))
-                                                val cType = event.response.craftType
-                                                if (cType in listOf("IMAGE", "VIDEO", "SONG", "3D", "PDF_DOWNLOAD")) {
-                                                    repo.logCreation(
-                                                        creationType = if (cType == "PDF_DOWNLOAD") "PDF" else cType!!,
-                                                        title = trimmed.take(120),
-                                                        prompt = trimmed,
-                                                        summary = event.response.text.take(800),
-                                                        modelUsed = event.response.modelUsed ?: "Ayra AI"
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                    voiceManager.speak(event.response.text, overrideSentiment = detectedSentiment)
-                                }
-                                is com.ayra.ai.app.ai.AyraEvent.Error -> {
-                                    receivedTerminalEvent = true
-                                    val err = event.error.userFriendlyMessage
-                                    viewModel.persistMessage(
-                                        ChatMessage(
-                                            role = "assistant",
-                                            content = "⚠️ $err"
-                                        )
-                                    )
-                                    if (event.error is com.ayra.ai.app.ai.providers.AyraError.NoProviderConfigured) {
-                                        viewModel.setShowKeyOnboarding(true)
-                                    }
-                                }
-                            }
-                        }
-                        if (!receivedTerminalEvent) {
-                            viewModel.persistMessage(
-                                ChatMessage(
-                                    role = "assistant",
-                                    content = "⚠️ কোনো উত্তর পাওয়া যায়নি। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
-                                )
-                            )
-                        }
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        val safeErr = e.localizedMessage ?: e::class.java.simpleName
-                        viewModel.persistMessage(
-                            ChatMessage(
-                                role = "assistant",
-                                content = "⚠️ Error processing request: $safeErr"
-                            )
-                        )
+            // 3. ViewModel-scoped Streaming Orchestrator Execution (survives configuration changes)
+            var base64Image: String? = null
+            if (!attachedUriStr.isNullOrBlank()) {
+                try {
+                    val stream = com.ayra.ai.app.data.StorageHelper.openReadableAttachmentStream(context, attachedUriStr)
+                    val bytes = stream?.readBytes()
+                    stream?.close()
+                    if (bytes != null) {
+                        base64Image = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                     }
-                }
-                viewModel.setInFlightJob(orchestratorJob)
-                orchestratorJob.join()
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                val err = "Error processing request: ${e.message}"
-                viewModel.persistMessage(
-                    ChatMessage(
-                        role = "assistant",
-                        content = err
-                    )
-                )
-            } finally {
-                viewModel.finishSending()
+                } catch (_: Exception) {}
+            } else if (!docBase64Image.isNullOrBlank()) {
+                base64Image = docBase64Image
             }
+
+            val rawHistory = viewModel.getRecentHistory(15)
+            val history = if (rawHistory.lastOrNull()?.role == "user" && rawHistory.lastOrNull()?.content == userContent) {
+                rawHistory.dropLast(1)
+            } else {
+                rawHistory
+            }
+
+            viewModel.launchOrchestratedInference(
+                orchestrator = orchestrator,
+                prompt = trimmed,
+                persona = currentPersona,
+                tier = selectedModelTier,
+                history = history,
+                imageBase64 = base64Image,
+                documentText = docText,
+                documentName = docName,
+                cloudRepo = cloudRepo,
+                onSpeakResponse = { spoken ->
+                    voiceManager.speak(spoken, overrideSentiment = detectedSentiment)
+                }
+            )
         }
     }
 
@@ -857,11 +777,64 @@ fun ChatScreen(
                             item {
                                 AssistantGeneratingIndicator(
                                     statusText = thinkingStatus,
-                                    streamingText = streamingAnswer
+                                    streamingText = streamingAnswer,
+                                    planSteps = agentPlanSteps
                                 )
                             }
                         }
                     }
+                }
+            }
+
+            dailyUsage.warningBannerText?.let { quotaWarning ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(NeonGold.copy(alpha = 0.14f))
+                        .border(1.dp, NeonGold.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚡ $quotaWarning",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            pendingMemoryCandidate?.let { candidate ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GlassSurfaceDark)
+                        .border(1.dp, uiConfig.accentColor.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Save to Memory [${candidate.category}]: \"${candidate.content}\"?",
+                        color = TextPrimary,
+                        fontSize = 11.5.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            viewModel.confirmPendingMemorySave(context) { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.testTag("confirm_memory_save_button")
+                    ) { Text("Save", color = uiConfig.accentColor, fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+                    TextButton(
+                        onClick = { viewModel.dismissPendingMemorySave() },
+                        modifier = Modifier.testTag("dismiss_memory_save_button")
+                    ) { Text("Ignore", color = TextSecondary, fontSize = 11.5.sp) }
                 }
             }
 
@@ -2738,7 +2711,8 @@ private fun EmptyCosmicState(
 @Composable
 private fun AssistantGeneratingIndicator(
     statusText: String? = null,
-    streamingText: String? = null
+    streamingText: String? = null,
+    planSteps: List<com.ayra.ai.app.ai.agent.AgentPlanStep> = emptyList()
 ) {
     val uiConfig = com.ayra.ai.app.ui.theme.LocalAyraUiConfig.current
     val bgColor = if (uiConfig.isDark) GlassSurfaceDark else MaterialTheme.colorScheme.surface
@@ -2766,6 +2740,32 @@ private fun AssistantGeneratingIndicator(
                 color = uiConfig.accentColor,
                 fontWeight = FontWeight.Medium
             )
+        }
+
+        if (planSteps.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                planSteps.forEach { step ->
+                    val glyph = when (step.status) {
+                        com.ayra.ai.app.ai.agent.StepStatus.DONE -> "✓"
+                        com.ayra.ai.app.ai.agent.StepStatus.IN_PROGRESS -> "⏳"
+                        com.ayra.ai.app.ai.agent.StepStatus.FAILED -> "✕"
+                        com.ayra.ai.app.ai.agent.StepStatus.SKIPPED -> "⏭"
+                        com.ayra.ai.app.ai.agent.StepStatus.PENDING -> "•"
+                    }
+                    Text(
+                        text = "$glyph ${step.title}${if (step.note.isNotBlank()) " — ${step.note.take(60)}" else ""}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
 
         if (!streamingText.isNullOrBlank()) {

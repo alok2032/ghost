@@ -37,4 +37,14 @@ export const RevokeDeviceRequestSchema = z
   })
   .strict();
 
+export const CodeRunRequestSchema = z
+  .object({
+    language: z.enum(["javascript", "json_transform", "math"]),
+    code: z.string().min(1).max(8192),
+    inputJson: z.string().max(16_384).optional(),
+    timeoutMs: z.number().int().min(50).max(1500).optional().default(500),
+  })
+  .strict();
+
 export type AiChatRequest = z.infer<typeof AiChatRequestSchema>;
+export type CodeRunRequest = z.infer<typeof CodeRunRequestSchema>;

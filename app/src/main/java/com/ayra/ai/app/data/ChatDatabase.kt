@@ -20,9 +20,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PromptTemplateEntity::class,
         PromptVersionEntity::class,
         VectorKnowledgeSourceEntity::class,
-        VectorKnowledgeChunkEntity::class
+        VectorKnowledgeChunkEntity::class,
+        LongTermMemoryEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {
@@ -33,6 +34,7 @@ abstract class ChatDatabase : RoomDatabase() {
     abstract fun knowledgeDocumentDao(): KnowledgeDocumentDao
     abstract fun ayraWorkspaceDao(): AyraWorkspaceDao
     abstract fun vectorKnowledgeDao(): VectorKnowledgeDao
+    abstract fun longTermMemoryDao(): LongTermMemoryDao
 
     companion object {
         @Volatile
@@ -264,6 +266,26 @@ abstract class ChatDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `long_term_memories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `sourceSessionId` INTEGER DEFAULT NULL,
+                        `isPinned` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_long_term_memories_updatedAt` ON `long_term_memories` (`updatedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_long_term_memories_category` ON `long_term_memories` (`category`)")
+            }
+        }
+
         private val seedDefaultSessionCallback = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)
@@ -302,7 +324,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     ChatDatabase::class.java,
                     "ayra_chat_database"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .addCallback(seedDefaultSessionCallback)
                     .fallbackToDestructiveMigration(false)
 

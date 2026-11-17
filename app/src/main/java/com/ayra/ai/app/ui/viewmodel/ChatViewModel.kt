@@ -1,15 +1,28 @@
 package com.ayra.ai.app.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ayra.ai.app.ai.AyraEvent
+import com.ayra.ai.app.ai.AyraOrchestrator
+import com.ayra.ai.app.ai.agent.AgentPlanStep
+import com.ayra.ai.app.ai.memory.LongTermMemoryManager
+import com.ayra.ai.app.ai.memory.MemoryCandidate
+import com.ayra.ai.app.ai.memory.MemorySaveResult
+import com.ayra.ai.app.ai.providers.AyraError
 import com.ayra.ai.app.automation.ProposedAction
+import com.ayra.ai.app.cloud.AyraCloudRepository
+import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.data.ChatRepository
 import com.ayra.ai.app.data.ChatSession
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,11 +33,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Production ViewModel for Ayra Chat.
- * Manages persistent Room chat sessions, scoped message history, atomic send locks,
- * active generation cancellation, and streaming token accumulation across restarts.
+ * Manages persistent Room chat sessions, scoped message history, ViewModel-scoped orchestration
+ * resilient to configuration changes, partial-token preservation on Stop, and opt-in memory confirmation.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(
@@ -35,6 +49,8 @@ class ChatViewModel(
 
     private val sendMutex = Mutex()
     private var inFlightJob: Job? = null
+    @Volatile
+    private var activeModelHint: String = "Ayra AI"
 
     private val _activeSessionId = MutableStateFlow(1L)
     val activeSessionId: StateFlow<Long> = _activeSessionId.asStateFlow()
@@ -70,6 +86,12 @@ class ChatViewModel(
 
     private val _streamingAnswer = MutableStateFlow<String?>(null)
     val streamingAnswer: StateFlow<String?> = _streamingAnswer.asStateFlow()
+
+    private val _agentPlanSteps = MutableStateFlow<List<AgentPlanStep>>(emptyList())
+    val agentPlanSteps: StateFlow<List<AgentPlanStep>> = _agentPlanSteps.asStateFlow()
+
+    private val _pendingMemoryCandidate = MutableStateFlow<MemoryCandidate?>(null)
+    val pendingMemoryCandidate: StateFlow<MemoryCandidate?> = _pendingMemoryCandidate.asStateFlow()
 
     private val _showKeyOnboarding = MutableStateFlow(false)
     val showKeyOnboarding: StateFlow<Boolean> = _showKeyOnboarding.asStateFlow()
@@ -246,25 +268,182 @@ class ChatViewModel(
         _streamingAnswer.value = current + token
     }
 
+    fun setAgentPlanSteps(steps: List<AgentPlanStep>) {
+        _agentPlanSteps.value = steps
+    }
+
+    fun inspectCandidateMemory(context: Context, prompt: String) {
+        if (!AyraPreferences.isMemoryEnabled(context)) return
+        _pendingMemoryCandidate.value = LongTermMemoryManager.extractCandidateFact(prompt)
+    }
+
+    fun confirmPendingMemorySave(context: Context, onFeedback: (String) -> Unit = {}) {
+        val candidate = _pendingMemoryCandidate.value ?: return
+        _pendingMemoryCandidate.value = null
+        viewModelScope.launch {
+            when (val res = LongTermMemoryManager.trySaveMemory(
+                context = context,
+                category = candidate.category,
+                rawContent = candidate.content,
+                sourceSessionId = _activeSessionId.value
+            )) {
+                is MemorySaveResult.Saved -> onFeedback("Saved to encrypted memory: ${res.entity.content}")
+                is MemorySaveResult.Rejected -> onFeedback(res.reason)
+            }
+        }
+    }
+
+    fun dismissPendingMemorySave() {
+        _pendingMemoryCandidate.value = null
+    }
+
     fun setInFlightJob(job: Job?) {
         inFlightJob = job
     }
 
     /**
-     * Cancels active inference and resets generation state.
+     * Runs [AyraOrchestrator.handle] inside [viewModelScope] so configuration changes never
+     * drop active streaming or persistence, while holding clean cancellation handle in [inFlightJob].
+     */
+    fun launchOrchestratedInference(
+        orchestrator: AyraOrchestrator,
+        prompt: String,
+        persona: String,
+        tier: String,
+        history: List<ChatMessage>,
+        imageBase64: String?,
+        documentText: String?,
+        documentName: String?,
+        cloudRepo: AyraCloudRepository?,
+        onSpeakResponse: (String) -> Unit
+    ) {
+        _agentPlanSteps.value = emptyList()
+        activeModelHint = "Ayra AI"
+        val job = viewModelScope.launch {
+            var receivedTerminalEvent = false
+            try {
+                orchestrator.handle(
+                    prompt = prompt,
+                    persona = persona,
+                    tier = tier,
+                    history = history,
+                    imageBase64 = imageBase64,
+                    documentText = documentText,
+                    documentName = documentName
+                ).collect { event ->
+                    when (event) {
+                        is AyraEvent.PlanUpdated -> {
+                            _agentPlanSteps.value = event.steps
+                        }
+                        is AyraEvent.CitationAdded -> {}
+                        is AyraEvent.Status -> {
+                            _thinkingStatus.value = event.message
+                            activeModelHint = event.message.removePrefix("Thinking with ").removeSuffix("...").take(60)
+                        }
+                        is AyraEvent.Token -> {
+                            appendStreamingToken(event.text)
+                        }
+                        is AyraEvent.ActionRequired -> {
+                            receivedTerminalEvent = true
+                            _pendingAction.value = event.action
+                        }
+                        is AyraEvent.Complete -> {
+                            receivedTerminalEvent = true
+                            val assistantMsg = ChatMessage(
+                                role = "assistant",
+                                content = event.response.text,
+                                craftType = event.response.craftType,
+                                craftPayload = event.response.craftPayload,
+                                actionCommand = event.response.modelUsed
+                            )
+                            val insertedAssistantId = persistMessage(assistantMsg)
+                            cloudRepo?.let { repo ->
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    runCatching {
+                                        repo.syncMessageToCloud(assistantMsg.copy(id = insertedAssistantId))
+                                        val cType = event.response.craftType
+                                        if (cType in listOf("IMAGE", "VIDEO", "SONG", "3D", "PDF_DOWNLOAD")) {
+                                            repo.logCreation(
+                                                creationType = if (cType == "PDF_DOWNLOAD") "PDF" else cType!!,
+                                                title = prompt.take(120),
+                                                prompt = prompt,
+                                                summary = event.response.text.take(800),
+                                                modelUsed = event.response.modelUsed ?: "Ayra AI"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            onSpeakResponse(event.response.text)
+                        }
+                        is AyraEvent.Error -> {
+                            receivedTerminalEvent = true
+                            persistMessage(
+                                ChatMessage(
+                                    role = "assistant",
+                                    content = "⚠️ ${event.error.userFriendlyMessage}"
+                                )
+                            )
+                            if (event.error is AyraError.NoProviderConfigured) {
+                                _showKeyOnboarding.value = true
+                            }
+                        }
+                    }
+                }
+                if (!receivedTerminalEvent) {
+                    persistMessage(
+                        ChatMessage(
+                            role = "assistant",
+                            content = "⚠️ কোনো উত্তর পাওয়া যায়নি। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
+                        )
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val safeErr = e.localizedMessage ?: e::class.java.simpleName
+                persistMessage(
+                    ChatMessage(
+                        role = "assistant",
+                        content = "⚠️ Error processing request: $safeErr"
+                    )
+                )
+            } finally {
+                withContext(NonCancellable) {
+                    finishSending()
+                }
+            }
+        }
+        inFlightJob = job
+    }
+
+    /**
+     * Cancels active inference AND preserves any already-streamed partial answer cleanly in Room.
      */
     fun stopGeneration() {
+        val partialSnapshot = _streamingAnswer.value?.trim()
+        val modelSnapshot = activeModelHint
         inFlightJob?.cancel()
         inFlightJob = null
         _isGenerating.value = false
         _thinkingStatus.value = null
         _streamingAnswer.value = null
+        _agentPlanSteps.value = emptyList()
+        if (!partialSnapshot.isNullOrBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    persistMessage(
+                        ChatMessage(
+                            role = "assistant",
+                            content = "$partialSnapshot\n\n*(Stopped by user)*",
+                            actionCommand = "$modelSnapshot (Partial)"
+                        )
+                    )
+                }
+            }
+        }
     }
 
-    /**
-     * Atomically locks and checks if a new send operation can begin.
-     * Prevents duplicate requests from rapid user double-taps.
-     */
     suspend fun tryStartSending(): Boolean = sendMutex.withLock {
         if (_isGenerating.value) {
             return false
@@ -272,13 +451,11 @@ class ChatViewModel(
         _isGenerating.value = true
         _errorMessage.value = null
         _streamingAnswer.value = null
+        _agentPlanSteps.value = emptyList()
         _thinkingStatus.value = "Thinking..."
         return true
     }
 
-    /**
-     * Marks generation as finished and releases send lock.
-     */
     fun finishSending(error: String? = null) {
         _isGenerating.value = false
         _thinkingStatus.value = null

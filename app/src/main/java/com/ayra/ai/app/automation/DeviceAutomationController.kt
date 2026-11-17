@@ -12,6 +12,7 @@ import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
+import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -289,6 +290,76 @@ class DeviceAutomationController(private val context: Context) {
             }
             is ProposedAction.AdjustVolume -> {
                 AutomationResult(executed = true, feedbackMessage = "Volume adjusted: ${action.level}", actionType = "VOLUME")
+            }
+            is ProposedAction.CalendarCreate -> {
+                val intent = Intent(Intent.ACTION_INSERT).apply {
+                    data = CalendarContract.Events.CONTENT_URI
+                    putExtra(CalendarContract.Events.TITLE, action.eventTitle)
+                    if (action.eventDescription.isNotBlank()) {
+                        putExtra(CalendarContract.Events.DESCRIPTION, action.eventDescription)
+                    }
+                    if (action.location.isNotBlank()) {
+                        putExtra(CalendarContract.Events.EVENT_LOCATION, action.location)
+                    }
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, action.startTimeMillis)
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, action.endTimeMillis)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                try {
+                    context.startActivity(intent)
+                    AutomationResult(
+                        executed = true,
+                        feedbackMessage = "📅 Opened Calendar composer for event: \"${action.eventTitle}\"",
+                        actionType = "CALENDAR_EVENT",
+                        extraData = action.eventTitle
+                    )
+                } catch (e: Exception) {
+                    AutomationResult(executed = false, feedbackMessage = "Unable to open Calendar app: ${e.localizedMessage}")
+                }
+            }
+            is ProposedAction.ComposeEmail -> {
+                val mailUri = Uri.parse("mailto:${Uri.encode(action.toAddress)}")
+                val intent = Intent(Intent.ACTION_SENDTO, mailUri).apply {
+                    putExtra(Intent.EXTRA_SUBJECT, action.subject)
+                    putExtra(Intent.EXTRA_TEXT, action.body)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                try {
+                    context.startActivity(intent)
+                    AutomationResult(
+                        executed = true,
+                        feedbackMessage = "📧 Opened Email composer (${action.toAddress.ifBlank { "draft" }}) with subject: \"${action.subject}\"",
+                        actionType = "EMAIL_DRAFT",
+                        extraData = action.toAddress
+                    )
+                } catch (e: Exception) {
+                    AutomationResult(executed = false, feedbackMessage = "Unable to open Email client: ${e.localizedMessage}")
+                }
+            }
+            is ProposedAction.NavigateMap -> {
+                val geoUri = Uri.parse("geo:0,0?q=${Uri.encode(action.destinationQuery)}")
+                val intent = Intent(Intent.ACTION_VIEW, geoUri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                try {
+                    context.startActivity(intent)
+                    AutomationResult(
+                        executed = true,
+                        feedbackMessage = "🗺️ Opened Maps for: \"${action.destinationQuery}\"",
+                        actionType = "MAPS_NAV",
+                        extraData = action.destinationQuery
+                    )
+                } catch (e: Exception) {
+                    AutomationResult(executed = false, feedbackMessage = "Unable to open Maps app: ${e.localizedMessage}")
+                }
+            }
+            is ProposedAction.ExecuteExternalTool -> {
+                AutomationResult(
+                    executed = true,
+                    feedbackMessage = "✅ Approved tool execution: ${action.toolName} (${action.summary})",
+                    actionType = "EXTERNAL_TOOL",
+                    extraData = action.toolName
+                )
             }
         }
     }

@@ -244,3 +244,78 @@ test("Device revocation calls Firebase token revocation and rate limit enforces 
   }
   assert.equal(saw429, true);
 });
+
+test("Model catalog requires auth + App Check and returns curated catalog without key leakage", async () => {
+  const unauth = await fetch(`${baseUrl}/api/v1/models/catalog`);
+  assert.equal(unauth.status, 401);
+
+  const ok = await fetch(`${baseUrl}/api/v1/models/catalog`, {
+    headers: {
+      Authorization: "Bearer valid_user_id_token_12345",
+      "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+    },
+  });
+  assert.equal(ok.status, 200);
+  const catalog = await ok.json();
+  assert.ok(Array.isArray(catalog.models) && catalog.models.length >= 5);
+  assert.ok(catalog.models.some((m) => m.id === "gemini-3.8-flash"));
+  assert.equal(JSON.stringify(catalog).includes("AIzaFakeServerKey"), false);
+});
+
+test("Sandboxed /api/v1/code/run evaluates math/JS cleanly and blocks fs/process/fetch/infinite loops", async () => {
+  const unauth = await fetch(`${baseUrl}/api/v1/code/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: "math", code: "2 + 2" }),
+  });
+  assert.equal(unauth.status, 401);
+
+  const evalOk = await fetch(`${baseUrl}/api/v1/code/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer valid_user_id_token_12345",
+      "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+    },
+    body: JSON.stringify({
+      language: "javascript",
+      code: "console.log('sum:', input.a + input.b); return input.a * input.b;",
+      inputJson: JSON.stringify({ a: 6, b: 7 }),
+      timeoutMs: 300,
+    }),
+  });
+  assert.equal(evalOk.status, 200);
+  const okBody = await evalOk.json();
+  assert.equal(okBody.ok, true);
+  assert.equal(okBody.resultText, "42");
+  assert.ok(okBody.stdout.includes("sum: 13"));
+
+  const escapes = [
+    "return process.env;",
+    "const fs = require('fs'); return fs.readdirSync('/');",
+    "return typeof fetch;",
+    "while (true) {}",
+  ];
+  for (const snippet of escapes) {
+    const res = await fetch(`${baseUrl}/api/v1/code/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid_user_id_token_12345",
+        "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+      },
+      body: JSON.stringify({
+        language: "javascript",
+        code: snippet,
+        timeoutMs: 120,
+      }),
+    });
+    const body = await res.json();
+    if (snippet.includes("typeof fetch")) {
+      assert.equal(body.resultText, "undefined");
+    } else {
+      assert.equal(res.status, 400, `Expected sandbox rejection/timeout for: ${snippet}`);
+      assert.equal(body.ok, false);
+    }
+  }
+});

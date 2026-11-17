@@ -28,7 +28,7 @@ object CrisisDetector {
 
     // English explicit crisis patterns (with word boundaries to avoid idioms)
     private val englishCrisisRegexes = listOf(
-        Regex("(?i)\\b(?:kill\\s+myself|end\\s+my\\s+life|commit\\s+suicide|want\\s+to\\s+die|suicidal\\s+(?:thoughts|ideation)|hang\\s+myself|take\\s+my\\s+own\\s+life)\\b"),
+        Regex("(?i)\\b(?:kill(?:ing)?\\s+myself|end(?:ing)?\\s+my\\s+life|end(?:ing)?\\s+it\\s+all|commit\\s+suicide|want\\s+to\\s+die|suicidal\\s+(?:thoughts|ideation)|hang(?:ing)?\\s+myself|take\\s+my\\s+own\\s+life)\\b"),
         Regex("(?i)\\b(?:better\\s+off\\s+dead|don'?t\\s+want\\s+to\\s+live\\s+anymore|no\\s+reason\\s+to\\s+live)\\b")
     )
 

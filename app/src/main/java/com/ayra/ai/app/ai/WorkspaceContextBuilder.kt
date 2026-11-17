@@ -29,7 +29,8 @@ object WorkspaceContextBuilder {
     suspend fun resolve(
         context: Context?,
         requestedPersona: String,
-        requestedTier: String
+        requestedTier: String,
+        prompt: String = ""
     ): WorkspaceExecutionContext = withContext(Dispatchers.IO) {
         if (context == null) {
             return@withContext WorkspaceExecutionContext(
@@ -43,7 +44,15 @@ object WorkspaceContextBuilder {
         val globalThinking = AyraPreferences.getThinkingMode(context)
         val globalLang = AyraPreferences.getPreferredLanguage(context)
         val isMemoryOn = AyraPreferences.isMemoryEnabled(context)
-        val facts = if (isMemoryOn) AyraPreferences.getRememberedFacts(context) else emptySet()
+        val roomMemories = if (isMemoryOn) {
+            runCatching {
+                com.ayra.ai.app.ai.memory.LongTermMemoryManager.retrieveRelevantMemories(context, prompt, topK = 6)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+        val legacyFacts = if (isMemoryOn) AyraPreferences.getRememberedFacts(context) else emptySet()
+        val facts = (roomMemories.map { "[${it.category}] ${it.content}" } + legacyFacts)
+            .filter { !com.ayra.ai.app.ai.memory.LongTermMemoryManager.containsSensitiveCredentialOrPii(it) }
+            .toSet()
         val personalization = AyraPreferences.buildCombinedPersonalizationBlock(context)
 
         val dao = runCatching { ChatDatabase.getDatabase(context).ayraWorkspaceDao() }.getOrNull()

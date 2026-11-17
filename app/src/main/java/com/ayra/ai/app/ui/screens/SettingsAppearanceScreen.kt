@@ -70,7 +70,8 @@ fun SettingsAppearanceScreen(
     onOpenTools: () -> Unit,
     onOpenSecurityCenter: () -> Unit,
     onPersonaChanged: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMemory: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiConfig = LocalAyraUiConfig.current
@@ -257,7 +258,8 @@ fun SettingsAppearanceScreen(
             SettingsTab.PERSONALIZATION -> {
                 PersonalizationAndMemoryPanel(
                     context = context,
-                    onPersonaStyleSelected = onPersonaChanged
+                    onPersonaStyleSelected = onPersonaChanged,
+                    onOpenMemoryVault = onOpenMemory
                 )
             }
 

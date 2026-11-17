@@ -18,10 +18,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.Button
@@ -63,6 +66,10 @@ fun ActionConfirmationCard(
         is ProposedAction.OpenApp -> Icons.AutoMirrored.Filled.OpenInNew
         is ProposedAction.ToggleTorch -> Icons.Default.FlashlightOn
         is ProposedAction.AdjustVolume -> Icons.AutoMirrored.Filled.VolumeUp
+        is ProposedAction.CalendarCreate -> Icons.Default.CalendarMonth
+        is ProposedAction.ComposeEmail -> Icons.Default.Email
+        is ProposedAction.NavigateMap -> Icons.Default.Navigation
+        is ProposedAction.ExecuteExternalTool -> Icons.Default.Security
     }
 
     val accentColor = if (action.isCritical) NeonRose else NeonCyan

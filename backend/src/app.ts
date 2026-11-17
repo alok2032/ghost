@@ -14,8 +14,11 @@ import { createZeroTrustRateLimiter } from "./middleware/rateLimit.js";
 import { validateOutboundHttpsUrl } from "./security/ssrf.js";
 import { forwardSecureAiRequest, GatewayError } from "./services/aiGateway.js";
 import { logSecurityEvent, redactSensitiveText } from "./services/auditLogger.js";
+import { executeSandboxedCode } from "./services/codeSandbox.js";
+import { buildCuratedModelCatalog } from "./services/modelCatalog.js";
 import {
   AiChatRequestSchema,
+  CodeRunRequestSchema,
   InspectUrlRequestSchema,
   RevokeDeviceRequestSchema,
 } from "./validation/schemas.js";
@@ -190,6 +193,45 @@ export function createZeroTrustApp(deps: AppDependencies) {
       } catch (err) {
         next(err);
       }
+    }
+  );
+
+  app.get(
+    "/api/v1/models/catalog",
+    authMiddleware,
+    limiter,
+    (_req: RequestWithAuth, res: Response) => {
+      res.status(200).json(buildCuratedModelCatalog(config));
+    }
+  );
+
+  app.post(
+    "/api/v1/code/run",
+    authMiddleware,
+    limiter,
+    (req: RequestWithAuth, res: Response) => {
+      const parsed = CodeRunRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        logSecurityEvent({
+          severity: "WARN",
+          category: "VALIDATION",
+          uid: req.principal?.uid,
+          message: "Rejected invalid code sandbox payload",
+        });
+        res.status(400).json({
+          error: "Invalid code run payload",
+          details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+        });
+        return;
+      }
+      const outcome = executeSandboxedCode(parsed.data);
+      logSecurityEvent({
+        severity: outcome.ok ? "INFO" : "WARN",
+        category: "CODE_SANDBOX",
+        uid: req.principal?.uid,
+        message: `Sandbox ${parsed.data.language} ok=${outcome.ok} (${outcome.durationMs}ms)`,
+      });
+      res.status(outcome.ok ? 200 : 400).json(outcome);
     }
   );
 

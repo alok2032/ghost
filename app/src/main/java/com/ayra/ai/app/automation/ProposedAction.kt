@@ -60,4 +60,51 @@ sealed class ProposedAction {
         override val description: String = "Set media volume level: $level"
         override val isCritical: Boolean = false
     }
+
+    data class CalendarCreate(
+        val eventTitle: String,
+        val eventDescription: String = "",
+        val location: String = "",
+        val startTimeMillis: Long = System.currentTimeMillis() + 3_600_000L,
+        val endTimeMillis: Long = System.currentTimeMillis() + 7_200_000L
+    ) : ProposedAction() {
+        override val title: String = "Create Calendar Event"
+        override val description: String = buildString {
+            append("Event: $eventTitle")
+            if (location.isNotBlank()) append("\nLocation: $location")
+            if (eventDescription.isNotBlank()) append("\nNotes: ${eventDescription.take(180)}")
+        }
+        override val isCritical: Boolean = false
+    }
+
+    data class ComposeEmail(
+        val toAddress: String,
+        val subject: String,
+        val body: String
+    ) : ProposedAction() {
+        override val title: String = "Compose Email"
+        override val description: String = "To: ${toAddress.ifBlank { "(choose recipient)" }}\nSubject: $subject\n\n${body.take(220)}"
+        override val isCritical: Boolean = true
+    }
+
+    data class NavigateMap(
+        val destinationQuery: String
+    ) : ProposedAction() {
+        override val title: String = "Open Maps Navigation"
+        override val description: String = "Open Maps directions for: $destinationQuery"
+        override val isCritical: Boolean = false
+    }
+
+    data class ExecuteExternalTool(
+        val toolName: String,
+        val summary: String,
+        val targetUrl: String = ""
+    ) : ProposedAction() {
+        override val title: String = "External Tool: $toolName"
+        override val description: String = buildString {
+            append(summary)
+            if (targetUrl.isNotBlank()) append("\nEndpoint: $targetUrl")
+        }
+        override val isCritical: Boolean = true
+    }
 }

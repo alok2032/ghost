@@ -640,7 +640,7 @@ object AyraPreferences {
     private const val KEY_REMEMBERED_FACTS = "user_remembered_facts"
 
     fun isMemoryEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_MEMORY_ENABLED, true)
+        return getPrefs(context).getBoolean(KEY_MEMORY_ENABLED, false)
     }
 
     fun setMemoryEnabled(context: Context, enabled: Boolean) {
@@ -759,11 +759,16 @@ object AyraPreferences {
         getSensitivePrefs(context).putString(KEY_REMEMBERED_FACTS, arr.toString())
     }
 
-    fun addRememberedFact(context: Context, fact: String) {
+    fun addRememberedFact(context: Context, fact: String): Boolean {
+        val clean = fact.trim()
+        if (clean.length < 3 || com.ayra.ai.app.ai.memory.LongTermMemoryManager.containsSensitiveCredentialOrPii(clean)) {
+            return false
+        }
         val current = getRememberedFacts(context).toMutableSet()
-        current.add(fact)
+        current.add(clean)
         saveRememberedFactsEncrypted(context, current)
         getPrefs(context).edit().remove(KEY_REMEMBERED_FACTS).apply()
+        return true
     }
 
     fun removeRememberedFact(context: Context, fact: String) {

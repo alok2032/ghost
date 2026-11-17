@@ -70,7 +70,8 @@ import kotlin.math.roundToInt
 @Composable
 fun PersonalizationAndMemoryPanel(
     context: Context,
-    onPersonaStyleSelected: (String) -> Unit
+    onPersonaStyleSelected: (String) -> Unit,
+    onOpenMemoryVault: () -> Unit = {}
 ) {
     val uiConfig = LocalAyraUiConfig.current
     val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsState()
@@ -196,15 +197,23 @@ fun PersonalizationAndMemoryPanel(
             Switch(checked = memoryEnabled, onCheckedChange = { memoryEnabled = it; AyraPreferences.setMemoryEnabled(context, it) })
         }
 
+        OutlinedButton(
+            onClick = onOpenMemoryVault,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Open Encrypted Memory Vault (Manage / Search / Edit)") }
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = newFact, onValueChange = { newFact = it }, label = { Text("Add memory fact...") }, modifier = Modifier.weight(1f), singleLine = true)
             IconButton(
                 onClick = {
                     val clean = newFact.trim()
                     if (clean.isNotBlank()) {
-                        AyraPreferences.addRememberedFact(context, clean)
-                        facts = AyraPreferences.getRememberedFacts(context).toList()
-                        newFact = ""
+                        if (AyraPreferences.addRememberedFact(context, clean)) {
+                            facts = AyraPreferences.getRememberedFacts(context).toList()
+                            newFact = ""
+                        } else {
+                            Toast.makeText(context, "Blocked: credentials or PII cannot be stored in memory.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 },
                 modifier = Modifier.size(48.dp)
@@ -252,6 +261,7 @@ fun DeviceAndUsageDashboardPanel(
     val scope = rememberCoroutineScope()
     val uiConfig = LocalAyraUiConfig.current
     val usageMetrics by AiUsageTracker.metricsFlow.collectAsState()
+    val dailyUsage by AiUsageTracker.dailyStatsFlow.collectAsState()
 
     var sessionCount by remember { mutableStateOf(0) }
     var messageCount by remember { mutableStateOf(0) }
@@ -365,6 +375,12 @@ fun DeviceAndUsageDashboardPanel(
                         OutlinedButton(onClick = { AiUsageTracker.clearAll(context) }) { Text("Reset", fontSize = 11.sp) }
                     }
                 }
+                Text(
+                    "Today (${dailyUsage.dateKey}): ${dailyUsage.requestsToday} / ${dailyUsage.dailyLimit} requests • ~${dailyUsage.estimatedTokensToday} est. tokens",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (dailyUsage.isOverSoftLimit || dailyUsage.isNearLimit) MaterialTheme.colorScheme.error else uiConfig.accentColor,
+                    fontWeight = FontWeight.SemiBold
+                )
                 if (usageMetrics.isEmpty()) {
                     Text("No live API calls recorded yet in this encrypted store.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {

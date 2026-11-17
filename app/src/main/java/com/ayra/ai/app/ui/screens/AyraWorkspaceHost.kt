@@ -20,14 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
@@ -71,10 +73,11 @@ import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 enum class AyraDestination(val title: String, val subtitle: String, val icon: ImageVector) {
-    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.Default.Chat),
+    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
     RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public),
     PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune),
     PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial),
+    MEMORY("Long-Term Memory", "Opt-In Encrypted Recall & Facts", Icons.Default.Psychology),
     STUDIOS("Creative & Code Studios", "8K Image, Video, Music, 3D & Code", Icons.Default.AutoAwesome),
     DATA_ANALYSIS("Data & CSV Analysis Lab", "Stats Profiler, Charts & AI Insights", Icons.Default.BarChart),
     MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub),
@@ -161,6 +164,7 @@ fun AyraWorkspaceHost(
                             color = uiConfig.accentColor.copy(alpha = 0.16f),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
+                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                                 .clickable {
                                     viewModel.createNewSession()
                                     navigateTo(AyraDestination.CHAT)
@@ -318,6 +322,10 @@ fun AyraWorkspaceHost(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+                AyraDestination.MEMORY -> MemoryScreen(
+                    onBack = { currentDest = AyraDestination.CHAT },
+                    modifier = Modifier.fillMaxSize()
+                )
                 AyraDestination.STUDIOS -> StudiosScreen(
                     onBack = { currentDest = AyraDestination.CHAT },
                     modifier = Modifier.fillMaxSize()
@@ -351,6 +359,7 @@ fun AyraWorkspaceHost(
                     onOpenModels = { currentDest = AyraDestination.MODELS_ARENA },
                     onOpenTools = { currentDest = AyraDestination.TOOLS_HUB },
                     onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
+                    onOpenMemory = { currentDest = AyraDestination.MEMORY },
                     onPersonaChanged = { style -> viewModel.setPersona(style) },
                     modifier = Modifier.fillMaxSize()
                 )

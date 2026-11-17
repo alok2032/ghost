@@ -1479,6 +1479,88 @@ class ExternalAiProviders @JvmOverloads constructor(
         }
     }
 
+    data class OpenAiToolCallSpec(
+        val id: String,
+        val name: String,
+        val argumentsJson: String
+    )
+
+    data class OpenAiToolTurnResponse(
+        val content: String = "",
+        val toolCalls: List<OpenAiToolCallSpec> = emptyList()
+    )
+
+    suspend fun callOpenAiWithTools(
+        provider: AiProviderType,
+        turns: List<ChatTurn>,
+        model: String,
+        toolsArray: JSONArray,
+        maxTokens: Int = 4096
+    ): OpenAiToolTurnResponse = withContext(Dispatchers.IO) {
+        val baseUrl = getBaseUrlForProvider(provider)
+        if (provider == AiProviderType.LOCAL_OLLAMA && customHttpClient == null && baseUrlOverrides.isEmpty()) {
+            val check = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, baseUrl)
+            if (!check.allowed) {
+                throw ProviderError.NetworkFailure(check.reason ?: "Blocked unsafe local endpoint URL.")
+            }
+        }
+        val key = getKeyForProviderAndModel(provider, model)
+        val endpoint = "${baseUrl}chat/completions"
+        val messagesArray = buildOpenAiMessages(provider, model, turns)
+        val requestJson = JSONObject().apply {
+            put("model", model)
+            put("messages", messagesArray)
+            put("max_tokens", maxTokens)
+            if (toolsArray.length() > 0) {
+                put("tools", toolsArray)
+                put("tool_choice", "auto")
+            }
+            if (!model.contains("reasoner") && !model.contains("o1") && !model.contains("o3")) {
+                put("temperature", 0.3)
+            }
+        }
+        val reqBuilder = Request.Builder()
+            .url(endpoint)
+            .header("Accept", "application/json")
+            .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
+        if (key.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $key")
+        if (provider == AiProviderType.OPENROUTER) {
+            reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
+            reqBuilder.addHeader("X-Title", "Ayra AI")
+        }
+
+        resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
+            if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
+            if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
+            if (response.code == 404) {
+                throw ProviderError.ModelNotFound(provider, model, response.body?.string() ?: "")
+            }
+            if (!response.isSuccessful) {
+                throw ProviderError.ServerError(response.code, response.body?.string() ?: response.message)
+            }
+            val body = response.body?.string().orEmpty()
+            val json = JSONObject(body)
+            val choices = json.optJSONArray("choices") ?: return@use OpenAiToolTurnResponse()
+            if (choices.length() == 0) return@use OpenAiToolTurnResponse()
+            val message = choices.getJSONObject(0).optJSONObject("message") ?: return@use OpenAiToolTurnResponse()
+            val text = if (!message.isNull("content")) sanitizeModelOutput(message.optString("content", "")) else ""
+            val calls = mutableListOf<OpenAiToolCallSpec>()
+            val toolCallsArr = message.optJSONArray("tool_calls")
+            if (toolCallsArr != null) {
+                for (i in 0 until toolCallsArr.length()) {
+                    val item = toolCallsArr.optJSONObject(i) ?: continue
+                    val fn = item.optJSONObject("function") ?: continue
+                    val name = fn.optString("name", "").trim()
+                    val args = fn.optString("arguments", "{}").ifBlank { "{}" }
+                    if (name.isNotBlank()) {
+                        calls.add(OpenAiToolCallSpec(item.optString("id", "call_$i"), name, args))
+                    }
+                }
+            }
+            OpenAiToolTurnResponse(content = text, toolCalls = calls)
+        }
+    }
+
     private suspend fun streamOpenAiCompatible(
         provider: AiProviderType,
         turns: List<ChatTurn>,
