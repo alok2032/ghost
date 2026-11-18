@@ -291,3 +291,81 @@ test("Messages, plugins, and creations validate schema enums and reject invalid 
   await assertSucceeds(aliceRoot.collection("creations").doc("ok_cr").set(validCreation(ALICE_UID)));
   await assertSucceeds(aliceRoot.collection("creations").get());
 });
+
+test("Shared system and administrative resources strictly deny client reads and writes", async () => {
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+
+  const restrictedPaths = [
+    ["admins", ALICE_UID],
+    ["system", "runtime_flags"],
+    ["config", "providers"],
+    ["shared", "global_memory"],
+    ["auditLogs", "event_01"],
+    ["modelCatalog", "curated_models"],
+    ["workspaces", "shared_ws"],
+  ];
+
+  for (const [col, docId] of restrictedPaths) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection(col).doc(docId).set({
+        userId: ALICE_UID,
+        enabled: true,
+        updatedAt: tsNow(),
+      });
+    });
+
+    await assertFails(unauthDb.collection(col).doc(docId).get());
+    await assertFails(unauthDb.collection(col).get());
+    await assertFails(aliceDb.collection(col).doc(docId).get());
+    await assertFails(aliceDb.collection(col).get());
+    await assertFails(aliceDb.collection(col).doc(docId).set({ userId: ALICE_UID, role: "admin" }));
+    await assertFails(aliceDb.collection(col).doc(docId).update({ enabled: false }));
+    await assertFails(aliceDb.collection(col).doc(docId).delete());
+  }
+});
+
+test("Root /users collection enumeration, unmodeled subcollections, anonymous auth, future timestamps, and revocation un-revoking are blocked", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const anonDb = testEnv
+    .authenticatedContext("anon_user_99", {
+      firebase: { sign_in_provider: "anonymous" },
+    })
+    .firestore();
+
+  // Root /users listing is denied even for signed-in users
+  await assertSucceeds(aliceDb.collection("users").doc(ALICE_UID).set(validProfile(ALICE_UID)));
+  await assertFails(aliceDb.collection("users").get());
+
+  // Unmodeled subcollection under /users/{uid} fails closed
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).collection("unmodeledVault").doc("doc1").set({ secret: "x" })
+  );
+
+  // Anonymous auth token rejected even on matching uid path
+  await assertFails(
+    anonDb.collection("users").doc("anon_user_99").set(validProfile("anon_user_99"))
+  );
+
+  // Future timestamp manipulation rejected
+  const futureTs = new Date(Date.now() + 120000);
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).collection("messages").doc("m_future").set({
+      ...validMessage(ALICE_UID),
+      createdAt: futureTs,
+      updatedAt: futureTs,
+    })
+  );
+
+  // Poisoned doc ID rejected
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).collection("messages").doc("bad id$").set(validMessage(ALICE_UID))
+  );
+
+  // Once device is revoked, client update cannot flip isRevoked back to false or lower epochAdded
+  const devRef = aliceDb.collection("users").doc(ALICE_UID).collection("devices").doc("dev_pixel_01");
+  await assertSucceeds(devRef.set({ ...validDevice(ALICE_UID), epochAdded: 2 }));
+  await assertSucceeds(devRef.update({ isRevoked: true, updatedAt: tsNow() }));
+  await assertFails(devRef.update({ isRevoked: false, updatedAt: tsNow() }));
+  await assertFails(devRef.update({ epochAdded: 1, updatedAt: tsNow() }));
+});

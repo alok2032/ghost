@@ -22,6 +22,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 
@@ -185,6 +186,7 @@ class AyraCloudRepository(
                     )
                 ).awaitResult()
             } else {
+                val nowMs = System.currentTimeMillis()
                 sessionRef.set(
                     mapOf(
                         "userId" to resolvedUid,
@@ -192,8 +194,8 @@ class AyraCloudRepository(
                         "deviceId" to bundle.deviceId,
                         "deviceName" to bundle.deviceName.take(120),
                         "status" to "ACTIVE",
-                        "createdAtMs" to System.currentTimeMillis(),
-                        "lastActiveMs" to System.currentTimeMillis(),
+                        "createdAtMs" to nowMs,
+                        "lastActiveMs" to nowMs,
                         "createdAt" to FieldValue.serverTimestamp(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
@@ -282,6 +284,14 @@ class AyraCloudRepository(
                         actionCommand = modelUsed
                     )
                 }
+            }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                val fsEx = generateSequence(error) { it.cause }
+                    .filterIsInstance<FirebaseFirestoreException>()
+                    .firstOrNull()
+                handleFirestoreError(fsEx ?: (error as? Exception ?: Exception(error)), "observeCloudMessages")
+                emit(emptyList())
             }
     }
 

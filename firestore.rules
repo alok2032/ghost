@@ -3,6 +3,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // -------------------------------------------------------------------------
+    // Global Fail-Closed Safety Net (must remain the first match block)
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Hardened Global Predicates & Sanitizers
+    // -------------------------------------------------------------------------
     function incoming() {
       return request.resource.data;
     }
@@ -12,24 +22,41 @@ service cloud.firestore {
     }
 
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.uid is string
+        && request.auth.uid.size() > 0
+        && (!('firebase' in request.auth.token) || request.auth.token.firebase.sign_in_provider != 'anonymous');
     }
 
     function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && !id.matches('.*[/\\\\].*');
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id != '.'
+        && id != '..'
+        && id.matches('^[a-zA-Z0-9._\\-]+$');
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId && isValidId(userId);
     }
 
-    function hasValidTimestamps(data) {
+    function hasValidCreateTimestamps(data) {
       return data.createdAt is timestamp
         && data.createdAt <= request.time
         && data.updatedAt is timestamp
         && data.updatedAt <= request.time;
     }
 
+    function hasValidUpdateTimestamps(data) {
+      return data.createdAt == existing().createdAt
+        && data.updatedAt is timestamp
+        && data.updatedAt <= request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints (Anti-Update-Gap & Anti-Injection)
+    // -------------------------------------------------------------------------
     function isValidUserProfile(userId, data) {
       return data.keys().hasAll([
           'userId', 'displayName', 'email', 'photoUrl',
@@ -44,8 +71,7 @@ service cloud.firestore {
         && data.email is string && data.email.size() <= 200
         && data.photoUrl is string && data.photoUrl.size() <= 500
         && data.preferredPersona is string && data.preferredPersona.size() <= 40
-        && data.preferredModelTier is string && data.preferredModelTier.size() <= 60
-        && hasValidTimestamps(data);
+        && data.preferredModelTier is string && data.preferredModelTier.size() <= 60;
     }
 
     function isValidCloudMessage(userId, data) {
@@ -67,8 +93,7 @@ service cloud.firestore {
         && data.craftType is string && data.craftType.size() <= 40
         && data.craftPayload is string && data.craftPayload.size() <= 100000
         && (!('e2ee' in data) || data.e2ee is bool)
-        && data.timestampMs is int && data.timestampMs >= 0
-        && hasValidTimestamps(data);
+        && data.timestampMs is int && data.timestampMs >= 0;
     }
 
     function isValidCloudPlugin(userId, data) {
@@ -86,7 +111,7 @@ service cloud.firestore {
         ])
         && data.userId == userId
         && data.repoFullName is string && data.repoFullName.size() >= 1 && data.repoFullName.size() <= 140
-        && data.repoUrl is string && data.repoUrl.size() >= 1 && data.repoUrl.size() <= 300
+        && data.repoUrl is string && data.repoUrl.size() >= 8 && data.repoUrl.size() <= 300 && data.repoUrl.matches('^https://.*')
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
         && data.owner is string && data.owner.size() >= 1 && data.owner.size() <= 100
         && data.description is string && data.description.size() <= 1000
@@ -99,8 +124,7 @@ service cloud.firestore {
         && data.openApiSpecJson is string && data.openApiSpecJson.size() <= 20000
         && data.commandsJson is string && data.commandsJson.size() <= 10000
         && data.fileTreeJson is string && data.fileTreeJson.size() <= 15000
-        && data.isEnabled is bool
-        && hasValidTimestamps(data);
+        && data.isEnabled is bool;
     }
 
     function isValidCloudCreation(userId, data) {
@@ -118,8 +142,7 @@ service cloud.firestore {
         && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 20000
         && data.summary is string && data.summary.size() <= 50000
         && data.modelUsed is string && data.modelUsed.size() <= 120
-        && (!('e2ee' in data) || data.e2ee is bool)
-        && hasValidTimestamps(data);
+        && (!('e2ee' in data) || data.e2ee is bool);
     }
 
     function isValidTrustedDevice(userId, deviceId, data) {
@@ -141,8 +164,7 @@ service cloud.firestore {
         && data.fingerprintSha256 is string && data.fingerprintSha256.size() >= 16 && data.fingerprintSha256.size() <= 128
         && data.epochAdded is int && data.epochAdded >= 1
         && data.isRevoked is bool
-        && data.platform is string && data.platform.size() >= 1 && data.platform.size() <= 64
-        && hasValidTimestamps(data);
+        && data.platform is string && data.platform.size() >= 1 && data.platform.size() <= 64;
     }
 
     function isValidCloudSession(userId, sessionId, data) {
@@ -160,8 +182,7 @@ service cloud.firestore {
         && data.deviceName is string && data.deviceName.size() >= 1 && data.deviceName.size() <= 120
         && data.status in ['ACTIVE', 'REVOKED', 'EXPIRED']
         && data.createdAtMs is int && data.createdAtMs >= 0
-        && data.lastActiveMs is int && data.lastActiveMs >= 0
-        && hasValidTimestamps(data);
+        && data.lastActiveMs is int && data.lastActiveMs >= data.createdAtMs;
     }
 
     function isValidCloudBackup(userId, backupId, data) {
@@ -177,9 +198,8 @@ service cloud.firestore {
         && data.backupId == backupId
         && data.format is string && data.format.size() >= 1 && data.format.size() <= 60
         && data.encryptedPayloadJson is string && data.encryptedPayloadJson.size() >= 16 && data.encryptedPayloadJson.size() <= 800000
-        && data.payloadSha256 is string && data.payloadSha256.size() == 64
-        && data.createdAtMs is int && data.createdAtMs >= 0
-        && hasValidTimestamps(data);
+        && data.payloadSha256 is string && data.payloadSha256.matches('^[0-9a-fA-F]{64}$')
+        && data.createdAtMs is int && data.createdAtMs >= 0;
     }
 
     function isValidSecurityEvent(userId, data) {
@@ -195,33 +215,83 @@ service cloud.firestore {
         && data.category is string && data.category.size() >= 1 && data.category.size() <= 40
         && data.severity in ['INFO', 'WARN', 'CRITICAL']
         && data.message is string && data.message.size() >= 1 && data.message.size() <= 500
-        && data.hmacHex is string && data.hmacHex.size() >= 16 && data.hmacHex.size() <= 128
-        && data.timestampMs is int && data.timestampMs >= 0
-        && hasValidTimestamps(data);
+        && data.hmacHex is string && data.hmacHex.size() >= 16 && data.hmacHex.size() <= 128 && data.hmacHex.matches('^[a-zA-Z0-9_]+$')
+        && data.timestampMs is int && data.timestampMs >= 0;
     }
 
+    // -------------------------------------------------------------------------
+    // Shared System & Administrative Resources (Strictly Restricted: Server/Admin SDK Only)
+    // Client SDKs have zero read or write access to shared infrastructure state.
+    // -------------------------------------------------------------------------
+    match /admins/{adminPath=**} {
+      allow read, write: if false;
+    }
+
+    match /system/{systemPath=**} {
+      allow read, write: if false;
+    }
+
+    match /config/{configPath=**} {
+      allow read, write: if false;
+    }
+
+    match /shared/{sharedPath=**} {
+      allow read, write: if false;
+    }
+
+    match /auditLogs/{auditPath=**} {
+      allow read, write: if false;
+    }
+
+    match /modelCatalog/{catalogPath=**} {
+      allow read, write: if false;
+    }
+
+    match /workspaces/{workspacePath=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Owner-Only User Documents & Subcollections
+    // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUserProfile(userId, incoming());
+      // Owner may read only their own profile document; root listing is strictly forbidden.
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && isValidUserProfile(userId, incoming())
+        && hasValidCreateTimestamps(incoming());
       allow update: if isOwner(userId)
         && isValidUserProfile(userId, incoming())
+        && hasValidUpdateTimestamps(incoming())
         && incoming().userId == existing().userId
-        && incoming().createdAt == existing().createdAt
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        && incoming().diff(existing()).affectedKeys().hasOnly([
           'displayName', 'email', 'photoUrl',
           'preferredPersona', 'preferredModelTier', 'updatedAt'
         ]);
       allow delete: if isOwner(userId);
 
+      // Fail-closed default for any unmodeled subcollection beneath /users/{userId}
+      match /{unknownSub=**} {
+        allow read, write: if false;
+      }
+
       match /messages/{messageId} {
         allow get: if isOwner(userId) && isValidId(messageId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(messageId) && isValidCloudMessage(userId, incoming());
-        allow update: if isOwner(userId) && isValidId(messageId)
+        allow create: if isOwner(userId)
+          && isValidId(messageId)
           && isValidCloudMessage(userId, incoming())
+          && hasValidCreateTimestamps(incoming());
+        allow update: if isOwner(userId)
+          && isValidId(messageId)
+          && isValidCloudMessage(userId, incoming())
+          && hasValidUpdateTimestamps(incoming())
           && incoming().userId == existing().userId
-          && incoming().createdAt == existing().createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && incoming().localMessageId == existing().localMessageId
+          && incoming().role == existing().role
+          && incoming().timestampMs == existing().timestampMs
+          && incoming().diff(existing()).affectedKeys().hasOnly([
             'content', 'modelUsed', 'craftType', 'craftPayload', 'e2ee', 'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(messageId);
@@ -230,13 +300,17 @@ service cloud.firestore {
       match /plugins/{pluginId} {
         allow get: if isOwner(userId) && isValidId(pluginId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(pluginId) && isValidCloudPlugin(userId, incoming());
-        allow update: if isOwner(userId) && isValidId(pluginId)
+        allow create: if isOwner(userId)
+          && isValidId(pluginId)
           && isValidCloudPlugin(userId, incoming())
+          && hasValidCreateTimestamps(incoming());
+        allow update: if isOwner(userId)
+          && isValidId(pluginId)
+          && isValidCloudPlugin(userId, incoming())
+          && hasValidUpdateTimestamps(incoming())
           && incoming().userId == existing().userId
           && incoming().repoFullName == existing().repoFullName
-          && incoming().createdAt == existing().createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && incoming().diff(existing()).affectedKeys().hasOnly([
             'repoUrl', 'name', 'owner', 'description', 'defaultBranch',
             'stars', 'primaryLanguage', 'pluginType', 'capabilitiesSummary',
             'skillPromptContext', 'openApiSpecJson', 'commandsJson',
@@ -248,12 +322,18 @@ service cloud.firestore {
       match /creations/{creationId} {
         allow get: if isOwner(userId) && isValidId(creationId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(creationId) && isValidCloudCreation(userId, incoming());
-        allow update: if isOwner(userId) && isValidId(creationId)
+        allow create: if isOwner(userId)
+          && isValidId(creationId)
           && isValidCloudCreation(userId, incoming())
+          && hasValidCreateTimestamps(incoming());
+        allow update: if isOwner(userId)
+          && isValidId(creationId)
+          && isValidCloudCreation(userId, incoming())
+          && hasValidUpdateTimestamps(incoming())
           && incoming().userId == existing().userId
-          && incoming().createdAt == existing().createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && incoming().creationType == existing().creationType
+          && incoming().prompt == existing().prompt
+          && incoming().diff(existing()).affectedKeys().hasOnly([
             'title', 'summary', 'modelUsed', 'e2ee', 'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(creationId);
@@ -262,13 +342,20 @@ service cloud.firestore {
       match /devices/{deviceId} {
         allow get: if isOwner(userId) && isValidId(deviceId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(deviceId) && isValidTrustedDevice(userId, deviceId, incoming());
-        allow update: if isOwner(userId) && isValidId(deviceId)
+        allow create: if isOwner(userId)
+          && isValidId(deviceId)
           && isValidTrustedDevice(userId, deviceId, incoming())
+          && hasValidCreateTimestamps(incoming());
+        allow update: if isOwner(userId)
+          && isValidId(deviceId)
+          && isValidTrustedDevice(userId, deviceId, incoming())
+          && hasValidUpdateTimestamps(incoming())
           && incoming().userId == existing().userId
           && incoming().deviceId == existing().deviceId
-          && incoming().createdAt == existing().createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && incoming().platform == existing().platform
+          && incoming().epochAdded >= existing().epochAdded
+          && (!existing().isRevoked || incoming().isRevoked == true)
+          && incoming().diff(existing()).affectedKeys().hasOnly([
             'deviceName', 'identityPublicKeyB64', 'ecdhPublicKeyB64',
             'fingerprintSha256', 'epochAdded', 'isRevoked', 'updatedAt'
           ]);
@@ -278,14 +365,19 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow get: if isOwner(userId) && isValidId(sessionId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(sessionId) && isValidCloudSession(userId, sessionId, incoming());
-        allow update: if isOwner(userId) && isValidId(sessionId)
+        allow create: if isOwner(userId)
+          && isValidId(sessionId)
           && isValidCloudSession(userId, sessionId, incoming())
+          && hasValidCreateTimestamps(incoming());
+        allow update: if isOwner(userId)
+          && isValidId(sessionId)
+          && isValidCloudSession(userId, sessionId, incoming())
+          && hasValidUpdateTimestamps(incoming())
           && incoming().userId == existing().userId
           && incoming().sessionId == existing().sessionId
           && incoming().deviceId == existing().deviceId
-          && incoming().createdAt == existing().createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && incoming().createdAtMs == existing().createdAtMs
+          && incoming().diff(existing()).affectedKeys().hasOnly([
             'deviceName', 'status', 'lastActiveMs', 'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(sessionId);
@@ -294,7 +386,10 @@ service cloud.firestore {
       match /backups/{backupId} {
         allow get: if isOwner(userId) && isValidId(backupId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(backupId) && isValidCloudBackup(userId, backupId, incoming());
+        allow create: if isOwner(userId)
+          && isValidId(backupId)
+          && isValidCloudBackup(userId, backupId, incoming())
+          && hasValidCreateTimestamps(incoming());
         allow update: if false;
         allow delete: if isOwner(userId) && isValidId(backupId);
       }
@@ -302,14 +397,13 @@ service cloud.firestore {
       match /securityEvents/{eventId} {
         allow get: if isOwner(userId) && isValidId(eventId);
         allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(eventId) && isValidSecurityEvent(userId, incoming());
+        allow create: if isOwner(userId)
+          && isValidId(eventId)
+          && isValidSecurityEvent(userId, incoming())
+          && hasValidCreateTimestamps(incoming());
         allow update: if false;
         allow delete: if isOwner(userId) && isValidId(eventId);
       }
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }
