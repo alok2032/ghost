@@ -455,7 +455,7 @@ class AyraCloudRepository(
             val payload = mapOf(
                 "userId" to uid,
                 "creationType" to safeType,
-                "title" to title.ifBlank { "Ghost AI Creation" }.take(200),
+                "title" to title.ifBlank { "Ayra AI Creation" }.take(200),
                 "prompt" to encPrompt.ifBlank { "Creation prompt" }.take(20000),
                 "summary" to encSummary.take(50000),
                 "modelUsed" to modelUsed.take(120),

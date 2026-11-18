@@ -385,7 +385,7 @@ fun AiRoutingAndMemoryCard(context: Context) {
                     userInstructions = it
                     AyraPreferences.setUserCustomInstructions(context, it)
                 },
-                label = { Text("Custom Instructions for Ghost AI (optional)", fontSize = 11.sp) },
+                label = { Text("Custom Instructions for Ayra AI (optional)", fontSize = 11.sp) },
                 placeholder = { Text("e.g. Always respond in Bengali; prioritize concise code", fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 2,

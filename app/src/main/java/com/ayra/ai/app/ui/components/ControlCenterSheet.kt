@@ -184,7 +184,7 @@ fun ControlCenterSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Ghost AI Logo",
+                        contentDescription = "Ayra AI Logo",
                         tint = Color.Black,
                         modifier = Modifier.size(24.dp)
                     )
@@ -198,7 +198,7 @@ fun ControlCenterSheet(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "Ghost AI",
+                            text = "Ayra AI",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
@@ -283,10 +283,21 @@ fun ControlCenterSheet(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     permissionEntries.forEach { (label, perm) ->
-                        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                            context,
-                            perm
-                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val granted = if (perm == android.Manifest.permission.ACCESS_FINE_LOCATION) {
+                            androidx.core.content.ContextCompat.checkSelfPermission(
+                                context,
+                                android.Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                                androidx.core.content.ContextCompat.checkSelfPermission(
+                                    context,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        } else {
+                            androidx.core.content.ContextCompat.checkSelfPermission(
+                                context,
+                                perm
+                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        }
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -1283,8 +1294,8 @@ fun ControlCenterSheet(
             // Lock Screen Wake Toggle
             SettingToggleRow(
                 icon = Icons.Default.Lock,
-                title = "Lock Screen Wake ('Ghost')",
-                subtitle = "ফোন লক থাকলেও 'Ghost' বললেই সহকারী অন হবে",
+                title = "Lock Screen Wake ('Ayra')",
+                subtitle = "ফোন লক থাকলেও 'Ayra' বললেই সহকারী অন হবে",
                 checked = lockScreenWakeEnabled,
                 onCheckedChange = {
                     lockScreenWakeEnabled = it
@@ -1297,7 +1308,7 @@ fun ControlCenterSheet(
             SettingToggleRow(
                 icon = Icons.Default.Mic,
                 title = "Always-On Voice Trigger",
-                subtitle = "গুগল বা সিরি-র মত 'Ghost' ডাকলে স্বয়ংক্রিয় সক্রিয়",
+                subtitle = "গুগল বা সিরি-র মত 'Ayra' ডাকলে স্বয়ংক্রিয় সক্রিয়",
                 checked = wakeWordEnabled,
                 onCheckedChange = {
                     onWakeWordToggle(it)

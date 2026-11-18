@@ -184,7 +184,7 @@ class DefaultAgentCore(
         }
 
         val plannerSystemPrompt = """
-            You are Ghost Autonomous Agent executing a bounded Plan -> Act -> Verify loop.
+            You are Ayra Autonomous Agent executing a bounded Plan -> Act -> Verify loop.
             Available tools:
             $toolCatalogText
 
@@ -413,8 +413,8 @@ class DefaultAgentCore(
     }.flowOn(Dispatchers.IO)
 
     private fun buildModelLabel(usedTools: List<String>): String {
-        return if (usedTools.isEmpty()) "Ghost Agent"
-        else "Ghost Agent (${usedTools.distinct().joinToString(", ")})"
+        return if (usedTools.isEmpty()) "Ayra Agent"
+        else "Ayra Agent (${usedTools.distinct().joinToString(", ")})"
     }
 
     private suspend fun decideNextStep(

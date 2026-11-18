@@ -83,7 +83,7 @@ class ChatViewModelOrchestrationTest {
         val sseBody = buildString {
             append("data: ").append(
                 JSONObject().put("choices", JSONArray().put(
-                    JSONObject().put("delta", JSONObject().put("content", "Ghost AI "))
+                    JSONObject().put("delta", JSONObject().put("content", "Ayra AI "))
                 )).toString()
             ).append("\n\n")
             append("data: ").append(
@@ -128,7 +128,7 @@ class ChatViewModelOrchestrationTest {
         }
 
         assertNotNull(assistantMsg)
-        assertTrue(assistantMsg!!.content.contains("Ghost AI verified Clean Architecture response."))
+        assertTrue(assistantMsg!!.content.contains("Ayra AI verified Clean Architecture response."))
         assertEquals(assistantMsg!!.content, spokenReply)
         assertFalse(vm.isGenerating.value)
         assertTrue(vm.activeCitations.value.isEmpty())
@@ -172,14 +172,14 @@ class ChatViewModelOrchestrationTest {
     }
 
     @Test
-    fun `ghost ai branding invariants hold across agent and specialized engines`() {
-        assertTrue(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ghost Defensive Security Research Engine"))
-        assertTrue(OpenModelEngine.SAFE_SYSTEM_PROMPT.contains("Ghost Open-Weights Engine"))
+    fun `ayra ai branding invariants hold across agent and specialized engines`() {
+        assertTrue(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ayra Defensive Security Research Engine"))
+        assertTrue(OpenModelEngine.SAFE_SYSTEM_PROMPT.contains("Ayra Open-Weights Engine"))
         val registry = DefaultAgentToolRegistry(context)
         assertEquals(21, registry.listTools().size)
         val calendarTool = registry.getTool("calendar_create")
         assertNotNull(calendarTool)
-        assertFalse(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ayra"))
-        assertFalse(OpenModelEngine.SAFE_SYSTEM_PROMPT.contains("Ayra"))
+        assertFalse(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ghost"))
+        assertFalse(OpenModelEngine.SAFE_SYSTEM_PROMPT.contains("Ghost"))
     }
 }

@@ -186,7 +186,7 @@ fun VoiceCommandOverlay(
                             text = if (isFallbackRecording) {
                                 "Tap Send to transcribe & run AI inference"
                             } else {
-                                "Real-time speech-to-text triggers Ghost AI automatically"
+                                "Real-time speech-to-text triggers Ayra AI automatically"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary

@@ -35,7 +35,7 @@ This document maps **every actual data flow in the Ayra AI codebase** to Google 
 - `CAMERA`: Capturing a photo to ask the multimodal AI about, plus flashlight hardware toggle (runtime prompt). Using Android Photo Picker (`PickVisualMedia`) for gallery photos — **zero** `READ_EXTERNAL_STORAGE` / `READ_MEDIA_*` declarations.
 - `READ_CONTACTS`: Resolving contact display name to phone number exclusively on-device when user requests dialing or drafting an SMS (`ACTION_DIAL` / `ACTION_SENDTO`, always gated by `ProposedAction` confirmation card).
 - `ACCESS_COARSE_LOCATION` / `ACCESS_FINE_LOCATION`: User-triggered local context/map navigation actions (`ACTION_VIEW` geo/maps intent).
-- `POST_NOTIFICATIONS` / `RECEIVE_BOOT_COMPLETED`: Firing user-created scheduled reminders & re-arming pending reminders after device reboot (`AyraTaskScheduler` using battery-respectful `AlarmManager` fallback without requiring intrusive special-access alarm dialogs unless user grants it).
+- `POST_NOTIFICATIONS` / `SCHEDULE_EXACT_ALARM` / `RECEIVE_BOOT_COMPLETED`: Firing user-created scheduled reminders & re-arming pending reminders after device reboot (`AyraTaskScheduler` checks `canScheduleExactAlarms()` and falls back to inexact `AlarmManager` delivery with an explicit UI notice & Settings CTA when exact alarm permission is not granted).
 - `USE_BIOMETRIC`: Hardware `BiometricPrompt` (`CryptoObject`) vault unlock and destructive export/erasure authorization.
 
 **Strictly Excluded Permissions:** `CALL_PHONE`, `SEND_SMS`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `REQUEST_INSTALL_PACKAGES`, `QUERY_ALL_PACKAGES`, `SYSTEM_ALERT_WINDOW`.

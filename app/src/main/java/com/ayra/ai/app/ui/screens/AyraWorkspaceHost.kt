@@ -73,7 +73,7 @@ import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 enum class AyraDestination(val title: String, val subtitle: String, val icon: ImageVector) {
-    CHAT("Ghost Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
+    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
     RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public),
     PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune),
     PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial),
@@ -149,7 +149,7 @@ fun AyraWorkspaceHost(
                     ) {
                         Column {
                             Text(
-                                text = "Ghost AI • By Alok",
+                                text = "Ayra AI • By Alok",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = uiConfig.accentColor

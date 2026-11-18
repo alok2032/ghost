@@ -165,7 +165,7 @@ class DeviceAutomationController(private val context: Context) {
         if (isDirectSmsIntent(lower)) {
             val numberMatcher = Pattern.compile("(\\+?[0-9]{5,14})").matcher(userInput)
             val msgMatch = Regex("(?i)(?:saying|message|বার্তা|যে)\\s*[:,-]?\\s*(.+)").find(userInput)
-            val messageText = msgMatch?.groupValues?.get(1)?.trim() ?: "Hello from Ghost AI!"
+            val messageText = msgMatch?.groupValues?.get(1)?.trim() ?: "Hello from Ayra AI!"
 
             val (recipientName, phoneNumber) = if (numberMatcher.find()) {
                 val num = numberMatcher.group(1) ?: ""
@@ -204,7 +204,7 @@ class DeviceAutomationController(private val context: Context) {
             if (isPm && hour < 12) hour += 12
             if (!isPm && hour == 12 && (lower.contains("am") || lower.contains("সকাল"))) hour = 0
 
-            return ProposedAction.SetAlarm(hour = hour.coerceIn(0, 23), minute = minute.coerceIn(0, 59), label = "Ghost AI Assistant Alarm")
+            return ProposedAction.SetAlarm(hour = hour.coerceIn(0, 23), minute = minute.coerceIn(0, 59), label = "Ayra AI Assistant Alarm")
         }
 
         return null
@@ -650,7 +650,7 @@ class DeviceAutomationController(private val context: Context) {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
             putExtra(AlarmClock.EXTRA_HOUR, hour)
             putExtra(AlarmClock.EXTRA_MINUTES, minute)
-            putExtra(AlarmClock.EXTRA_MESSAGE, "Ghost AI Assistant Alarm")
+            putExtra(AlarmClock.EXTRA_MESSAGE, "Ayra AI Assistant Alarm")
             putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

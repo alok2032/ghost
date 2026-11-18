@@ -747,7 +747,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             circuitBreaker.getCachedResponse(cacheKey)?.let { cached ->
                 return@withContext ProviderResponse(
                     text = cached,
-                    modelUsed = "Ghost AI Instant Cache ⚡",
+                    modelUsed = "Ayra AI Instant Cache ⚡",
                     provider = preferredProvider ?: getBestAvailableProvider(),
                     latencyMs = 0L
                 )
@@ -778,7 +778,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             if (allowExternalWikiGrounding) {
                 val gate = com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, preferredProvider)
                 if (!gate.allowed) {
-                    throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ghost AI Zero-Trust policy.")
+                    throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ayra AI Zero-Trust policy.")
                 }
             }
             val initialModel = preferredModelId ?: (ModelCatalog.defaultModelFor(preferredProvider)?.id ?: getDefaultModelForProvider(preferredProvider))
@@ -1435,8 +1435,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             reqBuilder.addHeader("Authorization", "Bearer $apiKey")
         }
         if (provider == AiProviderType.OPENROUTER) {
-            reqBuilder.addHeader("HTTP-Referer", "https://ghost-ai.app")
-            reqBuilder.addHeader("X-Title", "Ghost AI")
+            reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
+            reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
         return resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
@@ -1530,7 +1530,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         if (key.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $key")
         if (provider == AiProviderType.OPENROUTER) {
             reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
-            reqBuilder.addHeader("X-Title", "Ghost AI")
+            reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
         resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
@@ -1598,8 +1598,8 @@ class ExternalAiProviders @JvmOverloads constructor(
 
         if (apiKey.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $apiKey")
         if (provider == AiProviderType.OPENROUTER) {
-            reqBuilder.addHeader("HTTP-Referer", "https://ghost-ai.app")
-            reqBuilder.addHeader("X-Title", "Ghost AI")
+            reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
+            reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
         resolveClientForProvider(provider).newCall(reqBuilder.build()).execute().use { response ->
@@ -1844,7 +1844,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                 val req = Request.Builder()
                     .url(url)
                     .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
-                    .header("User-Agent", "GhostAi/3.1")
+                    .header("User-Agent", "AyraAi/3.1")
                     .build()
 
                 val result = fastFreeClient.newCall(req).execute().use { resp ->

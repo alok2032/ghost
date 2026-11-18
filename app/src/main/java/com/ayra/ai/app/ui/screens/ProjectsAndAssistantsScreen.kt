@@ -208,7 +208,7 @@ fun ProjectsAndAssistantsScreen(
 
                 if (projects.isEmpty()) {
                     Text(
-                        "No isolated projects created yet. Tap New Project to give Ghost AI scoped rules, memory notes, and default routing.",
+                        "No isolated projects created yet. Tap New Project to give Ayra AI scoped rules, memory notes, and default routing.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

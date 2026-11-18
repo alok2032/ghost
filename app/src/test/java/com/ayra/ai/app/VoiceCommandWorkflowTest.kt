@@ -120,13 +120,19 @@ class VoiceCommandWorkflowTest {
         )
         assertTrue(dispatchedCommands.isEmpty())
 
-        // Wake word + command -> strips prefix & invokes AI command
+        // Primary Ayra wake word + command -> strips prefix & invokes AI command
         manager.onResults(
             Bundle().apply {
-                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("Hey Ghost explain quantum tunneling"))
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("Hey Ayra explain quantum tunneling"))
             }
         )
-        assertEquals(listOf("explain quantum tunneling"), dispatchedCommands)
+        // Legacy Ghost alias + command -> remains compatible
+        manager.onResults(
+            Bundle().apply {
+                putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("Hey Ghost open calculator"))
+            }
+        )
+        assertEquals(listOf("explain quantum tunneling", "open calculator"), dispatchedCommands)
         manager.destroy()
     }
 

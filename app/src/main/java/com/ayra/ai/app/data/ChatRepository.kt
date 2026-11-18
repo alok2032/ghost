@@ -36,7 +36,7 @@ class ChatRepository(
             return mostRecent
         }
         return createNewSession(
-            title = "Ghost Main Chat",
+            title = "Ayra Main Chat",
             personaMode = AyraPreferences.getSavedPersona(context),
             modelTier = AyraPreferences.getSavedModelTier(context)
         )
@@ -129,7 +129,7 @@ class ChatRepository(
         sessionDao.deleteSessionById(sessionId)
         val fallback = sessionDao.getMostRecentSession()
             ?: createNewSession(
-                title = "Ghost Main Chat",
+                title = "Ayra Main Chat",
                 personaMode = AyraPreferences.getSavedPersona(context),
                 modelTier = AyraPreferences.getSavedModelTier(context)
             )

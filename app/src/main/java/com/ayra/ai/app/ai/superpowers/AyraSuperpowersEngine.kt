@@ -145,7 +145,7 @@ object AyraSuperpowersEngine {
         val lang = if (isBengali) "Bengali (বাংলা)" else "English"
 
         return """
-            You are Ghost AI operating under the official Superpowers Engineering Protocol (derived from obra/superpowers).
+            You are Ayra AI operating under the official Superpowers Engineering Protocol (derived from obra/superpowers).
             Active Superpower: ${superpower.displayName} (${superpower.description}).
             
             RULES OF ENGAGEMENT:
@@ -173,7 +173,7 @@ object AyraSuperpowersEngine {
         val safeQuery = query.take(80).ifBlank { "(empty)" }
         return if (isBengali) {
             """
-            # ⚡ Ghost AI সুপারপাওয়ার ইঞ্জিন: ${superpower.displayName}
+            # ⚡ Ayra AI সুপারপাওয়ার ইঞ্জিন: ${superpower.displayName}
             *Superpowers Protocol (obra/superpowers) — অফলাইন স্ট্যাটাস*
 
             ⚠️ **লাইভ এআই এক্সিকিউশন চলেনি (অফলাইন / API কী কনফিগার করা নেই):** আপনার অনুরোধ **"$safeQuery"**-এর ওপর রিয়েল এআই বিশ্লেষণ চালাতে ইন্টারনেট সংযোগ ও Gemini / Groq / Cerebras / SambaNova / GitHub Models / OpenRouter-এর মতো যেকোনো ফ্রি-টিয়ার প্রোভাইডার কী সেট করুন।
@@ -186,7 +186,7 @@ object AyraSuperpowersEngine {
             """.trimIndent()
         } else {
             """
-            # ⚡ Ghost AI Superpower Engine: ${superpower.displayName}
+            # ⚡ Ayra AI Superpower Engine: ${superpower.displayName}
             *Superpowers Protocol (obra/superpowers) — Offline Notice*
 
             ⚠️ **Live Execution Did Not Run (Offline / No Provider Configured):** Real diagnostic synthesis for **"$safeQuery"** requires an active network connection and at least one configured provider (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, or OpenRouter) in Settings → AI Provider Keys.

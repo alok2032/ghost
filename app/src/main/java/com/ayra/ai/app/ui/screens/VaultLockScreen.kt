@@ -71,7 +71,7 @@ fun VaultLockScreen(
             errorText = null
             BiometricAuthManager.authenticate(
                 activity = activity,
-                title = "Unlock Ghost AI Vault",
+                title = "Unlock Ayra AI Vault",
                 subtitle = capability.status.label,
                 description = "Verify biometrics or device credential to decrypt your vault session.",
                 onSuccess = { proofHex ->

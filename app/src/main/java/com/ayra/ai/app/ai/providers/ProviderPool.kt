@@ -674,7 +674,7 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthesisPrompt = buildString {
-            append("You are Ghost AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
+            append("You are Ayra AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
             append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")

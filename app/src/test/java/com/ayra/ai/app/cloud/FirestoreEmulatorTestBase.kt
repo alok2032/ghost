@@ -14,11 +14,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Assume
 import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
+import java.net.InetSocketAddress
+import java.net.Socket
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -31,6 +34,10 @@ abstract class FirestoreEmulatorTestBase {
 
     @Before
     open fun setUpFirebase() {
+        Assume.assumeTrue(
+            "Skipping Firestore emulator test because local Firebase emulators are not running on $EMULATOR_HOST:$FIRESTORE_PORT / $AUTH_PORT",
+            isPortReachable(EMULATOR_HOST, FIRESTORE_PORT) && isPortReachable(EMULATOR_HOST, AUTH_PORT)
+        )
         val context = ApplicationProvider.getApplicationContext<Context>()
         val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
         databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-ghost-90b6536a-2960-4824-8f02-e93f3c0c0b76"
@@ -94,5 +101,16 @@ abstract class FirestoreEmulatorTestBase {
         const val PROJECT_ID = "demo-no-project"
         const val DEFAULT_PASSWORD = "password123"
         const val AUTH_TIMEOUT_MS = 10000L
+
+        fun isPortReachable(host: String, port: Int): Boolean {
+            return try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), 200)
+                }
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }

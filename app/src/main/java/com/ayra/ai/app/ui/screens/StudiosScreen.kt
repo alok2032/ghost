@@ -144,7 +144,7 @@ fun StudiosScreen(
                 }
             }
             Text(
-                text = "Ghost AI Creative & Code Studios",
+                text = "Ayra AI Creative & Code Studios",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -811,7 +811,7 @@ private fun ThreeDStudioPanel(context: android.content.Context) {
 
         ThreeDModelCard(
             craftPayload = customPayload,
-            title = "Ghost AI WebGL2 PBR 3D Studio"
+            title = "Ayra AI WebGL2 PBR 3D Studio"
         )
     }
 }
@@ -821,7 +821,7 @@ private fun CodeBuilderPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
     val pool = remember { ProviderPool(context) }
 
-    var projectName by remember { mutableStateOf("ghost_app_module") }
+    var projectName by remember { mutableStateOf("ayra_app_module") }
     var prompt by remember { mutableStateOf("") }
     var isBusy by remember { mutableStateOf(false) }
     var generatedFiles by remember { mutableStateOf<List<GeneratedProjectFile>>(emptyList()) }
@@ -942,12 +942,12 @@ private fun CodeBuilderPanel(context: android.content.Context) {
 
                     val parsed = ProjectWorkspaceManager.parseProjectFilesFromAiResponse(
                         aiOutput = resText,
-                        fallbackProjectName = projectName.ifBlank { "ghost_project" }
+                        fallbackProjectName = projectName.ifBlank { "ayra_project" }
                     )
                     val (dir, archive) = withContext(Dispatchers.IO) {
                         ProjectWorkspaceManager.writeProjectToDiskAndZip(
                             context = context,
-                            projectName = projectName.ifBlank { "ghost_project" },
+                            projectName = projectName.ifBlank { "ayra_project" },
                             files = parsed
                         )
                     }

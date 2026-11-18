@@ -238,11 +238,11 @@ object CyberTerminalEngine {
         if (marker.exists()) return
         runCatching {
             File(ws, "README_LAB.txt").writeText(
-                "Ghost AI Sandbox Workspace (${ws.absolutePath})\nUse 'ls', 'cat <file>', 'write <file> <text>', 'mkdir <dir>', 'rm <file>' to work with real files on disk.\n"
+                "Ayra AI Sandbox Workspace (${ws.absolutePath})\nUse 'ls', 'cat <file>', 'write <file> <text>', 'mkdir <dir>', 'rm <file>' to work with real files on disk.\n"
             )
             File(ws, "defense.txt").writeText(
                 """
-                GHOST AI DEFENSIVE SECURITY PRINCIPLES:
+                AYRA AI DEFENSIVE SECURITY PRINCIPLES:
                 1. Zero Trust Architecture (Never trust, always verify every request).
                 2. Least-Privilege Access Controls across all microservices and APIs.
                 3. End-to-End Cryptography with TLS 1.3 and Android Keystore AES-256-GCM.
@@ -261,7 +261,7 @@ object CyberTerminalEngine {
             File(ws, "zero_trust_policy.json").writeText(
                 """
                 {
-                  "policy_name": "GhostAiZeroTrustEgress_v3",
+                  "policy_name": "AyraAiZeroTrustEgress_v3",
                   "enforce_tls": true,
                   "minimum_tls_version": "1.3",
                   "audit_logging": "ENABLED"
@@ -286,7 +286,7 @@ object CyberTerminalEngine {
 
     private fun handleHelp(): String {
         return """
-        GHOST AI DEFENSIVE CYBER & LINUX SHELL TOOLKIT:
+        AYRA AI DEFENSIVE CYBER & LINUX SHELL TOOLKIT:
         ----------------------------------------------------------------------
         • ping <host>              : Real ICMP/socket latency test against target
         • dig / nslookup <domain>  : Real DNS resolution & IP record discovery
@@ -460,7 +460,7 @@ object CyberTerminalEngine {
         return try {
             val req = Request.Builder()
                 .url(urlStr)
-                .header("User-Agent", "GhostAiSecurityAuditor/3.1")
+                .header("User-Agent", "AyraAiSecurityAuditor/3.1")
                 .head()
                 .build()
 
@@ -509,7 +509,7 @@ object CyberTerminalEngine {
         return try {
             val req = Request.Builder()
                 .url(targetUrl)
-                .header("User-Agent", "GhostAi-HTTP-Client/3.1")
+                .header("User-Agent", "AyraAi-HTTP-Client/3.1")
                 .build()
 
             client.newCall(req).execute().use { resp ->
@@ -591,7 +591,7 @@ object CyberTerminalEngine {
             val req = Request.Builder()
                 .url(endpoint)
                 .header("Accept", "application/json")
-                .header("User-Agent", "GhostAi-CVE-Lookup/1.0")
+                .header("User-Agent", "AyraAi-CVE-Lookup/1.0")
                 .build()
             client.newCall(req).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
@@ -696,7 +696,7 @@ object CyberTerminalEngine {
         Reference Audit Commands (for authorized hosts on a workstation):
           nmap -sV -sC -Pn $target        (Service version & safe scripts)
           nmap -p 22,80,443,51820 $target (Check common transport ports)
-        Inside Ghost AI Terminal, run real live checks instead:
+        Inside Ayra AI Terminal, run real live checks instead:
           • headers https://$target
           • traceroute $target
           • dig $target

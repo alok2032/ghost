@@ -674,12 +674,15 @@ class VoiceAssistantManager(
             }
 
             // BACKGROUND WAKE-WORD MODE: STRICT FILTERING
-            // User did not press mic button; assistant MUST NOT respond unless "Ghost" was explicitly spoken!
+            // User did not press mic button; assistant MUST NOT respond unless "Ayra" (or legacy "Ghost") was spoken!
             val lower = spoken.lowercase()
                 .replace(Regex("[.,?!।]"), "")
                 .trim()
 
-            val hasWakeWord = lower.contains("ghost") ||
+            val hasWakeWord = lower.contains("ayra") || lower.contains("aira") ||
+                    lower.contains("আয়রা") || lower.contains("আয়রা") ||
+                    lower.contains("आयरा") ||
+                    lower.contains("ghost") ||
                     lower.contains("ঘোস্ট") || lower.contains("গোস্ট") ||
                     lower.contains("घोस्ट")
 
@@ -690,12 +693,18 @@ class VoiceAssistantManager(
             }
 
             val isWakeWordOnly = lower in listOf(
+                "ayra", "ayra ai", "hey ayra", "hi ayra", "hello ayra", "ok ayra", "okay ayra",
+                "hey ayra ai", "hi ayra ai", "hello ayra ai", "ok ayra ai", "okay ayra ai",
+                "aira", "hey aira", "hi aira", "hello aira", "ok aira",
+                "আয়রা", "আয়রা", "হেই আয়রা", "হেই আয়রা", "হ্যালো আয়রা", "আয়রা এআই", "হেই আয়রা এআই",
+                "आयरा", "हे आयरा", "हैलो आयरा",
                 "ghost", "ghost ai", "hey ghost", "hi ghost", "hello ghost", "ok ghost", "okay ghost",
                 "hey ghost ai", "hi ghost ai", "hello ghost ai", "ok ghost ai", "okay ghost ai",
                 "ঘোস্ট", "গোস্ট", "হেই ঘোস্ট", "হেই গোস্ট", "হ্যালো ঘোস্ট",
                 "ঘোস্ট এআই", "হেই ঘোস্ট এআই",
                 "घोस्ट", "हे घोस्ट", "हैलो घोस्ट"
-            ) || ((lower.startsWith("ghost") || lower.startsWith("ঘোস্ট") || lower.startsWith("গোস্ট")) && lower.length <= 9)
+            ) || ((lower.startsWith("ayra") || lower.startsWith("আয়রা") || lower.startsWith("আয়রা") ||
+                lower.startsWith("ghost") || lower.startsWith("ঘোস্ট") || lower.startsWith("গোস্ট")) && lower.length <= 9)
 
             if (isWakeWordOnly) {
                 // Wake word detected! Mode-specific friendly greeting
@@ -722,10 +731,11 @@ class VoiceAssistantManager(
                 return
             }
 
-            // Clean wake word prefix from explicit command (e.g. "Hey Ghost open YouTube" -> "open YouTube")
+            // Clean wake word prefix from explicit command (e.g. "Hey Ayra open YouTube" -> "open YouTube")
             val cleanCommand = spoken
-                .replace(Regex("(?i)^(hey\\s+|hi\\s+|hello\\s+|ok\\s+|okay\\s+)?ghost(\\s+ai)?[,\\s]*"), "")
-                .replace(Regex("^(হেই\\s+|এই\\s+|ওগো\\s+|হ্যালো\\s+)?(ঘোস্ট|গোস্ট)(\\s+এআই)?[,\\s]*"), "")
+                .replace(Regex("(?i)^(hey\\s+|hi\\s+|hello\\s+|ok\\s+|okay\\s+)?(ayra|aira|ghost)(\\s+ai)?[,\\s]*"), "")
+                .replace(Regex("^(হেই\\s+|এই\\s+|ওগো\\s+|হ্যালো\\s+)?(আয়রা|আয়রা|ঘোস্ট|গোস্ট)(\\s+এআই)?[,\\s]*"), "")
+                .replace(Regex("^(हे\\s+|हैलो\\s+|ओके\\s+)?(आयरा|घोस्ट)(\\s+एआई)?[,\\s]*"), "")
                 .trim()
 
             val commandToRun = if (cleanCommand.isNotBlank()) cleanCommand else spoken

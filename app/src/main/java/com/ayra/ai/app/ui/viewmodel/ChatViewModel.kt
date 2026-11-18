@@ -38,7 +38,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Production ViewModel for Ghost AI Chat.
+ * Production ViewModel for Ayra AI Chat.
  * Manages persistent Room chat sessions, scoped message history, ViewModel-scoped orchestration
  * resilient to configuration changes, partial-token preservation on Stop, and opt-in memory confirmation.
  */
@@ -52,7 +52,7 @@ class ChatViewModel(
     private val sendMutex = Mutex()
     private var inFlightJob: Job? = null
     @Volatile
-    private var activeModelHint: String = "Ghost AI"
+    private var activeModelHint: String = "Ayra AI"
 
     private val _activeSessionId = MutableStateFlow(1L)
     val activeSessionId: StateFlow<Long> = _activeSessionId.asStateFlow()
@@ -324,7 +324,7 @@ class ChatViewModel(
     ) {
         _agentPlanSteps.value = emptyList()
         _activeCitations.value = emptyList()
-        activeModelHint = "Ghost AI"
+        activeModelHint = "Ayra AI"
         val job = viewModelScope.launch {
             var receivedTerminalEvent = false
             try {
@@ -379,7 +379,7 @@ class ChatViewModel(
                                                 title = prompt.take(120),
                                                 prompt = prompt,
                                                 summary = event.response.text.take(800),
-                                                modelUsed = event.response.modelUsed ?: "Ghost AI"
+                                                modelUsed = event.response.modelUsed ?: "Ayra AI"
                                             )
                                         }
                                     }

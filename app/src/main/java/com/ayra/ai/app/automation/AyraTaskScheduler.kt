@@ -139,9 +139,9 @@ class AyraTaskScheduler(private val context: Context) {
         var messageToSpeak = extractSpokenMessage(userInput)
         if (messageToSpeak.isBlank()) {
             messageToSpeak = if (isBengali) {
-                "হ্যালো $recipient! এটি Ghost AI থেকে আপনার জন্য শিডিউল করা ভয়েস কল। আশা করি আপনি ভালো আছেন!"
+                "হ্যালো $recipient! এটি Ayra AI থেকে আপনার জন্য শিডিউল করা ভয়েস কল। আশা করি আপনি ভালো আছেন!"
             } else {
-                "Hello $recipient! This is a scheduled voice call from Ghost AI. Wishing you a great day!"
+                "Hello $recipient! This is a scheduled voice call from Ayra AI. Wishing you a great day!"
             }
         }
 
@@ -240,13 +240,13 @@ class AyraTaskScheduler(private val context: Context) {
             "⏰ **স্মার্ট রিমাইন্ডার সেট করা হয়েছে!**\n\n" +
                     "• কাজের বিবরণ: **$reminderText**\n" +
                     "• মনে করিয়ে দেওয়ার সময়: **$formattedTime**\n\n" +
-                    "🔔 নির্ধারিত সময়ে মোবাইল লক বা স্লিপে থাকলেও রিংটোন বাজিয়ে এবং ভয়েসে বলে Ghost AI আপনাকে এই কাজটি মনে করিয়ে দেবে! ⚡" +
+                    "🔔 নির্ধারিত সময়ে মোবাইল লক বা স্লিপে থাকলেও রিংটোন বাজিয়ে এবং ভয়েসে বলে Ayra AI আপনাকে এই কাজটি মনে করিয়ে দেবে! ⚡" +
                     fallbackSuffix
         } else {
             "⏰ **Smart Reminder Armed!**\n\n" +
                     "• Task: **$reminderText**\n" +
                     "• Reminder Time: **$formattedTime**\n\n" +
-                    "🔔 Even if the screen is off or phone is sleeping, Ghost AI will wake up, chime the alarm, and speak this reminder to you! ⚡" +
+                    "🔔 Even if the screen is off or phone is sleeping, Ayra AI will wake up, chime the alarm, and speak this reminder to you! ⚡" +
                     fallbackSuffix
         }
 
@@ -286,13 +286,13 @@ class AyraTaskScheduler(private val context: Context) {
         if (messageText.isBlank()) {
             messageText = if (isBirthday) {
                 if (isBengali) {
-                    "শুভ জন্মদিন $recipient! 🎉🎂 তোমার আগামী দিনগুলো অফুরন্ত আনন্দ ও ভালোবাসায় ভরে উঠুক! — Ghost AI মারফত আন্তরিক শুভেচ্ছা ❤️"
+                    "শুভ জন্মদিন $recipient! 🎉🎂 তোমার আগামী দিনগুলো অফুরন্ত আনন্দ ও ভালোবাসায় ভরে উঠুক! — Ayra AI মারফত আন্তরিক শুভেচ্ছা ❤️"
                 } else {
-                    "Happy Birthday $recipient! 🎉🎂 Wishing you joy, success and boundless happiness! — via Ghost AI ❤️"
+                    "Happy Birthday $recipient! 🎉🎂 Wishing you joy, success and boundless happiness! — via Ayra AI ❤️"
                 }
             } else {
-                if (isBengali) "প্রিয় $recipient, এটি Ghost AI থেকে আপনার নির্ধারিত বার্তা। দিনটি শুভ হোক! ✨"
-                else "Hello $recipient! This is your scheduled message from Ghost AI. Have a great day! ✨"
+                if (isBengali) "প্রিয় $recipient, এটি Ayra AI থেকে আপনার নির্ধারিত বার্তা। দিনটি শুভ হোক! ✨"
+                else "Hello $recipient! This is your scheduled message from Ayra AI. Have a great day! ✨"
             }
         }
 

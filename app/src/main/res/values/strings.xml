@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">Ghost AI</string>
+    <string name="app_name">Ayra AI</string>
     <string name="action_send">Send</string>
     <string name="action_clear">Clear</string>
     <string name="action_speak">Voice Input</string>
     <string name="action_copy">Copy</string>
-    <string name="vault_locked_title">Ghost AI Vault Locked</string>
+    <string name="vault_locked_title">Ayra AI Vault Locked</string>
     <string name="vault_unlock_button">Unlock with Biometrics / PIN</string>
     <string name="vault_reset_biometric_key">Reset Invalidated Biometric Key</string>
     <string name="security_center_title">Enterprise Security Center</string>

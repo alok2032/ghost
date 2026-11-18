@@ -60,7 +60,7 @@ class AyraOrchestrator(private val context: Context) {
         // 1. Safety & Crisis Pre-checks (Blocking, deterministic, immediate)
         val crisisResult = CrisisDetector.evaluate(trimmed)
         if (crisisResult.isCrisis && crisisResult.supportiveMessage != null) {
-            emit(AyraEvent.Complete(AiResponse(text = crisisResult.supportiveMessage, modelUsed = "Ghost AI Safety Guardian 🛡️")))
+            emit(AyraEvent.Complete(AiResponse(text = crisisResult.supportiveMessage, modelUsed = "Ayra AI Safety Guardian 🛡️")))
             return@flow
         }
 
@@ -92,16 +92,16 @@ class AyraOrchestrator(private val context: Context) {
                 val cmd = trimmed.removePrefix("/terminal").removePrefix("terminal:").trim()
                 val isBengali = trimmed.any { it in '\u0980'..'\u09FF' }
                 val reply = if (isBengali) {
-                    "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** সক্রিয় হয়েছে। অনুমোদিত ডায়াগনস্টিক চালান:"
+                    "🛡️ **Ayra AI Cyber Security Educational Terminal & Defensive Lab** সক্রিয় হয়েছে। অনুমোদিত ডায়াগনস্টিক চালান:"
                 } else {
-                    "🛡️ **Ghost AI Cyber Security Educational Terminal & Defensive Lab** active. Executing diagnostics:"
+                    "🛡️ **Ayra AI Cyber Security Educational Terminal & Defensive Lab** active. Executing diagnostics:"
                 }
                 emit(AyraEvent.Complete(
                     AiResponse(
                         text = reply,
                         craftType = "CYBER_TERMINAL",
                         craftPayload = cmd,
-                        modelUsed = "Ghost AI Terminal Engine"
+                        modelUsed = "Ayra AI Terminal Engine"
                     )
                 ))
                 return@flow
@@ -182,7 +182,7 @@ class AyraOrchestrator(private val context: Context) {
                 if (wikiMarkdown.isBlank()) {
                     emit(AyraEvent.Complete(AiResponse(
                         text = if (isBengali) "এই বিষয়ে কোনো উইকি বা অফলাইন ভেক্টর তথ্য পাওয়া যায়নি।" else "No Wiki or offline Vector DB entries matched '$topic'.",
-                        modelUsed = "Ghost Multi-Layer Wiki & Vector DB 🌐"
+                        modelUsed = "Ayra Multi-Layer Wiki & Vector DB 🌐"
                     )))
                     return@flow
                 }
@@ -195,7 +195,7 @@ class AyraOrchestrator(private val context: Context) {
 
                 var completed = false
                 val wikiSysPrompt = """
-                    You are Ghost AI Multi-Layer Wiki Synthesizer ($provenanceHeader).
+                    You are Ayra AI Multi-Layer Wiki Synthesizer ($provenanceHeader).
                     Synthesize a crisp, encyclopedic, verified response on "$topic" using the provided Wiki / Vector DB sources.
                     Preserve factual accuracy, distinguish Surface Wiki, Deep Web Academic/CVE insights, and Dark Web Technical/Tor notes cleanly, and cite the verified URLs returned.
                     Respond in ${if (isBengali) "Bengali (বাংলা)" else "English"}.
@@ -223,7 +223,7 @@ class AyraOrchestrator(private val context: Context) {
                             } else ""
                             emit(AyraEvent.Complete(AiResponse(
                                 text = streamEvent.response.text + cites,
-                                modelUsed = "Ghost Wiki (${streamEvent.response.modelUsed}) 🌐"
+                                modelUsed = "Ayra Wiki (${streamEvent.response.modelUsed}) 🌐"
                             )))
                         }
                         is AyraStreamEvent.Error -> {}
@@ -235,7 +235,7 @@ class AyraOrchestrator(private val context: Context) {
                     } else ""
                     emit(AyraEvent.Complete(AiResponse(
                         text = "$directBanner$wikiMarkdown",
-                        modelUsed = if (lookup.usedOfflineVectorCache) "Ghost Offline Vector DB ⚡" else "Ghost Multi-Layer Wiki Direct 🌐"
+                        modelUsed = if (lookup.usedOfflineVectorCache) "Ayra Offline Vector DB ⚡" else "Ayra Multi-Layer Wiki Direct 🌐"
                     )))
                 }
                 return@flow
@@ -269,7 +269,7 @@ class AyraOrchestrator(private val context: Context) {
                 }
 
                 val researchSysPrompt = """
-                    You are Ghost AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on: $topic.
+                    You are Ayra AI Deep Research Engine. Perform an exhaustive, authoritative, graduate-level research analysis on: $topic.
                     Use the user's language (${if (isBengali) "Bengali (বাংলা)" else "English"}).
                     Format clearly with markdown sections: Executive Thesis, Theoretical Foundations, Empirical State-of-the-Art, Trade-offs & Bottlenecks, Future Outlook, and Conclusion.
                 """.trimIndent()
@@ -302,7 +302,7 @@ class AyraOrchestrator(private val context: Context) {
                             val fullText = if (citationsBlock.isNotBlank() && !baseText.contains("### 📚 Grounded Web Sources")) {
                                 "$baseText\n\n### 📚 Grounded Web Sources$citationsBlock"
                             } else baseText
-                            emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ghost AI Deep Research (${streamEvent.response.modelUsed}) 🔬")))
+                            emit(AyraEvent.Complete(AiResponse(text = fullText, modelUsed = "Ayra AI Deep Research (${streamEvent.response.modelUsed}) 🔬")))
                         }
                         is AyraStreamEvent.Error -> {
                             lastStreamError = streamEvent.error
@@ -349,14 +349,14 @@ class AyraOrchestrator(private val context: Context) {
                             text = installResult.userSummaryText,
                             craftType = "GITHUB_PLUGIN",
                             craftPayload = payloadJson,
-                            modelUsed = "Ghost AI GitHub Plugin Engine 🔌"
+                            modelUsed = "Ayra AI GitHub Plugin Engine 🔌"
                         )
                     ))
                 } else {
                     emit(AyraEvent.Complete(
                         AiResponse(
                             text = "⚠️ ${installResult.errorMessage ?: "Could not install GitHub repository plugin."}",
-                            modelUsed = "Ghost AI GitHub Plugin Engine 🔌"
+                            modelUsed = "Ayra AI GitHub Plugin Engine 🔌"
                         )
                     ))
                 }

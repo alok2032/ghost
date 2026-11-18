@@ -80,7 +80,7 @@ fun CyberTerminalCard(
     val history = remember {
         mutableStateListOf(
             TerminalOutput(
-                command = "ghost-cyber-lab --init",
+                command = "ayra-cyber-lab --init",
                 output = CyberTerminalEngine.WELCOME_BANNER
             )
         )
@@ -194,7 +194,7 @@ fun CyberTerminalCard(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 Text(
-                    text = "ghost@defense-lab:~$",
+                    text = "ayra@defense-lab:~$",
                     color = NeonGreen,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
@@ -251,7 +251,7 @@ fun CyberTerminalCard(
                     "dig wikipedia.org",
                     "curl -I google.com",
                     "owasp top10",
-                    "hash sha256 GhostAI",
+                    "hash sha256 AyraAI",
                     "cve CVE-2024-3094",
                     "vpn",
                     "labs"

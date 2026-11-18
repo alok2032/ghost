@@ -316,13 +316,13 @@ class AyraMasterUpgradeVerificationTest {
                     path.startsWith("/openalex/") -> MockResponse().setResponseCode(200).setBody(
                         """{"results":[{"title":"Analyzing Onion Overlay Security","publication_year":2024,"doi":"10.1145/example","abstract_inverted_index":{"Tor":[0],"relay":[1],"telemetry":[2],"analysis.":[3]}}]}"""
                     )
-                    path.startsWith("/pubmed/esearch.fcgi") -> MockResponse().setResponseCode(200).setBody(
+                    path.startsWith("/pubmed/") && path.contains("esearch.fcgi") -> MockResponse().setResponseCode(200).setBody(
                         """{"esearchresult":{"idlist":["38123456"]}}"""
                     )
-                    path.startsWith("/pubmed/esummary.fcgi") -> MockResponse().setResponseCode(200).setBody(
+                    path.startsWith("/pubmed/") && path.contains("esummary.fcgi") -> MockResponse().setResponseCode(200).setBody(
                         """{"result":{"38123456":{"title":"Clinical Genomic Sequencing Study","pubdate":"2024 Jan","source":"Nature Medicine"}}}"""
                     )
-                    path.startsWith("/cve/cve/") -> MockResponse().setResponseCode(200).setBody(
+                    path.startsWith("/cve/") -> MockResponse().setResponseCode(200).setBody(
                         """{"summary":"Malicious code in liblzma build artifacts in XZ Utils 5.6.0.","cvss":10.0}"""
                     )
                     path.startsWith("/onionoo/") -> MockResponse().setResponseCode(200).setBody(

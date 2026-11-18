@@ -9,7 +9,7 @@ import com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine
 import java.util.Locale
 
 /**
- * Single source of truth for all Ghost AI model routing tiers and legacy aliases.
+ * Single source of truth for all Ayra AI model routing tiers and legacy aliases.
  * Consolidates previously duplicated tier lists across UnifiedAiEngine, AyraOrchestrator,
  * OmniRouteEngine, ExternalAiProviders, AyraPreferences, and UI pickers.
  */
@@ -116,7 +116,7 @@ enum class ModelTier(
     SECURITY_RESEARCH(
         id = "security_research",
         displayName = "Security Research Mode 🛡️",
-        providerName = "Ghost Defensive Security",
+        providerName = "Ayra Defensive Security",
         speedLabel = "High-Throughput ⚡",
         reasoningLabel = "Defensive Security 🛡️",
         description = "ডিফেনসিভ সাইবার সিকিউরিটি, OWASP অডিট, CVE মিটিগেশন ও নিরাপদ সিস্টেম আর্কিটেকচার",

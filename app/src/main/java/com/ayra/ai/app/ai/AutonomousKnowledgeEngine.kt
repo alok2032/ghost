@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai
 
+import androidx.compose.runtime.Immutable
 import android.content.Context
 import com.ayra.ai.app.ai.plugins.GitHubPluginEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
@@ -28,12 +29,14 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object AutonomousKnowledgeEngine {
 
+    @Immutable
     data class WikiCitation(
         val title: String,
         val url: String,
         val layer: String
     )
 
+    @Immutable
     data class WikiLayerResult(
         val topic: String,
         val surfaceWiki: String = "",
@@ -71,6 +74,13 @@ object AutonomousKnowledgeEngine {
             if (dark.isNotBlank()) {
                 append("### [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI]\n").append(dark).append("\n\n")
             }
+            if (citations.isNotEmpty()) {
+                append("### [VERIFIED LIVE SOURCES]\n")
+                citations.distinctBy { it.url }.forEach { cit ->
+                    append("• [${cit.title}](${cit.url}) (${cit.layer})\n")
+                }
+                append("\n")
+            }
         }.trim()
     }
 
@@ -90,7 +100,7 @@ object AutonomousKnowledgeEngine {
     private val PUNCTUATION_REGEX = Regex("[?।!.,:;]")
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val MATH_REGEX = Regex("^(\\d+(?:\\.\\d+)?)\\s*([+\\-*/xX×÷^%]|যোগ|বিয়োগ|গুণ|ভাগ)\\s*(\\d+(?:\\.\\d+)?)$")
-    private val USER_AGENT = "GhostAiAssistant/3.2 (Linux; Android 14; Mobile; https://ghost-ai.app/assistant)"
+    private val USER_AGENT = "AyraAiAssistant/3.2 (Linux; Android 14; Mobile; https://ayra-ai.app/assistant)"
 
     private fun putCache(key: String, value: String) {
         if (value.isBlank()) return
@@ -299,8 +309,9 @@ object AutonomousKnowledgeEngine {
             withTimeoutOrNull(2000L) { queryLiveWebKnowledge(cleanPrompt, isBengali, httpClient, wikipediaBaseUrl) } ?: ""
         }
         val wikidataDef = async(Dispatchers.IO) {
-            if (!wantSurface) return@async ""
-            withTimeoutOrNull(1800L) { fetchWikidataEntities(topic, isBengali, httpClient, wikidataBaseUrl) } ?: ""
+            if (!wantSurface) return@async Pair("", emptyList<WikiCitation>())
+            withTimeoutOrNull(1800L) { fetchWikidataEntities(topic, isBengali, httpClient, wikidataBaseUrl) }
+                ?: Pair("", emptyList())
         }
         val ddgDef = async(Dispatchers.IO) {
             if (!wantSurface) return@async ""
@@ -316,8 +327,9 @@ object AutonomousKnowledgeEngine {
             } ?: ""
         }
         val pubmedDef = async(Dispatchers.IO) {
-            if (!wantDeep || !wantsDeepAcademic) return@async ""
-            withTimeoutOrNull(1800L) { fetchPubMedResearch(topic, httpClient, pubmedBaseUrl) } ?: ""
+            if (!wantDeep || !wantsDeepAcademic) return@async Pair("", emptyList<WikiCitation>())
+            withTimeoutOrNull(1800L) { fetchPubMedResearch(topic, httpClient, pubmedBaseUrl) }
+                ?: Pair("", emptyList())
         }
         val cveDef = async(Dispatchers.IO) {
             if (!wantDeep || (cveMatch == null && !forceAllLayers && !cleanPrompt.contains("cve", true))) {
@@ -337,10 +349,10 @@ object AutonomousKnowledgeEngine {
         }
 
         val surfaceWiki = wikiDef.await()
-        val wikidataEntities = wikidataDef.await()
+        val (wikidataEntities, wikidataCits) = wikidataDef.await()
         val ddgInstant = ddgDef.await()
         val deepAcademic = deepAcademicDef.await()
-        val pubmedArticles = pubmedDef.await()
+        val (pubmedArticles, pubmedCits) = pubmedDef.await()
         val (cveIntel, cveCits) = cveDef.await()
         val (liveTorNetwork, onionCit) = onionooDef.await()
         val darkWebTech = darkTechDef.await()
@@ -350,9 +362,11 @@ object AutonomousKnowledgeEngine {
                 val lang = if (isBengali) "bn" else "en"
                 add(WikiCitation("Wikipedia: $topic", "https://$lang.wikipedia.org/wiki/${URLEncoder.encode(topic.replace(" ", "_"), "UTF-8")}", "Surface Wiki"))
             }
+            addAll(wikidataCits)
             if (deepAcademic.isNotBlank()) {
                 add(WikiCitation("OpenAlex / arXiv: $topic", "https://openalex.org/works?search=${URLEncoder.encode(topic, "UTF-8")}", "Deep Web Academic"))
             }
+            addAll(pubmedCits)
             addAll(cveCits)
             if (onionCit != null) add(onionCit)
         }
@@ -424,8 +438,8 @@ object AutonomousKnowledgeEngine {
     ): Pair<String, List<WikiCitation>> {
         return try {
             val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://cve.circl.lu/"
-            val url = if (!cveId.isNullOrBlank()) "${base}api/cve/$cveId" else "${base}api/last/5"
+                ?: "https://cve.circl.lu/api/"
+            val url = if (!cveId.isNullOrBlank()) "${base}cve/$cveId" else "${base}last/5"
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -449,8 +463,13 @@ object AutonomousKnowledgeEngine {
                 entries.take(5).forEach { obj ->
                     val id = obj.optString("id", cveId ?: query).trim()
                     val summary = obj.optString("summary", "").trim()
+                    val cvss = if (obj.has("cvss") && !obj.isNull("cvss")) obj.optDouble("cvss", Double.NaN) else Double.NaN
                     if (id.isNotBlank() && summary.isNotBlank()) {
-                        sb.append("• **$id**: ").append(summary).append("\n")
+                        sb.append("• **$id**")
+                        if (!cvss.isNaN() && cvss.isFinite()) {
+                            sb.append(" — **CVSS Score:** $cvss")
+                        }
+                        sb.append(": ").append(summary).append("\n")
                         citations.add(WikiCitation("CVE Advisory: $id", "https://nvd.nist.gov/vuln/detail/$id", "Deep Web CVE"))
                     }
                 }
@@ -466,7 +485,7 @@ object AutonomousKnowledgeEngine {
         isBengali: Boolean,
         httpClient: OkHttpClient,
         baseUrlOverride: String? = null
-    ): String {
+    ): Pair<String, List<WikiCitation>> {
         return try {
             val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
                 ?: "https://www.wikidata.org/"
@@ -475,20 +494,28 @@ object AutonomousKnowledgeEngine {
             val url = "${base}w/api.php?action=wbsearchentities&search=$encoded&language=$lang&format=json&limit=2"
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
             httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return ""
-                val body = resp.body?.string() ?: return ""
-                val arr = JSONObject(body).optJSONArray("search") ?: return ""
+                if (!resp.isSuccessful) return Pair("", emptyList())
+                val body = resp.body?.string() ?: return Pair("", emptyList())
+                val arr = JSONObject(body).optJSONArray("search") ?: return Pair("", emptyList())
                 val sb = StringBuilder()
+                val citations = mutableListOf<WikiCitation>()
                 for (i in 0 until arr.length()) {
                     val item = arr.optJSONObject(i) ?: continue
+                    val id = item.optString("id", "").trim()
                     val label = item.optString("label", "").trim()
                     val desc = item.optString("description", "").trim()
-                    if (label.isNotBlank()) sb.append("• **Wikidata — $label**: $desc\n")
+                    if (label.isNotBlank()) {
+                        val idSuffix = if (id.isNotBlank()) " ($id)" else ""
+                        sb.append("• **Wikidata$idSuffix — $label**: $desc\n")
+                        if (id.isNotBlank()) {
+                            citations.add(WikiCitation("Wikidata: $label ($id)", "https://www.wikidata.org/wiki/$id", "Surface Wiki"))
+                        }
+                    }
                 }
-                sb.toString().trim()
+                Pair(sb.toString().trim(), citations)
             }
         } catch (_: Exception) {
-            ""
+            Pair("", emptyList())
         }
     }
 
@@ -496,23 +523,58 @@ object AutonomousKnowledgeEngine {
         query: String,
         httpClient: OkHttpClient,
         baseUrlOverride: String? = null
-    ): String {
+    ): Pair<String, List<WikiCitation>> {
         return try {
             val base = baseUrlOverride?.let { if (it.endsWith("/")) it else "$it/" }
-                ?: "https://eutils.ncbi.nlm.nih.gov/"
+                ?: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
             val encoded = URLEncoder.encode(query, "UTF-8")
-            val url = "${base}entrez/eutils/esearch.fcgi?db=pubmed&term=$encoded&retmax=2&retmode=json"
+            val url = "${base}esearch.fcgi?db=pubmed&term=$encoded&retmax=2&retmode=json"
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return ""
-                val body = resp.body?.string() ?: return ""
-                val ids = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist") ?: return ""
-                if (ids.length() == 0) return ""
-                val list = (0 until ids.length()).mapNotNull { ids.optString(it).takeIf { id -> id.isNotBlank() } }
-                if (list.isEmpty()) "" else "• **PubMed Indexed PMIDs**: ${list.joinToString(", ") { "https://pubmed.ncbi.nlm.nih.gov/$it/" }}"
+            val pmids = httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return Pair("", emptyList())
+                val body = resp.body?.string() ?: return Pair("", emptyList())
+                val ids = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist")
+                    ?: return Pair("", emptyList())
+                (0 until ids.length()).mapNotNull { ids.optString(it).takeIf { id -> id.isNotBlank() } }
             }
+            if (pmids.isEmpty()) return Pair("", emptyList())
+
+            val citations = mutableListOf<WikiCitation>()
+            val sb = StringBuilder()
+            val summaryUrl = "${base}esummary.fcgi?db=pubmed&id=${pmids.joinToString(",")}&retmode=json"
+            val summaryReq = Request.Builder().url(summaryUrl).header("User-Agent", USER_AGENT).get().build()
+            val summaryResult = try {
+                httpClient.newCall(summaryReq).execute().use { sResp ->
+                    if (sResp.isSuccessful) {
+                        val sBody = sResp.body?.string().orEmpty()
+                        if (sBody.isNotBlank()) JSONObject(sBody).optJSONObject("result") else null
+                    } else null
+                }
+            } catch (_: Exception) {
+                null
+            }
+
+            pmids.forEach { pmid ->
+                val doc = summaryResult?.optJSONObject(pmid)
+                val title = doc?.optString("title", "")?.trim().orEmpty()
+                val source = doc?.optString("source", "")?.trim().orEmpty()
+                val pubdate = doc?.optString("pubdate", "")?.trim().orEmpty()
+                val link = "https://pubmed.ncbi.nlm.nih.gov/$pmid/"
+                if (title.isNotBlank()) {
+                    sb.append("• **PubMed (PMID $pmid):** $title")
+                    val meta = listOf(source, pubdate).filter { it.isNotBlank() }.joinToString(" • ")
+                    if (meta.isNotBlank()) sb.append(" ($meta)")
+                    sb.append(" — $link\n")
+                    citations.add(WikiCitation("PubMed: $title", link, "Deep Web PubMed"))
+                } else {
+                    sb.append("• **PubMed PMID $pmid:** $link\n")
+                    citations.add(WikiCitation("PubMed PMID $pmid", link, "Deep Web PubMed"))
+                }
+            }
+
+            Pair(sb.toString().trim(), citations)
         } catch (_: Exception) {
-            ""
+            Pair("", emptyList())
         }
     }
 

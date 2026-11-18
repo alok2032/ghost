@@ -82,7 +82,7 @@ object CuratedDarkDeepKnowledgeCorpus {
             body = """
                 WireGuard implements a minimal-attack-surface cryptographic tunnel built on the Noise_IKpsk2 handshake framework, using Curve25519 for key exchange, ChaCha20 for symmetric encryption, Poly1305 for authenticated integrity, and BLAKE2s for hashing. By binding peers purely to static public keys and Cryptokey Routing tables, it achieves rapid roaming and stateless rejection of unauthenticated packets.
 
-                DNS-over-HTTPS (DoH, IETF RFC 8484) and DNS-over-TLS (DoT) prevent ISP-level plaintext inspection or spoofing of domain lookups. Note: Ghost AI communicates exclusively over authenticated HTTPS/TLS with Android Keystore protection and does not run a built-in VPN or Tor daemon.
+                DNS-over-HTTPS (DoH, IETF RFC 8484) and DNS-over-TLS (DoT) prevent ISP-level plaintext inspection or spoofing of domain lookups. Note: Ayra AI communicates exclusively over authenticated HTTPS/TLS with Android Keystore protection and does not run a built-in VPN or Tor daemon.
             """.trimIndent()
         ),
         CuratedEntry(
@@ -102,7 +102,7 @@ object CuratedDarkDeepKnowledgeCorpus {
             sourceKey = "curated:deep_web:web_layers_taxonomy",
             title = "Global Web Architecture: Surface Web, Deep Web & Dark Web",
             layer = "DEEP_WEB",
-            providerName = "Ghost AI Curated Web Taxonomy",
+            providerName = "Ayra AI Curated Web Taxonomy",
             sourceUrl = "https://en.wikipedia.org/wiki/Deep_web",
             keywordsCsv = "surface web,deep web,dark web,robots.txt,crawler,intranet,academic,ডিপ ওয়েব,ডার্ক ওয়েব,সারফেস ওয়েব",
             body = """

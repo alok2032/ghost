@@ -34,12 +34,8 @@
     public static int i(...);
 }
 
-# Retrofit & OkHttp
--dontwarn retrofit2.**
+# OkHttp & Serialization Reflection Metadata
 -keepattributes Signature,Exceptions,InnerClasses
--keepclasseswithmembers class * {
-    @retrofit2.http.* <methods>;
-}
 -dontwarn okhttp3.**
 -dontwarn okio.**
 

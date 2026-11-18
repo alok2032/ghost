@@ -416,7 +416,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = { exportBackupLauncher.launch("ghost_workspace_backup.json") },
+                    onClick = { exportBackupLauncher.launch("ayra_workspace_backup.json") },
                     modifier = Modifier.weight(1f).testTag("workspace_export_backup_button")
                 ) {
                     Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(16.dp))

@@ -47,6 +47,7 @@ class Phase1StabilityTest {
         assertTrue("Expected java source dir", javaRoot.exists())
 
         val violations = mutableListOf<String>()
+        val directOkHttpRegex = Regex("\\bOkHttpClient(?:\\.Builder)?\\s*\\(")
         javaRoot.walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .forEach { file ->
@@ -54,14 +55,14 @@ class Phase1StabilityTest {
                 file.readLines().forEachIndexed { idx, line ->
                     val trimmed = line.trim()
                     if (trimmed.startsWith("//") || trimmed.startsWith("*")) return@forEachIndexed
-                    if (line.contains("OkHttpClient.Builder(")) {
+                    if (directOkHttpRegex.containsMatchIn(line)) {
                         violations.add("${file.name}:${idx + 1}: $trimmed")
                     }
                 }
             }
 
         assertTrue(
-            "Found stray OkHttpClient.Builder() calls outside NetworkSecurityHelper:\n" +
+            "Found stray OkHttpClient() / OkHttpClient.Builder() calls outside NetworkSecurityHelper:\n" +
                 violations.joinToString("\n"),
             violations.isEmpty()
         )
@@ -205,5 +206,43 @@ class Phase1StabilityTest {
         val exactPayload = JSONObject(exactRes.extraData.orEmpty())
         assertTrue(exactPayload.getBoolean("isExact"))
         assertFalse(exactPayload.getBoolean("needsExactPermissionPrompt"))
+    }
+
+    @Test
+    fun brandingMetadataAndStringsMatchAyraAi() {
+        val mainDir = resolveMainSrcDir()
+        val stringsXml = File(mainDir, "res/values/strings.xml")
+        assertTrue("Expected strings.xml", stringsXml.exists())
+        val stringsText = stringsXml.readText()
+        assertTrue(
+            "Expected app_name to be Ayra AI",
+            stringsText.contains("<string name=\"app_name\">Ayra AI</string>")
+        )
+
+        val repoRoot = if (File("metadata.json").exists()) File(".") else File("..")
+        val metadataFile = File(repoRoot, "metadata.json")
+        if (metadataFile.exists()) {
+            val metaJson = JSONObject(metadataFile.readText())
+            assertEquals("Ayra AI", metaJson.getString("name"))
+        }
+    }
+
+    @Test
+    fun chatScreenExposesJustInTimePermissionRationaleAndExactAlarmBanner() {
+        val chatScreenFile = File(resolveMainSrcDir(), "java/com/ayra/ai/app/ui/screens/ChatScreen.kt")
+        assertTrue("Expected ChatScreen.kt", chatScreenFile.exists())
+        val source = chatScreenFile.readText()
+        assertTrue(
+            "Expected RequestMultiplePermissions for location permissions in ChatScreen.kt",
+            source.contains("RequestMultiplePermissions")
+        )
+        assertTrue(
+            "Expected persistent exact_alarm_warning_banner in ChatScreen.kt",
+            source.contains("exact_alarm_warning_banner")
+        )
+        assertTrue(
+            "Expected permission_rationale_confirm dialog in ChatScreen.kt",
+            source.contains("permission_rationale_confirm")
+        )
     }
 }

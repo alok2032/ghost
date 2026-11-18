@@ -131,7 +131,7 @@ fun MemoryScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Opt-In Memory Recall", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
-                        if (memoryEnabled) "Ghost AI uses top relevant memories during chat (requires your confirmation to save new facts)."
+                        if (memoryEnabled) "Ayra AI uses top relevant memories during chat (requires your confirmation to save new facts)."
                         else "Off by default for maximum privacy. Nothing is recalled or stored.",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

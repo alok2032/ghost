@@ -204,9 +204,9 @@ fun PersonalizationAndMemoryPanel(
         }
 
         Text("Structured Custom Instructions (Encrypted)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ghost AI") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra AI") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = aboutUser, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ghost AI Should Respond") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ayra AI Should Respond") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = outputFormat, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = restrictions, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())

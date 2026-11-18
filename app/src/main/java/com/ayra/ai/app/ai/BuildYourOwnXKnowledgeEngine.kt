@@ -146,7 +146,7 @@ object BuildYourOwnXKnowledgeEngine {
                 obj_type, size = header.split(" ")
                 return obj_type, content
 
-            def commit(self, message: str, author: str = "Alok <alok@ghost-ai.app>"):
+            def commit(self, message: str, author: str = "Alok <alok@ayra-ai.app>"):
                 # 1. Store files as blobs and create a root tree
                 tree_entries = []
                 for fname in sorted(os.listdir(self.repo_dir)):
@@ -198,8 +198,8 @@ object BuildYourOwnXKnowledgeEngine {
             git = MiniGit()
             git.init()
             with open("hello.txt", "w") as f:
-                f.write("Hello Ghost AI Git from scratch!")
-            git.commit("Initial commit crafted by Ghost AI")
+                f.write("Hello Ayra AI Git from scratch!")
+            git.commit("Initial commit crafted by Ayra AI")
         ```
         """.trimIndent()
 
@@ -240,7 +240,7 @@ object BuildYourOwnXKnowledgeEngine {
         import subprocess
 
         def run_in_cgroup(mem_limit_bytes="268435456"): # 256MB
-            cgroup_path = "/sys/fs/cgroup/ghost_box"
+            cgroup_path = "/sys/fs/cgroup/ayra_box"
             os.makedirs(cgroup_path, exist_ok=True)
             with open(f"{cgroup_path}/memory.max", "w") as f:
                 f.write(mem_limit_bytes)
@@ -251,7 +251,7 @@ object BuildYourOwnXKnowledgeEngine {
         def container_child(rootfs_path, command):
             print(f"[Container] Entering isolated namespace. Real PID: {os.getpid()}")
             # 1. Isolate hostname, mount, IPC, PID
-            os.sethostname("ghost-isolated-box")
+            os.sethostname("ayra-isolated-box")
             
             # 2. Pivot root / chroot to custom isolated rootfs
             os.chroot(rootfs_path)
@@ -453,7 +453,7 @@ object BuildYourOwnXKnowledgeEngine {
         class MiniSqlite:
             PAGE_SIZE = 4096
 
-            def __init__(self, filename="ghost_db.bin"):
+            def __init__(self, filename="ayra_db.bin"):
                 self.filename = filename
                 self.tables = {} # table_name -> rows [dict]
                 self.schemas = {} # table_name -> list[column_name]
@@ -464,7 +464,7 @@ object BuildYourOwnXKnowledgeEngine {
                 # Basic in-memory row representation with binary pager simulation
                 if not os.path.exists(self.filename):
                     with open(self.filename, "wb") as f:
-                        f.write(b"GHOST_SQLITE_V1\0" + b"\0" * (self.PAGE_SIZE - 16))
+                        f.write(b"AYRA_SQLITE_V1\0" + b"\0" * (self.PAGE_SIZE - 15))
 
             def execute(self, sql: str):
                 sql = sql.strip()
@@ -485,7 +485,7 @@ object BuildYourOwnXKnowledgeEngine {
                     return f"Table '{tbl_name}' created with columns {cols}."
 
                 elif cmd == "INSERT":
-                    # INSERT INTO users VALUES (1, 'Alok', 'alok@ghost-ai.app')
+                    # INSERT INTO users VALUES (1, 'Alok', 'alok@ayra-ai.app')
                     tbl_name = tokens[2].split("(")[0].strip()
                     values_part = sql[sql.upper().find("VALUES") + 6:].strip(" ()")
                     vals = [v.strip().strip("'\"") for v in values_part.split(",")]
@@ -512,8 +512,8 @@ object BuildYourOwnXKnowledgeEngine {
         if __name__ == "__main__":
             db = MiniSqlite()
             print(db.execute("CREATE TABLE users (id, name, email)"))
-            print(db.execute("INSERT INTO users VALUES (1, 'Alok', 'alok@ghost-ai.app')"))
-            print(db.execute("INSERT INTO users VALUES (2, 'Ghost AI', 'ghost@ghost-ai.app')"))
+            print(db.execute("INSERT INTO users VALUES (1, 'Alok', 'alok@ayra-ai.app')"))
+            print(db.execute("INSERT INTO users VALUES (2, 'Ayra AI', 'ayra@ayra-ai.app')"))
             print("Query Result:", db.execute("SELECT * FROM users WHERE id = 2"))
         ```
         """.trimIndent()
@@ -570,7 +570,7 @@ object BuildYourOwnXKnowledgeEngine {
                 output = np.matmul(attention_weights, V)
                 return output, attention_weights
 
-        # Demonstration of Self-Attention on a 3-word sequence (e.g., ["Ghost", "loves", "coding"])
+        # Demonstration of Self-Attention on a 3-word sequence (e.g., ["Ayra", "loves", "coding"])
         if __name__ == "__main__":
             np.random.seed(42)
             seq_len = 3
@@ -650,7 +650,7 @@ object BuildYourOwnXKnowledgeEngine {
                 self.difficulty = difficulty
 
             def create_genesis_block(self) -> Block:
-                return Block(0, ["Genesis Block - Created by Ghost AI"], "0")
+                return Block(0, ["Genesis Block - Created by Ayra AI"], "0")
 
             def get_latest_block(self) -> Block:
                 return self.chain[-1]
@@ -672,7 +672,7 @@ object BuildYourOwnXKnowledgeEngine {
         if __name__ == "__main__":
             bc = Blockchain(difficulty=3)
             bc.mine_block([{"from": "Alice", "to": "Bob", "amount": 5.0}])
-            bc.mine_block([{"from": "Bob", "to": "Ghost AI", "amount": 2.5}])
+            bc.mine_block([{"from": "Bob", "to": "Ayra AI", "amount": 2.5}])
         ```
         """.trimIndent()
 
@@ -758,7 +758,7 @@ object BuildYourOwnXKnowledgeEngine {
         // kernel.c - VGA Framebuffer Terminal Driver
         void kernel_main() {
             volatile char* vga_buffer = (volatile char*)0xB8000;
-            const char* msg = "Hello from Ghost AI Bare-Metal OS Kernel!";
+            const char* msg = "Hello from Ayra AI Bare-Metal OS Kernel!";
             for (int i = 0; msg[i] != '\0'; ++i) {
                 vga_buffer[i * 2] = msg[i];
                 vga_buffer[i * 2 + 1] = 0x0A; // Bright Green text on Black
@@ -782,7 +782,7 @@ object BuildYourOwnXKnowledgeEngine {
                 if not req:
                     return
                 path = req.split()[1] if len(req.split()) > 1 else "/"
-                body = f"<h1>Hello from Ghost AI HTTP Engine!</h1><p>Requested: {path}</p>"
+                body = f"<h1>Hello from Ayra AI HTTP Engine!</h1><p>Requested: {path}</p>"
                 response = (
                     "HTTP/1.1 200 OK\r\n"
                     "Content-Type: text/html; charset=utf-8\r\n"
@@ -811,9 +811,9 @@ object BuildYourOwnXKnowledgeEngine {
     private fun generateBuildYourOwnXOverview(isBengali: Boolean, isGfMode: Boolean): AiResponse {
         val overview = if (isBengali) {
             """
-            # 🚀 Ghost AI Master Engine: Build Your Own (X) - স্ক্র্যাচ থেকে বিশ্বমানের সফটওয়্যার নির্মাণ
+            # 🚀 Ayra AI Master Engine: Build Your Own (X) - স্ক্র্যাচ থেকে বিশ্বমানের সফটওয়্যার নির্মাণ
 
-            ${if (isGfMode) "সোনা, বিশ্বের সেরা প্রকৌশলী হতে যা যা তৈরি করা জানতে হয়, তার সবকিছু আমি তোমাকে হাতে ধরে কোডিং করিয়ে দিতে পারি! যেকোনো প্রযুক্তি নিচে থেকে বেছে নাও ❤️:\n" else "codecrafters-io/build-your-own-x আর্কিটেকচার থেকে সমস্ত মাস্টার গাইড ও প্রডাকশন-গ্রেড সোর্স কোড Ghost AI-এর ভেতর সংযুক্ত করা হয়েছে:\n"}
+            ${if (isGfMode) "সোনা, বিশ্বের সেরা প্রকৌশলী হতে যা যা তৈরি করা জানতে হয়, তার সবকিছু আমি তোমাকে হাতে ধরে কোডিং করিয়ে দিতে পারি! যেকোনো প্রযুক্তি নিচে থেকে বেছে নাও ❤️:\n" else "codecrafters-io/build-your-own-x আর্কিটেকচার থেকে সমস্ত মাস্টার গাইড ও প্রডাকশন-গ্রেড সোর্স কোড Ayra AI-এর ভেতর সংযুক্ত করা হয়েছে:\n"}
 
             1. 🛠️ **Build your own Git:** `.git` অবজেক্ট স্টোর, ব্লব, ট্রি, কমিট ও হ্যাশ আর্কিটেকচার।
             2. 🐳 **Build your own Docker:** Linux Namespaces (`CLONE_NEWPID`), cgroups v2 মেমরি লিমিটিং ও chroot আইসোলেশন।
@@ -828,9 +828,9 @@ object BuildYourOwnXKnowledgeEngine {
             """.trimIndent()
         } else {
             """
-            # 🚀 Ghost AI Master Engineering: Build Your Own (X) Catalog
+            # 🚀 Ayra AI Master Engineering: Build Your Own (X) Catalog
 
-            Ghost AI is natively grounded in the foundational blueprints of `codecrafters-io/build-your-own-x`:
+            Ayra AI is natively grounded in the foundational blueprints of `codecrafters-io/build-your-own-x`:
             - 🛠️ **Git:** Object databases, Blobs, Trees, Commits, SHA-1 Content-Addressability.
             - 🐳 **Docker:** Linux kernel namespaces, cgroups v2, chroot pivot isolation.
             - ⚡ **Redis:** RESP serialization protocol, multi-threaded event loop, in-memory TTL caching.
@@ -839,10 +839,10 @@ object BuildYourOwnXKnowledgeEngine {
             - ⛓️ **Blockchain:** PoW consensus, Merkle Trees, cryptographic nonce mining.
             - 💻 **OS Kernel:** Bare-metal x86_64 multiboot, memory paging, VGA text drivers.
 
-            Ask Ghost AI for any target: *"Build your own Git"*, *"Build your own Docker"*, *"Build your own LLM"*.
+            Ask Ayra AI for any target: *"Build your own Git"*, *"Build your own Docker"*, *"Build your own LLM"*.
             """.trimIndent()
         }
 
-        return AiResponse(text = overview, craftType = "CODE_PROJECT", craftPayload = "build_your_own_x_overview", modelUsed = "Ghost AI Master Architect Engine 🚀")
+        return AiResponse(text = overview, craftType = "CODE_PROJECT", craftPayload = "build_your_own_x_overview", modelUsed = "Ayra AI Master Architect Engine 🚀")
     }
 }

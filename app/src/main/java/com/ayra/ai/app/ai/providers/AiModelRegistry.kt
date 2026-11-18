@@ -517,10 +517,24 @@ object AiModelRegistry {
                     lastError = "Set ComfyUI URL in Tools & Keys"
                 )
             }
+            val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, url)
+            if (!urlCheck.allowed) {
+                return@withContext entry.copy(
+                    healthStatus = ModelHealthStatus.OFFLINE,
+                    lastCheckedMs = now,
+                    lastError = urlCheck.reason ?: "Blocked ComfyUI endpoint URL"
+                )
+            }
+            val comfyClient = httpClient ?: com.ayra.ai.app.security.NetworkSecurityHelper.newClient(
+                connectTimeoutSec = 4L,
+                readTimeoutSec = 6L,
+                callTimeoutSec = 15L,
+                allowLanCleartext = true
+            )
             val start = System.currentTimeMillis()
             return@withContext try {
                 val req = Request.Builder().url("${url.trimEnd('/')}/system_stats").get().build()
-                client.newCall(req).execute().use { resp ->
+                comfyClient.newCall(req).execute().use { resp ->
                     val latency = (System.currentTimeMillis() - start).coerceAtLeast(1L)
                     if (resp.isSuccessful) {
                         entry.copy(healthStatus = ModelHealthStatus.OPERATIONAL, latencyMs = latency, lastCheckedMs = now, lastError = null)

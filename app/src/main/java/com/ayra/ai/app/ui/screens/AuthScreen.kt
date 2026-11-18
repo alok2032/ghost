@@ -126,7 +126,7 @@ fun AuthScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Ghost AI Emblem",
+                            contentDescription = "Ayra AI Emblem",
                             tint = Color.Black,
                             modifier = Modifier.size(34.dp)
                         )
@@ -137,7 +137,7 @@ fun AuthScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Ghost AI",
+                            text = "Ayra AI",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextPrimary

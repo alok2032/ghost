@@ -70,6 +70,9 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -79,6 +82,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.platform.testTag
@@ -225,6 +229,13 @@ fun ChatScreen(
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
     var selectedDocumentBase64Image by remember { mutableStateOf<String?>(null) }
     var isTranscribingAudio by remember { mutableStateOf(false) }
+
+    var showExactAlarmWarningBanner by remember { mutableStateOf(false) }
+    var exactAlarmBannerDismissed by remember { mutableStateOf(false) }
+    var rationaleTitle by remember { mutableStateOf<String?>(null) }
+    var rationaleBody by remember { mutableStateOf("") }
+    var rationaleActionLabel by remember { mutableStateOf("Continue") }
+    var rationaleOnConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val isRecordingAudio by audioCaptureManager.isRecording.collectAsStateWithLifecycle()
     val audioAmplitude by audioCaptureManager.amplitudeLevel.collectAsStateWithLifecycle()
@@ -381,17 +392,91 @@ fun ChatScreen(
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val fineGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
             dispatchPromptRef?.invoke("Where am I right now? GPS Coordinates")
         } else {
             Toast.makeText(
                 context,
-                "Location permission is required to read current GPS coordinates.",
+                "Location permission is required to read current coordinates.",
                 Toast.LENGTH_LONG
             ).show()
         }
+    }
+
+    val contactsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val current = viewModel.pendingAction.value
+            when (current) {
+                is ProposedAction.DirectCall -> {
+                    val resolved = com.ayra.ai.app.automation.ContactResolver.resolveContact(context, current.displayName)
+                    if (resolved != null) {
+                        viewModel.setPendingAction(current.copy(displayName = resolved.name, phoneNumber = resolved.phoneNumber))
+                        Toast.makeText(context, "Contact resolved: ${resolved.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Contacts allowed, but no match found for '${current.displayName}'.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                is ProposedAction.SendSms -> {
+                    val resolved = com.ayra.ai.app.automation.ContactResolver.resolveContact(context, current.recipient)
+                    if (resolved != null) {
+                        viewModel.setPendingAction(current.copy(recipient = resolved.name, phoneNumber = resolved.phoneNumber))
+                        Toast.makeText(context, "Contact resolved: ${resolved.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Contacts allowed, but no match found for '${current.recipient}'.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                else -> Toast.makeText(context, "Contacts permission granted.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(
+                context,
+                "Contacts permission was not granted. You can still confirm to open the dialer/SMS app.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun requestPermissionWithRationale(
+        permission: String,
+        onLaunch: () -> Unit
+    ) {
+        val (title, body, buttonText) = when (permission) {
+            Manifest.permission.RECORD_AUDIO -> Triple(
+                "Microphone Access for Voice AI",
+                "Ayra AI uses the microphone only when you tap voice input or enable hands-free wake word, to transcribe speech locally or with your chosen AI provider.",
+                "Allow Microphone"
+            )
+            Manifest.permission.CAMERA -> Triple(
+                "Camera Access for Visual Capture",
+                "Ayra AI needs the camera only when you choose 'Take Photo with Camera' so you can capture an image for vision Q&A.",
+                "Allow Camera"
+            )
+            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION -> Triple(
+                "Location Access for GPS Queries",
+                "Ayra AI reads your approximate or precise device location only when you request coordinates, local directions, or weather.",
+                "Allow Location"
+            )
+            Manifest.permission.READ_CONTACTS -> Triple(
+                "Contacts Access for Name Lookup",
+                "Ayra AI only reads Contacts when you ask to call or message someone by name so it can look up their phone number before opening your dialer or SMS app.",
+                "Allow Contacts"
+            )
+            else -> Triple(
+                "Permission Required",
+                "Ayra AI requests this permission only for the specific feature you tapped.",
+                "Continue"
+            )
+        }
+        rationaleTitle = title
+        rationaleBody = body
+        rationaleActionLabel = buttonText
+        rationaleOnConfirm = onLaunch
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -583,11 +668,8 @@ fun ChatScreen(
                         JSONObject(scheduleResult.extraData.orEmpty()).optBoolean("needsExactPermissionPrompt", false)
                     }.getOrDefault(false)
                     if (needsExactPrompt) {
-                        Toast.makeText(
-                            context,
-                            "Exact alarm permission is disabled; scheduled with approximate fallback. Enable it in Control Center.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        showExactAlarmWarningBanner = true
+                        exactAlarmBannerDismissed = false
                     }
                     viewModel.persistMessage(
                         ChatMessage(
@@ -732,7 +814,7 @@ fun ChatScreen(
                                 onCopy = {
                                     com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
                                         context = context,
-                                        label = "Ghost AI Message",
+                                        label = "Ayra AI Message",
                                         text = msg.content,
                                         isSensitive = true,
                                         autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
@@ -897,8 +979,105 @@ fun ChatScreen(
                 }
             }
 
+            // Persistent Exact Alarm Warning Banner when Android 12+ exact alarms are disabled
+            val hasPendingScheduledTasks = remember(scheduledTasks) {
+                scheduledTasks.any { it.status == "PENDING" }
+            }
+            val exactAlarmBannerVisible = !exactAlarmBannerDismissed &&
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                !taskScheduler.canScheduleExactAlarms() &&
+                (showExactAlarmWarningBanner || hasPendingScheduledTasks)
+
+            if (exactAlarmBannerVisible) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GlassSurfaceDark)
+                        .border(1.dp, NeonRose.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("exact_alarm_warning_banner"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Exact Alarm Permission Needed for On-Time Reminders",
+                        color = NeonRose,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Reminders are using approximate timing fallback. Allow 'Alarms & reminders' in system settings for exact delivery.",
+                        color = TextPrimary,
+                        fontSize = 11.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { exactAlarmBannerDismissed = true },
+                            modifier = Modifier.testTag("exact_alarm_banner_dismiss")
+                        ) {
+                            Text("Dismiss", color = TextSecondary, fontSize = 11.5.sp)
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        TextButton(
+                            onClick = {
+                                runCatching { context.startActivity(taskScheduler.buildExactAlarmSettingsIntent()) }
+                            },
+                            modifier = Modifier.testTag("exact_alarm_settings_button")
+                        ) {
+                            Text("Enable Exact Alarms", color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                        }
+                    }
+                }
+            }
+
             // ActionGate Confirmation Card (Requires explicit user tap to execute)
             pendingAction?.let { action ->
+                val unresolvedContactName = when (action) {
+                    is ProposedAction.DirectCall -> action.phoneNumber.none { it.isDigit() }
+                    is ProposedAction.SendSms -> action.phoneNumber.none { it.isDigit() }
+                    else -> false
+                }
+                val hasContactsPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_CONTACTS
+                ) == PackageManager.PERMISSION_GRANTED
+                if (unresolvedContactName && !hasContactsPermission) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 3.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(GlassSurfaceDark)
+                            .border(1.dp, NeonCyan.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("contacts_rationale_inline_banner"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Allow Contacts to look up phone numbers by name automatically.",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                requestPermissionWithRationale(Manifest.permission.READ_CONTACTS) {
+                                    contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                                }
+                            },
+                            modifier = Modifier.testTag("contacts_rationale_allow_button")
+                        ) {
+                            Text("Allow Contacts", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 ActionConfirmationCard(
                     action = action,
                     onConfirm = {
@@ -1065,7 +1244,9 @@ fun ChatScreen(
                         Manifest.permission.RECORD_AUDIO
                     ) == PackageManager.PERMISSION_GRANTED
                     if (!hasRecord) {
-                        audioRecordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        requestPermissionWithRationale(Manifest.permission.RECORD_AUDIO) {
+                            audioRecordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     } else if (!isRecordingAudio) {
                         audioCaptureManager.startRecording().onFailure { err ->
                             Toast.makeText(context, "Could not start recording: ${err.localizedMessage}", Toast.LENGTH_SHORT).show()
@@ -1106,7 +1287,9 @@ fun ChatScreen(
                     ) == PackageManager.PERMISSION_GRANTED
 
                     if (!hasRecord) {
-                        voiceCommandPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        requestPermissionWithRationale(Manifest.permission.RECORD_AUDIO) {
+                            voiceCommandPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     } else if (isFallbackVoiceMode && isRecordingAudio) {
                         audioCaptureManager.cancelRecording()
                         isFallbackVoiceMode = false
@@ -1190,7 +1373,7 @@ fun ChatScreen(
                                 }
                                 Column {
                                     Text(
-                                        text = "Ghost AI Studio & Super-Hub ⚡",
+                                        text = "Ayra AI Studio & Super-Hub ⚡",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = NeonCyan,
@@ -1242,7 +1425,9 @@ fun ChatScreen(
                                             Toast.makeText(context, "Camera launch failed: ${e.localizedMessage ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
                                         }
                                     } else {
-                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        requestPermissionWithRationale(Manifest.permission.CAMERA) {
+                                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
                                     }
                                 }
                                 .padding(12.dp)
@@ -1658,10 +1843,19 @@ fun ChatScreen(
                                 .border(0.8.dp, NeonRose.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                                 .clickable {
                                     showAttachmentPicker = false
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                    val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                    if (hasFine || hasCoarse) {
                                         dispatchPrompt("Where am I right now? GPS Coordinates")
                                     } else {
-                                        locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                        requestPermissionWithRationale(Manifest.permission.ACCESS_FINE_LOCATION) {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                                 .padding(12.dp)
@@ -1676,6 +1870,46 @@ fun ChatScreen(
                     }
                 }
             }
+        }
+
+        // Just-in-Time Permission Rationale Dialog (Play Policy Compliance)
+        rationaleTitle?.let { dialogTitle ->
+            AlertDialog(
+                onDismissRequest = {
+                    rationaleTitle = null
+                    rationaleOnConfirm = null
+                },
+                containerColor = GlassSurfaceDark,
+                titleContentColor = NeonCyan,
+                textContentColor = TextPrimary,
+                title = { Text(text = dialogTitle, fontWeight = FontWeight.Bold) },
+                text = { Text(text = rationaleBody, fontSize = 13.sp) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val action = rationaleOnConfirm
+                            rationaleTitle = null
+                            rationaleOnConfirm = null
+                            action?.invoke()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                        modifier = Modifier.testTag("permission_rationale_confirm")
+                    ) {
+                        Text(rationaleActionLabel, color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            rationaleTitle = null
+                            rationaleOnConfirm = null
+                        },
+                        modifier = Modifier.testTag("permission_rationale_cancel")
+                    ) {
+                        Text("Not Now", color = TextSecondary)
+                    }
+                }
+            )
         }
 
         // Control Center & Settings Bottom Sheet (Opened by clicking Ayra Logo)
@@ -1708,7 +1942,20 @@ fun ChatScreen(
                         voiceManager.stopListening()
                     }
                 },
-                onRequestSinglePermission = { permission -> singlePermissionLauncher.launch(permission) },
+                onRequestSinglePermission = { permission ->
+                    requestPermissionWithRationale(permission) {
+                        if (permission == Manifest.permission.ACCESS_FINE_LOCATION) {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        } else {
+                            singlePermissionLauncher.launch(permission)
+                        }
+                    }
+                },
                 canScheduleExactAlarms = taskScheduler.canScheduleExactAlarms(),
                 onOpenExactAlarmSettings = {
                     runCatching { context.startActivity(taskScheduler.buildExactAlarmSettingsIntent()) }
@@ -1737,7 +1984,7 @@ fun ChatScreen(
                 onCopyPrompt = { promptToCopy ->
                     com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
                         context = context,
-                        label = "Ghost AI Prompt",
+                        label = "Ayra AI Prompt",
                         text = promptToCopy,
                         isSensitive = true,
                         autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
@@ -1926,7 +2173,7 @@ private fun GlassHeaderBar(
             }
         }
 
-        // Glowing Ghost AI Indicator / Control Center Button
+        // Glowing Ayra AI Indicator / Control Center Button
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -1945,7 +2192,7 @@ private fun GlassHeaderBar(
         ) {
             Icon(
                 imageVector = Icons.Default.AutoAwesome,
-                contentDescription = "Ghost AI Control Center & Settings",
+                contentDescription = "Ayra AI Control Center & Settings",
                 tint = Color.Black,
                 modifier = Modifier.size(20.dp)
             )
@@ -1963,7 +2210,7 @@ private fun GlassHeaderBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Ghost AI",
+                    text = "Ayra AI",
                     style = MaterialTheme.typography.titleMedium.copy(
                         brush = animatedGradient
                     ),
@@ -1971,7 +2218,7 @@ private fun GlassHeaderBar(
                     fontSize = 16.sp
                 )
 
-                // "By Alok" custom badge beside Ghost AI
+                // "By Alok" custom badge beside Ayra AI
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -2005,7 +2252,7 @@ private fun GlassHeaderBar(
                     }
                     !activeSessionTitle.isNullOrBlank() -> activeSessionTitle
                     currentPersona == "GF_COMPANION" -> "${currentSentiment.emoji} ${currentSentiment.bengaliName} Voice • Ready"
-                    else -> "Voice Trigger Ready (Say 'Ghost')"
+                    else -> "Voice Trigger Ready (Say 'Ayra')"
                 },
                 style = MaterialTheme.typography.bodySmall.copy(
                     brush = animatedGradient
@@ -2094,7 +2341,7 @@ private fun GlassMessageBubble(
                                 .background(if (isUser) NeonCyan else NeonRose)
                         )
                         Text(
-                            text = if (isUser) "You" else "Ghost AI",
+                            text = if (isUser) "You" else "Ayra AI",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (isUser) NeonCyan else NeonRose
@@ -2291,7 +2538,7 @@ private fun GlassMessageBubble(
                     onCopyCode = { codeToCopy ->
                         com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
                             context = context,
-                            label = "Ghost AI Code",
+                            label = "Ayra AI Code",
                             text = codeToCopy,
                             isSensitive = true,
                             autoClearMs = if (com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
@@ -2413,7 +2660,7 @@ private fun GlassInputRow(
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
-            placeholder = { Text("Ask Ghost AI, generate photo, open apps...", color = TextSecondary, fontSize = 13.sp) },
+            placeholder = { Text("Ask Ayra AI, generate photo, open apps...", color = TextSecondary, fontSize = 13.sp) },
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(24.dp))
@@ -2546,7 +2793,7 @@ private fun EmptyCosmicState(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Ghost AI",
+                text = "Ayra AI",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     brush = animatedGradient
                 ),
@@ -2644,7 +2891,7 @@ private fun AssistantGeneratingIndicator(
                 color = NeonCyan
             )
             Text(
-                text = statusText ?: "Ghost AI is thinking & synthesizing...",
+                text = statusText ?: "Ayra AI is thinking & synthesizing...",
                 style = MaterialTheme.typography.bodySmall,
                 color = NeonCyan,
                 fontWeight = FontWeight.Medium
