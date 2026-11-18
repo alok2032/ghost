@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -62,36 +63,47 @@ fun SolarSystem3DCanvas(
     var pitchAngle by remember { mutableFloatStateOf(65f) }
     var yawAngle by remember { mutableFloatStateOf(20f) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "SolarSystemAnimation")
-    val orbitTime by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 48000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "OrbitTime"
-    )
-
-    val sunPulse by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "SunPulse"
-    )
-
-    val shootingStarProgress by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ShootingStarProgress"
-    )
+    val reducedMotion = LocalAyraUiConfig.current.reducedMotion
+    val orbitTime: Float
+    val sunPulse: Float
+    val shootingStarProgress: Float
+    if (reducedMotion) {
+        orbitTime = 24f
+        sunPulse = 0f
+        shootingStarProgress = 0.98f
+    } else {
+        val infiniteTransition = rememberInfiniteTransition(label = "SolarSystemAnimation")
+        val animatedOrbitTime by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 48000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "OrbitTime"
+        )
+        val animatedSunPulse by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 3800, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "SunPulse"
+        )
+        val animatedShootingStar by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 4600, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "ShootingStarProgress"
+        )
+        orbitTime = animatedOrbitTime
+        sunPulse = animatedSunPulse
+        shootingStarProgress = animatedShootingStar
+    }
 
     // Accurate Solar System planet specifications
     val planets = remember {

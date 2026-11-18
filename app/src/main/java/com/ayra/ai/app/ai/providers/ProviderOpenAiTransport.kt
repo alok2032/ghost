@@ -3,6 +3,7 @@ package com.ayra.ai.app.ai.providers
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -331,6 +332,8 @@ internal object ProviderOpenAiTransport {
                                     }
                                 }
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {}
                     }
                 } else if (!emittedAnySse && l.isNotEmpty()) {
@@ -351,6 +354,8 @@ internal object ProviderOpenAiTransport {
                         }
                         if (cleaned.isNotEmpty()) collector.emit(cleaned)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {}
             }
         }
@@ -371,7 +376,9 @@ internal object ProviderOpenAiTransport {
         }
         client.newCall(reqBuilder.get().build()).execute().use { resp ->
             if (!resp.isSuccessful) return
-            val root = JSONObject(resp.body?.string() ?: "")
+            val bodyStr = resp.body?.string()?.trim().orEmpty()
+            if (bodyStr.isBlank()) return
+            val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: root.optJSONArray("models") ?: JSONArray()
             for (i in 0 until data.length()) {
                 val obj = data.getJSONObject(i)

@@ -178,4 +178,47 @@ class ModelCatalogAndErrorHandlingTest {
         assertTrue(entry?.capabilities?.contains(ModelCapability.TEXT) == true)
         assertTrue(AyraPreferences.getRemoteModelCatalogJson(context).contains("gpt-4.1-mini"))
     }
+
+    @Test
+    fun anthropic404MapsToModelNotFoundAndMalformedDiscoveryIsSafe() = runBlocking {
+        AyraPreferences.setAnthropicKey(context, "sk-ant-test-key")
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+        try {
+            server.enqueue(MockResponse().setResponseCode(404).setBody("""{"error":{"message":"model not found"}}"""))
+            val providers = ExternalAiProviders(
+                context = context,
+                baseUrlOverrides = mapOf(AiProviderType.ANTHROPIC to server.url("/anthropic/").toString()),
+                customHttpClient = OkHttpClient()
+            )
+            var thrown: Throwable? = null
+            try {
+                providers.generateChatResponse(
+                    prompt = "Hello",
+                    systemPrompt = "Be concise",
+                    preferredProvider = AiProviderType.ANTHROPIC,
+                    preferredModelId = "claude-missing-model"
+                )
+            } catch (e: Throwable) {
+                thrown = e
+            }
+            assertTrue("Expected ModelNotFound or model unavailable error, got $thrown",
+                thrown is ProviderError.ModelNotFound ||
+                    ModelCatalog.isModelTemporarilyUnavailable(AiProviderType.ANTHROPIC, "claude-missing-model")
+            )
+
+            // Malformed /models response should not throw during live model discovery
+            server.enqueue(MockResponse().setResponseCode(200).setBody("<html>temporarily unavailable</html>"))
+            val openAiProviders = ExternalAiProviders(
+                context = context,
+                baseUrlOverrides = mapOf(AiProviderType.OPENAI to server.url("/openai/").toString()),
+                customHttpClient = OkHttpClient(),
+                channelKeyOverrides = mapOf(AiProviderType.OPENAI.id to "sk-openai-test-key")
+            )
+            val discovered = openAiProviders.discoverDynamicModels(AiProviderType.OPENAI)
+            assertTrue(discovered.none { it.provider == AiProviderType.OPENAI && it.id.contains("<html>") })
+        } finally {
+            AyraPreferences.setAnthropicKey(context, "")
+            AyraPreferences.setFreeAiPoolEnabled(context, true)
+        }
+    }
 }

@@ -447,7 +447,7 @@ object CyberTerminalEngine {
     private fun handleRealHeaders(args: List<String>, client: OkHttpClient): String {
         if (args.isEmpty()) return "Error: Target URL required. Usage: headers <https://example.com>"
         var urlStr = args[0]
-        if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
+        if (!urlStr.startsWith("http://", ignoreCase = true) && !urlStr.startsWith("https://", ignoreCase = true)) {
             urlStr = "https://$urlStr"
         }
         if (client === defaultHttpClient) {
@@ -496,7 +496,7 @@ object CyberTerminalEngine {
         if (args.isEmpty()) return "Usage: curl -I <url> (or curl <url>)"
         val urlArg = args.lastOrNull { !it.startsWith("-") } ?: return "Error: URL required."
         var targetUrl = urlArg
-        if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+        if (!targetUrl.startsWith("http://", ignoreCase = true) && !targetUrl.startsWith("https://", ignoreCase = true)) {
             targetUrl = "https://$targetUrl"
         }
         if (client === defaultHttpClient) {
@@ -581,7 +581,7 @@ object CyberTerminalEngine {
         }
 
         val endpoint = cveApiBaseUrl.trimEnd('/') + "/" + cveId
-        if (client === defaultHttpClient && cveApiBaseUrl == "https://cve.circl.lu/api/cve/") {
+        if (client === defaultHttpClient) {
             val check = NetworkSecurityHelper.validatePublicHttpsUrl(endpoint)
             if (!check.allowed) {
                 return "Error: ${check.reason ?: "Blocked unsafe CVE endpoint."}"

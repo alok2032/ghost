@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -61,6 +63,7 @@ import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.search.TavilySearchEngine
 import com.ayra.ai.app.security.AndroidHardeningHelper
 import com.ayra.ai.app.voice.ElevenLabsVoiceEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -474,7 +477,7 @@ fun SingleProviderKeyCard(
             OutlinedTextField(
                 value = keyInput,
                 onValueChange = { keyInput = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("provider_key_input_${provider.id}"),
                 placeholder = {
                     Text(
                         "Enter ${provider.displayName} API Key",
@@ -484,7 +487,10 @@ fun SingleProviderKeyCard(
                 singleLine = true,
                 visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
-                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                    IconButton(
+                        onClick = { isPasswordVisible = !isPasswordVisible },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
                             imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = "Toggle visibility",
@@ -575,6 +581,8 @@ fun SingleProviderKeyCard(
                                 val latency = providersEngine.testProviderConnection(provider, keyInput.trim())
                                 testResult = "✓ Connected successfully in ${latency}ms!"
                                 isError = false
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 testResult = "Connection failed: ${e.message}"
                                 isError = true
@@ -584,7 +592,8 @@ fun SingleProviderKeyCard(
                         }
                     },
                     enabled = !isTesting && keyInput.isNotBlank(),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_test_${provider.id}")
                 ) {
                     if (isTesting) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -602,7 +611,8 @@ fun SingleProviderKeyCard(
                         isError = false
                     },
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_save_${provider.id}")
                 ) {
                     Text("Save", style = MaterialTheme.typography.labelMedium)
                 }
@@ -697,7 +707,10 @@ fun SpecializedIntegrationKeyCard(
                 singleLine = true,
                 visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
-                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                    IconButton(
+                        onClick = { isPasswordVisible = !isPasswordVisible },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
                             imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = "Toggle visibility",
@@ -788,6 +801,8 @@ fun SpecializedIntegrationKeyCard(
                                 val latency = onTest(keyInput.trim())
                                 testResult = "✓ Connected successfully in ${latency}ms!"
                                 isError = false
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 testResult = "Connection failed: ${e.message}"
                                 isError = true
@@ -797,7 +812,8 @@ fun SpecializedIntegrationKeyCard(
                         }
                     },
                     enabled = !isTesting && keyInput.isNotBlank(),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     if (isTesting) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -815,7 +831,8 @@ fun SpecializedIntegrationKeyCard(
                         isError = false
                     },
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Save", style = MaterialTheme.typography.labelMedium)
                 }

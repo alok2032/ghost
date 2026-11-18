@@ -2,6 +2,7 @@ package com.ayra.ai.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -48,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +60,7 @@ import com.ayra.ai.app.ai.providers.AiModelRegistry
 import com.ayra.ai.app.ai.providers.AiUsageTracker
 import com.ayra.ai.app.ai.providers.ModelCategory
 import com.ayra.ai.app.ai.providers.ModelHealthStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private enum class ArenaTab(val label: String) {
@@ -162,12 +166,19 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                     if (isSweeping) return@Button
                     isSweeping = true
                     scope.launch {
-                        AiModelRegistry.runHealthSweep(context)
-                        isSweeping = false
+                        try {
+                            AiModelRegistry.runHealthSweep(context)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            discoveryStatus = "Health sweep failed: ${e.message ?: "Network error"}"
+                        } finally {
+                            isSweeping = false
+                        }
                     }
                 },
                 enabled = !isSweeping,
-                modifier = Modifier.weight(1f).testTag("registry_health_sweep_button")
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("registry_health_sweep_button")
             ) {
                 if (isSweeping) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -183,17 +194,24 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                     if (isDiscovering) return@OutlinedButton
                     isDiscovering = true
                     scope.launch {
-                        val discovered = AiModelRegistry.discoverAndMergeLiveModels(context)
-                        discoveryStatus = if (discovered > 0) {
-                            "Merged $discovered live models from configured endpoints."
-                        } else {
-                            "No additional live /models discovered from configured keys."
+                        try {
+                            val discovered = AiModelRegistry.discoverAndMergeLiveModels(context)
+                            discoveryStatus = if (discovered > 0) {
+                                "Merged $discovered live models from configured endpoints."
+                            } else {
+                                "No additional live /models discovered from configured keys."
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            discoveryStatus = "Model discovery failed: ${e.message ?: "Network error"}"
+                        } finally {
+                            isDiscovering = false
                         }
-                        isDiscovering = false
                     }
                 },
                 enabled = !isDiscovering,
-                modifier = Modifier.weight(1f).testTag("registry_discover_models_button")
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("registry_discover_models_button")
             ) {
                 if (isDiscovering) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -266,13 +284,15 @@ private fun RegistryHealthPanel(context: android.content.Context) {
             FilterChip(
                 selected = selectedCategory == null,
                 onClick = { selectedCategory = null },
-                label = { Text("All (${entries.size})", fontSize = 11.sp) }
+                label = { Text("All (${entries.size})", fontSize = 11.sp) },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("arena_category_all")
             )
             ModelCategory.entries.forEach { cat ->
                 FilterChip(
                     selected = selectedCategory == cat,
                     onClick = { selectedCategory = cat },
-                    label = { Text(cat.label, fontSize = 11.sp) }
+                    label = { Text(cat.label, fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("arena_category_${cat.name.lowercase()}")
                 )
             }
         }
@@ -377,20 +397,27 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
         } else {
             targets.take(8).forEach { target ->
                 val checked = target.id in selectedIds
+                val toggleSelection = {
+                    selectedIds = if (!checked) {
+                        (selectedIds + target.id).take(4).toSet()
+                    } else {
+                        selectedIds - target.id
+                    }
+                }
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Checkbox, onClick = toggleSelection)
+                        .testTag("arena_target_${target.id}"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Checkbox(
                         checked = checked,
-                        onCheckedChange = { isChecked ->
-                            selectedIds = if (isChecked) {
-                                (selectedIds + target.id).take(4).toSet()
-                            } else {
-                                selectedIds - target.id
-                            }
-                        }
+                        onCheckedChange = null
                     )
+                    Spacer(Modifier.width(8.dp))
                     Column {
                         Text(target.displayName, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Text(target.providerName, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -405,7 +432,11 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Cross-Model Debate & Verification", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp)
-            Switch(checked = runDebate, onCheckedChange = { runDebate = it })
+            Switch(
+                checked = runDebate,
+                onCheckedChange = { runDebate = it },
+                modifier = Modifier.testTag("arena_debate_switch")
+            )
         }
 
         OutlinedTextField(
@@ -422,16 +453,19 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                 if (q.isBlank() || isRunning || selectedIds.isEmpty()) return@Button
                 isRunning = true
                 scope.launch {
-                    report = engine.runComparisonArena(
-                        prompt = q,
-                        selectedTargetIds = selectedIds,
-                        runDebateVerification = runDebate
-                    )
-                    isRunning = false
+                    try {
+                        report = engine.runComparisonArena(
+                            prompt = q,
+                            selectedTargetIds = selectedIds,
+                            runDebateVerification = runDebate
+                        )
+                    } finally {
+                        isRunning = false
+                    }
                 }
             },
             enabled = prompt.isNotBlank() && selectedIds.isNotEmpty() && !isRunning,
-            modifier = Modifier.fillMaxWidth().testTag("arena_run_button")
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("arena_run_button")
         ) {
             if (isRunning) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

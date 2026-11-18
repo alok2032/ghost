@@ -37,6 +37,7 @@ import com.ayra.ai.app.ui.screens.VaultLockScreen
 import com.ayra.ai.app.ui.theme.AyraTheme
 import com.ayra.ai.app.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -213,13 +214,14 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            window.decorView.postDelayed({
+            lifecycleScope.launch {
+                delay(1500L)
                 if (!isFinishing && !isDestroyed &&
-                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                 ) {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
-            }, 1500L)
+            }
         }
     }
 

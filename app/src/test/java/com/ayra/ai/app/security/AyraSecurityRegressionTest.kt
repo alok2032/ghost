@@ -442,4 +442,41 @@ class AyraSecurityRegressionTest {
         EncryptedVaultStorage.wipeTempShareFiles(context)
         assertFalse(exported.exists())
     }
+
+    @Test
+    fun cyberTerminalEngine_enforcesSsrfOnDefaultCveBaseUrlAndCaseInsensitiveSchemes() {
+        val cveMetadataResult = CyberTerminalEngine.executeCommand(
+            rawInput = "cve CVE-2024-3094",
+            context = null,
+            httpClientOverride = null,
+            cveApiBaseUrl = "http://169.254.169.254/latest/"
+        )
+        assertTrue("Expected SSRF error for non-HTTPS metadata CVE endpoint", cveMetadataResult.isError)
+        assertTrue(cveMetadataResult.output.contains("Error:", ignoreCase = true))
+
+        val cveLoopbackResult = CyberTerminalEngine.executeCommand(
+            rawInput = "cve CVE-2024-3094",
+            context = null,
+            httpClientOverride = null,
+            cveApiBaseUrl = "https://127.0.0.1/api/cve/"
+        )
+        assertTrue("Expected SSRF error for loopback CVE endpoint", cveLoopbackResult.isError)
+        assertTrue(cveLoopbackResult.output.contains("Error:", ignoreCase = true))
+
+        val headersUpperHttp = CyberTerminalEngine.executeCommand(
+            rawInput = "headers HTTP://169.254.169.254/latest/meta-data",
+            context = null,
+            httpClientOverride = null
+        )
+        assertTrue("Expected SSRF error for uppercase HTTP scheme in headers", headersUpperHttp.isError)
+        assertFalse(headersUpperHttp.output.contains("https://HTTP://"))
+
+        val curlUpperHttp = CyberTerminalEngine.executeCommand(
+            rawInput = "curl HTTP://127.0.0.1/admin",
+            context = null,
+            httpClientOverride = null
+        )
+        assertTrue("Expected SSRF error for uppercase HTTP scheme in curl", curlUpperHttp.isError)
+        assertFalse(curlUpperHttp.output.contains("https://HTTP://"))
+    }
 }

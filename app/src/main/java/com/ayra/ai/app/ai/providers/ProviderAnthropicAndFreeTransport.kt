@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai.providers
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -78,6 +79,9 @@ internal object ProviderAnthropicAndFreeTransport {
         return httpClient.newCall(request).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
+            if (response.code == 404) {
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.body?.string() ?: response.message)
+            }
             if (!response.isSuccessful) throw ProviderError.ServerError(response.code, response.message)
 
             val json = JSONObject(response.body?.string() ?: "")
@@ -127,6 +131,9 @@ internal object ProviderAnthropicAndFreeTransport {
         httpClient.newCall(request).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
+            if (response.code == 404) {
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.body?.string() ?: response.message)
+            }
             if (!response.isSuccessful) {
                 val err = response.body?.string() ?: response.message
                 throw ProviderError.ServerError(response.code, err.ifBlank { response.message })
@@ -144,6 +151,8 @@ internal object ProviderAnthropicAndFreeTransport {
                             val text = if (delta != null && !delta.isNull("text")) delta.optString("text", "") else ""
                             if (text.isNotEmpty()) collector.emit(text)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) {}
                 }
             }
@@ -160,7 +169,9 @@ internal object ProviderAnthropicAndFreeTransport {
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return
-            val root = JSONObject(resp.body?.string() ?: "")
+            val bodyStr = resp.body?.string()?.trim().orEmpty()
+            if (bodyStr.isBlank()) return
+            val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: JSONArray()
             for (i in 0 until data.length()) {
                 val obj = data.getJSONObject(i)

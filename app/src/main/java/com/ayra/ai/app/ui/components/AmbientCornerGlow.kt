@@ -15,64 +15,84 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 import kotlin.math.sin
 
 @Composable
 fun AmbientCornerGlow(
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "CornerGlowMorph")
+    val reducedMotion = LocalAyraUiConfig.current.reducedMotion
+    val phase: Float
+    val colorTopLeft: Color
+    val colorTopRight: Color
+    val colorBottomLeft: Color
+    val colorBottomRight: Color
+    if (reducedMotion) {
+        phase = 0f
+        colorTopLeft = Color(0xFF00E5FF)
+        colorTopRight = Color(0xFFD946EF)
+        colorBottomLeft = Color(0xFFF43F5E)
+        colorBottomRight = Color(0xFF10B981)
+    } else {
+        val infiniteTransition = rememberInfiniteTransition(label = "CornerGlowMorph")
 
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 10000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "GlowPhase"
-    )
+        val animatedPhase by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * Math.PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 10000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "GlowPhase"
+        )
 
-    // Continuously shifting ambient colors
-    val colorTopLeft by infiniteTransition.animateColor(
-        initialValue = Color(0xFF00E5FF),
-        targetValue = Color(0xFF8B5CF6),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ColorTopLeft"
-    )
+        // Continuously shifting ambient colors
+        val animatedTopLeft by infiniteTransition.animateColor(
+            initialValue = Color(0xFF00E5FF),
+            targetValue = Color(0xFF8B5CF6),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 6000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ColorTopLeft"
+        )
 
-    val colorTopRight by infiniteTransition.animateColor(
-        initialValue = Color(0xFFD946EF),
-        targetValue = Color(0xFF06B6D4),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ColorTopRight"
-    )
+        val animatedTopRight by infiniteTransition.animateColor(
+            initialValue = Color(0xFFD946EF),
+            targetValue = Color(0xFF06B6D4),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ColorTopRight"
+        )
 
-    val colorBottomLeft by infiniteTransition.animateColor(
-        initialValue = Color(0xFFF43F5E),
-        targetValue = Color(0xFFF59E0B),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 7000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ColorBottomLeft"
-    )
+        val animatedBottomLeft by infiniteTransition.animateColor(
+            initialValue = Color(0xFFF43F5E),
+            targetValue = Color(0xFFF59E0B),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 7000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ColorBottomLeft"
+        )
 
-    val colorBottomRight by infiniteTransition.animateColor(
-        initialValue = Color(0xFF10B981),
-        targetValue = Color(0xFF6366F1),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 9000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ColorBottomRight"
-    )
+        val animatedBottomRight by infiniteTransition.animateColor(
+            initialValue = Color(0xFF10B981),
+            targetValue = Color(0xFF6366F1),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 9000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "ColorBottomRight"
+        )
+        phase = animatedPhase
+        colorTopLeft = animatedTopLeft
+        colorTopRight = animatedTopRight
+        colorBottomLeft = animatedBottomLeft
+        colorBottomRight = animatedBottomRight
+    }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
