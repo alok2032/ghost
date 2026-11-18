@@ -19,3 +19,23 @@ export function createZeroTrustRateLimiter(config: BackendConfig) {
     },
   });
 }
+
+export function createCodeSandboxQuotaLimiter(config: BackendConfig) {
+  return rateLimit({
+    windowMs: config.rateLimitWindowMs,
+    limit: config.codeSandboxMaxPerWindow,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      const authReq = req as RequestWithAuth;
+      return authReq.principal?.uid
+        ? `sandbox:uid:${authReq.principal.uid}`
+        : `sandbox:ip:${req.ip ?? "unknown"}`;
+    },
+    handler: (_req, res) => {
+      res.status(429).json({
+        error: "Code sandbox quota exceeded. Retry later.",
+      });
+    },
+  });
+}

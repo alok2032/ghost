@@ -229,20 +229,27 @@ class Phase1StabilityTest {
 
     @Test
     fun chatScreenExposesJustInTimePermissionRationaleAndExactAlarmBanner() {
-        val chatScreenFile = File(resolveMainSrcDir(), "java/com/ayra/ai/app/ui/screens/ChatScreen.kt")
+        val mainDir = resolveMainSrcDir()
+        val chatScreenFile = File(mainDir, "java/com/ayra/ai/app/ui/screens/ChatScreen.kt")
         assertTrue("Expected ChatScreen.kt", chatScreenFile.exists())
-        val source = chatScreenFile.readText()
+        val chatComponentsDir = File(mainDir, "java/com/ayra/ai/app/ui/components/chat")
+        val combinedSource = buildString {
+            append(chatScreenFile.readText())
+            chatComponentsDir.listFiles { f -> f.isFile && f.extension == "kt" }?.forEach {
+                append('\n').append(it.readText())
+            }
+        }
         assertTrue(
             "Expected RequestMultiplePermissions for location permissions in ChatScreen.kt",
-            source.contains("RequestMultiplePermissions")
+            combinedSource.contains("RequestMultiplePermissions")
         )
         assertTrue(
-            "Expected persistent exact_alarm_warning_banner in ChatScreen.kt",
-            source.contains("exact_alarm_warning_banner")
+            "Expected persistent exact_alarm_warning_banner in Chat UI",
+            combinedSource.contains("exact_alarm_warning_banner")
         )
         assertTrue(
-            "Expected permission_rationale_confirm dialog in ChatScreen.kt",
-            source.contains("permission_rationale_confirm")
+            "Expected permission_rationale_confirm dialog in Chat UI",
+            combinedSource.contains("permission_rationale_confirm")
         )
     }
 }

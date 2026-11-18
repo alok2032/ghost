@@ -40,6 +40,7 @@ interface AgentTool {
     val parametersSchemaJson: String
     val isExternal: Boolean
     val requiresConfirmation: Boolean
+    val isReadOnly: Boolean get() = !requiresConfirmation
     suspend fun execute(args: JSONObject): AgentToolOutput
 }
 

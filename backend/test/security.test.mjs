@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { after, before, test } from "node:test";
 import { createZeroTrustApp } from "../dist/app.js";
+import { loadConfig } from "../dist/config.js";
 import { redactSensitiveText } from "../dist/services/auditLogger.js";
 import { validateOutboundHttpsUrl } from "../dist/security/ssrf.js";
 
@@ -16,6 +19,9 @@ const testConfig = {
   corsAllowedOrigins: ["https://ayra.ai.app"],
   rateLimitWindowMs: 60_000,
   rateLimitMax: 25,
+  codeSandboxMaxPerWindow: 4,
+  sandboxExecutorUrl: "",
+  sandboxExecutorToken: "",
   geminiApiKey: "AIzaFakeServerKeyShouldNeverLeakToClient",
   openRouterApiKey: "",
   nvidiaApiKey: "",
@@ -32,6 +38,9 @@ const fakeVerifiers = {
     }
     if (token === "ratelimit_user_token_12345") {
       return { uid: "uid_ratelimit", email: "rate@example.com", role: "user" };
+    }
+    if (token === "sandbox_quota_user_token_12345") {
+      return { uid: "uid_sandbox_quota", email: "sb@example.com", role: "user" };
     }
     throw new Error("Invalid or revoked token");
   },
@@ -108,6 +117,8 @@ test("Rejects unauthenticated, invalid Bearer, and missing/invalid App Check req
   const body = await valid.json();
   assert.equal(body.uid, "uid_alice");
   assert.equal(body.appCheckVerified, true);
+  assert.equal(body.sandboxConfigured, false);
+  assert.equal(body.environment, "production");
   assert.equal(JSON.stringify(body).includes("AIzaFakeServerKey"), false);
 });
 
@@ -139,7 +150,7 @@ test("Strict Zod validation rejects unknown mass-assignment fields and forwards 
     },
     body: JSON.stringify({
       provider: "gemini",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       messages: [{ role: "user", content: "Hello" }],
       roleOverride: "admin",
     }),
@@ -155,7 +166,7 @@ test("Strict Zod validation rejects unknown mass-assignment fields and forwards 
     },
     body: JSON.stringify({
       provider: "gemini",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       messages: [{ role: "user", content: "Hello" }],
     }),
   });
@@ -262,7 +273,17 @@ test("Model catalog requires auth + App Check and returns curated catalog withou
   assert.equal(JSON.stringify(catalog).includes("AIzaFakeServerKey"), false);
 });
 
-test("Sandboxed /api/v1/code/run evaluates math/JS cleanly and blocks fs/process/fetch/infinite loops", async () => {
+test("In-process node:vm is permanently eliminated from backend source", () => {
+  const sandboxSrc = fs.readFileSync(
+    path.resolve("src/services/codeSandbox.ts"),
+    "utf8"
+  );
+  assert.equal(/from\s+["']node:vm["']|require\(["']node:vm["']\)/.test(sandboxSrc), false);
+  assert.equal(sandboxSrc.includes("createContext("), false);
+  assert.equal(sandboxSrc.includes("runInContext("), false);
+});
+
+test("/api/v1/code/run fails closed with 503 when isolated runner is unconfigured and enforces per-user quota", async () => {
   const unauth = await fetch(`${baseUrl}/api/v1/code/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -270,7 +291,7 @@ test("Sandboxed /api/v1/code/run evaluates math/JS cleanly and blocks fs/process
   });
   assert.equal(unauth.status, 401);
 
-  const evalOk = await fetch(`${baseUrl}/api/v1/code/run`, {
+  const disabledRes = await fetch(`${baseUrl}/api/v1/code/run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -279,25 +300,74 @@ test("Sandboxed /api/v1/code/run evaluates math/JS cleanly and blocks fs/process
     },
     body: JSON.stringify({
       language: "javascript",
-      code: "console.log('sum:', input.a + input.b); return input.a * input.b;",
-      inputJson: JSON.stringify({ a: 6, b: 7 }),
-      timeoutMs: 300,
+      code: "return process.env;",
+      timeoutMs: 250,
     }),
   });
-  assert.equal(evalOk.status, 200);
-  const okBody = await evalOk.json();
-  assert.equal(okBody.ok, true);
-  assert.equal(okBody.resultText, "42");
-  assert.ok(okBody.stdout.includes("sum: 13"));
+  assert.equal(disabledRes.status, 503);
+  const disabledBody = await disabledRes.json();
+  assert.equal(disabledBody.ok, false);
+  assert.equal(disabledBody.errorCode, "SANDBOX_DISABLED");
 
-  const escapes = [
-    "return process.env;",
-    "const fs = require('fs'); return fs.readdirSync('/');",
-    "return typeof fetch;",
-    "while (true) {}",
-  ];
-  for (const snippet of escapes) {
-    const res = await fetch(`${baseUrl}/api/v1/code/run`, {
+  // Quota check (limit=4)
+  let sawSandbox429 = false;
+  for (let i = 0; i < 6; i++) {
+    const r = await fetch(`${baseUrl}/api/v1/code/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer sandbox_quota_user_token_12345",
+        "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+      },
+      body: JSON.stringify({ language: "math", code: "1+1" }),
+    });
+    if (r.status === 429) {
+      sawSandbox429 = true;
+      break;
+    }
+  }
+  assert.equal(sawSandbox429, true);
+});
+
+test("Isolated sandbox runner forwards container constraints and blocks SSRF executor URLs", async () => {
+  let capturedPayload = null;
+  let capturedAuth = null;
+
+  const isolatedApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      nodeEnv: "staging",
+      sandboxExecutorUrl: "https://sandbox-runner.example.com/execute",
+      sandboxExecutorToken: "sandbox_runner_secret_token_xyz",
+    },
+    verifiers: fakeVerifiers,
+    ssrfResolver: async (host) => {
+      if (host === "metadata-runner.evil.test") return [{ address: "169.254.169.254" }];
+      return [{ address: "93.184.216.34" }];
+    },
+    fetchFn: async (_url, init) => {
+      capturedPayload = JSON.parse(String(init?.body ?? "{}"));
+      capturedAuth = init?.headers;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          resultText: "42",
+          stdout: "sum: 13",
+          truncated: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+
+  const isolatedServer = await new Promise((resolve) => {
+    const s = isolatedApp.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  try {
+    const addr = isolatedServer.address();
+    const url = `http://127.0.0.1:${addr.port}`;
+
+    const okRes = await fetch(`${url}/api/v1/code/run`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -306,16 +376,57 @@ test("Sandboxed /api/v1/code/run evaluates math/JS cleanly and blocks fs/process
       },
       body: JSON.stringify({
         language: "javascript",
-        code: snippet,
-        timeoutMs: 120,
+        code: "console.log('sum:', input.a + input.b); return input.a * input.b;",
+        inputJson: JSON.stringify({ a: 6, b: 7 }),
+        timeoutMs: 300,
       }),
     });
+    assert.equal(okRes.status, 200);
+    const body = await okRes.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.isolated, true);
+    assert.equal(body.resultText, "42");
+    assert.equal(capturedPayload?.isolation?.nonRoot, true);
+    assert.equal(capturedPayload?.isolation?.readOnlyRootFs, true);
+    assert.equal(capturedPayload?.isolation?.networkDisabled, true);
+    assert.equal(capturedPayload?.isolation?.memoryMb, 128);
+    assert.equal(capturedPayload?.isolation?.pidsLimit, 16);
+    assert.equal(capturedAuth?.["X-Ayra-Principal"], "uid_alice");
+  } finally {
+    await new Promise((resolve) => isolatedServer.close(() => resolve()));
+  }
+
+  // Staging profile check & SSRF block when executor resolves to metadata IP
+  const stagingCfg = loadConfig({ NODE_ENV: "staging" });
+  assert.equal(stagingCfg.nodeEnv, "staging");
+
+  const ssrfApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      sandboxExecutorUrl: "https://metadata-runner.evil.test/execute",
+      sandboxExecutorToken: "sandbox_runner_secret_token_xyz",
+    },
+    verifiers: fakeVerifiers,
+    ssrfResolver: async () => [{ address: "169.254.169.254" }],
+  });
+  const ssrfServer = await new Promise((resolve) => {
+    const s = ssrfApp.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  try {
+    const addr = ssrfServer.address();
+    const res = await fetch(`http://127.0.0.1:${addr.port}/api/v1/code/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid_user_id_token_12345",
+        "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+      },
+      body: JSON.stringify({ language: "math", code: "2+2" }),
+    });
+    assert.equal(res.status, 503);
     const body = await res.json();
-    if (snippet.includes("typeof fetch")) {
-      assert.equal(body.resultText, "undefined");
-    } else {
-      assert.equal(res.status, 400, `Expected sandbox rejection/timeout for: ${snippet}`);
-      assert.equal(body.ok, false);
-    }
+    assert.equal(body.errorCode, "SANDBOX_MISCONFIGURED");
+  } finally {
+    await new Promise((resolve) => ssrfServer.close(() => resolve()));
   }
 });

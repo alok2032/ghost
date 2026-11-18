@@ -6,9 +6,9 @@ AYRA AI enforces a unified Zero-Trust security architecture across all three AI 
 
 | Execution Plane | Components | Security Controls Enforced |
 |---|---|---|
-| **Plane 1: On-Device Local AI** | `Qwen38UncensoredEngine`, `ComfyUiClient`, `ExternalAiProviders (LOCAL_OLLAMA)` | Zero external egress when **Local-Only Privacy Mode** is active; SSRF guard blocking metadata IPs and non-LAN cleartext (`validateLocalAiEndpointUrl`). |
-| **Plane 2: AYRA Node.js / TypeScript Backend (`/backend`)** | `app.ts`, `auth.ts`, `ssrf.ts`, `schemas.ts`, `aiGateway.ts` | Firebase ID token (`checkRevoked=true`) + Firebase App Check enforcement; strict `.strict()` Zod schemas; Helmet HSTS/CSP; exact-origin CORS; DNS-rebinding & IPv6-aware SSRF defense; per-UID rate limiting; server-side credential isolation. |
-| **Plane 3: External AI Providers & Firebase Cloud** | `SecureAiGatewayClient`, `FirebaseAiEngine`, `ProviderPool`, `AyraCloudRepository`, `firestore.rules` | Strict consent & Local-Only policy gating; outbound PII/secret redaction when Privacy Mode is active; App Check on Firebase AI Logic; E2EE ciphertext envelopes in Firestore; owner-only Firestore rules. |
+| **Plane 1: On-Device Local AI** | `OpenModelEngine`, `ComfyUiClient`, `ExternalAiProviders (LOCAL_OLLAMA)` | Zero external egress when **Local-Only Privacy Mode** is active; SSRF guard blocking metadata IPs and non-LAN cleartext (`validateLocalAiEndpointUrl`). |
+| **Plane 2: AYRA Node.js / TypeScript Backend (`/backend`)** | `app.ts`, `auth.ts`, `ssrf.ts`, `schemas.ts`, `aiGateway.ts`, `codeSandbox.ts` | Firebase ID token (`checkRevoked=true`) + Firebase App Check enforcement; strict `.strict()` Zod schemas; Helmet HSTS/CSP; exact-origin CORS; DNS-rebinding & IPv6-aware SSRF defense; per-UID rate limiting; server-side credential isolation; `/api/v1/code/run` fails closed (`HTTP 503`, `node:vm` removed) unless `SANDBOX_EXECUTOR_URL` + `SANDBOX_EXECUTOR_TOKEN` are configured. |
+| **Plane 3: External AI Providers & Firebase Cloud** | `SecureAiGatewayClient`, `FirebaseAiEngine`, `ProviderPool`, `AyraCloudRepository`, `firestore.rules` | Strict consent & Local-Only policy gating; outbound PII/secret redaction when Privacy Mode is active; App Check status explicitly tracked via `AppCheckStatusRegistry` (`DEBUG_ACTIVE`, `RELEASE_RECAPTCHA_ACTIVE`, `MISSING_RELEASE_CONFIG`); E2EE ciphertext envelopes in Firestore; owner-only Firestore rules. |
 
 ---
 
@@ -30,7 +30,7 @@ Key rotation (`AyraKeyManager.rotatePurposeKey`) increments generation counters 
 
 ## 3. Private Data Vault & SQLCipher (`ChatDatabase` + `EncryptedVaultStorage`)
 
-- **Room Database Encryption**: `VaultDatabaseKeyManager` generates a 256-bit random passphrase, wraps it under `ALIAS_DB_KEK`, migrates any legacy plaintext SQLite DB via `sqlcipher_export(...)`, and opens Room with `net.zetetic.database.sqlcipher.SupportOpenHelperFactory`. On JVM Robolectric test hosts where native `libsqlcipher.so` is absent, `VaultDatabaseKeyManager` records `ROBOLECTRIC_JVM_FALLBACK`; on Android devices missing the native library, initialization fails closed.
+- **Room Database Encryption**: `VaultDatabaseKeyManager` generates a 256-bit random passphrase, wraps it under `ALIAS_DB_KEK`, migrates legacy plaintext SQLite DBs via `sqlcipher_export(...)`, and opens Room v9 (`MIGRATION_4_5` -> `MIGRATION_8_9`) with `net.zetetic.database.sqlcipher.SupportOpenHelperFactory`. Corrupted wrapped DB key envelopes fail closed (`IllegalStateException` + `DatabaseEncryptionState.ERROR`). On JVM Robolectric test hosts where native `libsqlcipher.so` is absent, `VaultDatabaseKeyManager` records `ROBOLECTRIC_JVM_FALLBACK`; on Android devices missing the native library, initialization fails closed.
 - **File Vault (`filesDir/encrypted_vault`)**: Each stored document/image/audio artifact receives a unique 256-bit DEK and is written in `AYRAVLT1` format with AAD `$folder|$fileId|$originalName|$createdMs|v1`. Temporary plaintext copies exported for `FileProvider` sharing live in `cacheDir/exports` and are cryptographically wiped (`RandomAccessFile` random + zero overwrite) when backgrounded, locked, or destroyed.
 
 ---

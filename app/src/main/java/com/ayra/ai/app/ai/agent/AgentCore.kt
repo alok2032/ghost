@@ -17,11 +17,18 @@ import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
 enum class StepStatus {
@@ -30,6 +37,16 @@ enum class StepStatus {
     DONE,
     FAILED,
     SKIPPED
+}
+
+enum class AgentExecutionStatus {
+    PENDING,
+    RUNNING,
+    WAITING_CONFIRMATION,
+    COMPLETED,
+    FAILED,
+    CANCELLED,
+    TIMED_OUT
 }
 
 @Immutable
@@ -47,7 +64,9 @@ data class AgentPlanStep(
     val title: String,
     val toolName: String? = null,
     val status: StepStatus = StepStatus.PENDING,
-    val note: String = ""
+    val note: String = "",
+    val dependsOnStepIds: List<Int> = emptyList(),
+    val timeoutMs: Long = DefaultAgentCore.STEP_TIMEOUT_MS
 )
 
 data class AgentRequest(
@@ -82,7 +101,8 @@ sealed class AgentEvent {
     data class Complete(
         val response: AiResponse,
         val usedTools: List<String> = emptyList(),
-        val citations: List<AgentCitation> = emptyList()
+        val citations: List<AgentCitation> = emptyList(),
+        val status: AgentExecutionStatus = AgentExecutionStatus.COMPLETED
     ) : AgentEvent()
     data class Error(val error: AyraError) : AgentEvent()
 }
@@ -93,9 +113,9 @@ interface AgentCore {
 
 /**
  * Default Plan -> Act -> Verify Agent Core.
- * - Hard-capped at max 12 steps and max 2 retries per step.
- * - Supports native OpenAI `tools` + JSON fallback across all providers.
- * - Routes external/critical tool proposals through ActionConfirmationCard (`ToolCallProposed`).
+ * - Hard-capped at max 12 steps, 25s step timeout, and max 2 retries per step.
+ * - Supports bounded parallel read-only tool fan-out (max 3 concurrent) with step dependencies.
+ * - Routes external/critical tool proposals through ActionConfirmationCard (`ToolCallProposed`) without claiming execution.
  * - Cancellation-safe at every async boundary.
  */
 class DefaultAgentCore(
@@ -113,6 +133,8 @@ class DefaultAgentCore(
     companion object {
         const val HARD_MAX_STEPS = 12
         const val MAX_STEP_RETRIES = 2
+        const val STEP_TIMEOUT_MS = 25_000L
+        const val MAX_PARALLEL_READONLY_TOOLS = 3
 
         private val JSON_TOOL_REGEX = Regex("\\{[\\s\\S]*?\"tool\"\\s*:\\s*\"([a-zA-Z0-9_\\-]+)\"[\\s\\S]*?\\}")
 
@@ -221,11 +243,12 @@ class DefaultAgentCore(
                 toolsArray = toolRegistry.toOpenAiToolsJsonArray(isLocalOnly)
             )
 
-            // Check native OpenAI tool_calls first, then JSON marker
-            val invocation = if (nativeToolCalls.isNotEmpty()) {
-                val first = nativeToolCalls.first()
-                val argsObj = runCatching { JSONObject(first.argumentsJson) }.getOrDefault(JSONObject())
-                ParsedToolInvocation(first.name, argsObj)
+            // Support batched parallel read-only tool calls or single sequential tool invocation
+            val invocations: List<ParsedToolInvocation> = if (nativeToolCalls.isNotEmpty()) {
+                nativeToolCalls.map { call ->
+                    val argsObj = runCatching { JSONObject(call.argumentsJson) }.getOrDefault(JSONObject())
+                    ParsedToolInvocation(call.name, argsObj)
+                }
             } else {
                 val doneCheck = runCatching {
                     val j = JSONObject(rawModelDecision.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
@@ -237,11 +260,10 @@ class DefaultAgentCore(
                     emit(AgentEvent.PlanUpdated(steps.toList()))
                     break
                 }
-                parseToolInvocationFromText(rawModelDecision)
+                listOfNotNull(parseToolInvocationFromText(rawModelDecision))
             }
 
-            if (invocation == null) {
-                // Model answered directly cleanly without tool loop
+            if (invocations.isEmpty()) {
                 if (rawModelDecision.isNotBlank() && !rawModelDecision.startsWith("{")) {
                     finalPlannedAnswer = rawModelDecision
                 }
@@ -251,8 +273,72 @@ class DefaultAgentCore(
             }
 
             steps[0] = steps[0].copy(status = StepStatus.DONE)
+
+            val canParallelBatch = invocations.size > 1 && invocations.all { inv ->
+                val t = toolRegistry.getTool(inv.toolName)
+                t != null && t.isReadOnly && (!isLocalOnly || !t.isExternal)
+            }
+
+            if (canParallelBatch) {
+                val batchSteps = invocations.mapIndexed { idx, inv ->
+                    AgentPlanStep(
+                        id = steps.size + idx + 1,
+                        title = "Execute ${inv.toolName} (parallel)",
+                        toolName = inv.toolName,
+                        status = StepStatus.IN_PROGRESS,
+                        dependsOnStepIds = listOf(1)
+                    )
+                }
+                val startIdx = steps.size
+                steps.addAll(batchSteps)
+                emit(AgentEvent.PlanUpdated(steps.toList()))
+                emit(AgentEvent.Status("Running ${invocations.size} read-only tools in bounded parallel..."))
+
+                val sem = Semaphore(MAX_PARALLEL_READONLY_TOOLS)
+                val outcomes = coroutineScope {
+                    invocations.mapIndexed { offset, inv ->
+                        async {
+                            sem.withPermit {
+                                val t = toolRegistry.getTool(inv.toolName)!!
+                                inv to executeSingleToolWithTimeout(t, inv.args)
+                            }
+                        }
+                    }.awaitAll()
+                }
+
+                for ((offset, pair) in outcomes.withIndex()) {
+                    val (inv, finalOutput) = pair
+                    val tool = toolRegistry.getTool(inv.toolName)!!
+                    usedTools.add(tool.name)
+                    steps[startIdx + offset] = steps[startIdx + offset].copy(
+                        status = if (finalOutput.success) StepStatus.DONE else StepStatus.FAILED,
+                        note = finalOutput.output.take(120)
+                    )
+                    emit(AgentEvent.PlanUpdated(steps.toList()))
+                    emit(AgentEvent.ToolResult(tool.name, finalOutput.success, finalOutput.output, finalOutput.citations, finalOutput.artifactPath))
+                    finalOutput.citations.forEach { cite ->
+                        if (collectedCitations.none { it.url == cite.url }) {
+                            collectedCitations.add(cite)
+                            emit(AgentEvent.Citation(cite))
+                        }
+                    }
+                    collectedObservations.append("[Tool ${tool.name} (${if (finalOutput.success) "OK" else "FAIL"})]:\n${finalOutput.output.take(2500)}\n\n")
+                }
+                continue
+            }
+
+            val invocation = invocations.first()
+            val previousCompletedId = steps.lastOrNull { it.status == StepStatus.DONE }?.id ?: 1
             val stepId = steps.size + 1
-            steps.add(AgentPlanStep(stepId, "Execute ${invocation.toolName}", toolName = invocation.toolName, status = StepStatus.IN_PROGRESS))
+            steps.add(
+                AgentPlanStep(
+                    id = stepId,
+                    title = "Execute ${invocation.toolName}",
+                    toolName = invocation.toolName,
+                    status = StepStatus.IN_PROGRESS,
+                    dependsOnStepIds = listOf(previousCompletedId)
+                )
+            )
             emit(AgentEvent.PlanUpdated(steps.toList()))
             emit(AgentEvent.Status("Running tool: ${invocation.toolName}..."))
 
@@ -271,28 +357,17 @@ class DefaultAgentCore(
                 continue
             }
 
-            var output: AgentToolOutput? = null
-            var retries = 0
-            while (retries < MAX_STEP_RETRIES) {
-                currentCoroutineContext().ensureActive()
-                try {
-                    output = tool.execute(invocation.args)
-                    if (output.success || output.requiresConfirmationAction != null) break
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    output = AgentToolOutput(false, "Tool error: ${e.localizedMessage}")
-                }
-                retries++
-            }
-
-            val finalOutput = output ?: AgentToolOutput(false, "Tool returned no result.")
+            val finalOutput = executeSingleToolWithTimeout(tool, invocation.args)
 
             if (finalOutput.requiresConfirmationAction != null) {
-                steps[steps.lastIndex] = steps.last().copy(status = StepStatus.DONE, note = "Awaiting user approval")
+                // Never claim the action executed before explicit user confirmation
+                steps[steps.lastIndex] = steps.last().copy(
+                    status = StepStatus.PENDING,
+                    note = "Waiting user confirmation (${tool.name})"
+                )
                 emit(AgentEvent.PlanUpdated(steps.toList()))
+                emit(AgentEvent.Status("Waiting user confirmation for ${tool.name}..."))
                 emit(AgentEvent.ToolCallProposed(tool.name, invocation.args.toString(), finalOutput.requiresConfirmationAction))
-                usedTools.add(tool.name)
                 return@flow
             }
 
@@ -336,7 +411,8 @@ class DefaultAgentCore(
                         modelUsed = buildModelLabel(usedTools)
                     ),
                     usedTools = usedTools,
-                    citations = collectedCitations
+                    citations = collectedCitations,
+                    status = AgentExecutionStatus.COMPLETED
                 )
             )
             return@flow
@@ -412,6 +488,32 @@ class DefaultAgentCore(
         }
     }.flowOn(Dispatchers.IO)
 
+    private suspend fun executeSingleToolWithTimeout(
+        tool: AgentTool,
+        args: JSONObject
+    ): AgentToolOutput {
+        var output: AgentToolOutput? = null
+        var retries = 0
+        while (retries < MAX_STEP_RETRIES) {
+            currentCoroutineContext().ensureActive()
+            try {
+                output = withTimeout(STEP_TIMEOUT_MS) {
+                    tool.execute(args)
+                }
+                if (output.success || output.requiresConfirmationAction != null) break
+            } catch (e: TimeoutCancellationException) {
+                output = AgentToolOutput(false, "Tool '${tool.name}' timed out after ${STEP_TIMEOUT_MS}ms.")
+                break
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                output = AgentToolOutput(false, "Tool error: ${e.localizedMessage}")
+            }
+            retries++
+        }
+        return output ?: AgentToolOutput(false, "Tool returned no result.")
+    }
+
     private fun buildModelLabel(usedTools: List<String>): String {
         return if (usedTools.isEmpty()) "Ayra Agent"
         else "Ayra Agent (${usedTools.distinct().joinToString(", ")})"
@@ -423,7 +525,6 @@ class DefaultAgentCore(
         history: List<ChatMessage>,
         toolsArray: org.json.JSONArray
     ): Pair<String, List<ExternalAiProviders.OpenAiToolCallSpec>> {
-        // Try OpenAI-compatible provider with native tools schema first
         val configured = externalProviders.getActiveConfiguredProviders()
         val openAiCompatProvider = configured.firstOrNull { p ->
             p in setOf(
@@ -436,16 +537,19 @@ class DefaultAgentCore(
             val model = ModelCatalog.defaultModelFor(openAiCompatProvider)?.id
                 ?: externalProviders.getDefaultModelForProvider(openAiCompatProvider)
             val turns = externalProviders.buildConversationTurns(plannerSystemPrompt, history, turnPrompt, null)
-            val res = runCatching {
+            val res = try {
                 externalProviders.callOpenAiWithTools(openAiCompatProvider, turns, model, toolsArray)
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
             if (res != null && (res.toolCalls.isNotEmpty() || res.content.isNotBlank())) {
                 return res.content to res.toolCalls
             }
         }
 
-        // Fallback cleanly through unified ProviderPool (Firebase Gemini / Anthropic / etc.) via structured JSON prompt
-        val resp = runCatching {
+        val resp = try {
             providerPool.executeSync(
                 ChatRequest(
                     prompt = turnPrompt,
@@ -454,7 +558,11 @@ class DefaultAgentCore(
                     systemPromptOverride = plannerSystemPrompt
                 )
             )
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
         return (resp?.text ?: "") to emptyList()
     }
 }

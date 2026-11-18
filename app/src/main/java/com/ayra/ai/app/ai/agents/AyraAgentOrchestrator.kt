@@ -34,11 +34,39 @@ data class AgentResult(
     val domain: AgentDomain,
     val finalResponse: String,
     val citations: List<String> = emptyList(),
-    val confidenceScore: Float = 0.98f,
+    val confidenceScore: Float? = null,
+    val confidenceLabel: String = "Unverified",
     val executionSteps: List<String> = emptyList()
 )
 
 object AyraAgentOrchestrator {
+
+    /**
+     * Computes an evidence-grounded confidence metric strictly from verified signals.
+     * Never fabricates an artificial fixed score when no empirical citations/tools/quorum exist.
+     */
+    fun computeVerifiedConfidence(
+        verifiedCitationsCount: Int,
+        completedToolSteps: Int,
+        failedToolSteps: Int,
+        quorumProvidersCount: Int
+    ): Pair<Float?, String> {
+        if (verifiedCitationsCount <= 0 && completedToolSteps <= 0 && quorumProvidersCount <= 1) {
+            return null to "Unverified (no external citations or tool checks)"
+        }
+        val citationBoost = (verifiedCitationsCount.coerceAtMost(4) * 0.08f)
+        val toolSuccessRate = if (completedToolSteps + failedToolSteps > 0) {
+            completedToolSteps.toFloat() / (completedToolSteps + failedToolSteps)
+        } else 0f
+        val quorumBoost = (quorumProvidersCount.coerceAtLeast(1) - 1).coerceAtMost(3) * 0.08f
+        val score = (0.45f + citationBoost + (toolSuccessRate * 0.25f) + quorumBoost).coerceIn(0.10f, 0.96f)
+        val label = when {
+            score >= 0.80f -> "High (Evidence-Backed)"
+            score >= 0.60f -> "Moderate (Partial Evidence)"
+            else -> "Low (Limited Evidence)"
+        }
+        return score to label
+    }
 
     /**
      * High-precision intent classifier that routes queries to the optimal specialized agent.

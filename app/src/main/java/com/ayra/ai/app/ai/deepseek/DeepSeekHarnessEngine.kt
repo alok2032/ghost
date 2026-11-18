@@ -5,6 +5,7 @@ import com.ayra.ai.app.ai.AiResponse
 import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.AyraPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -46,7 +47,9 @@ class DeepSeekHarnessEngine(private val context: Context? = null) {
                 preferredProvider = if (useDirectDeepSeek) AiProviderType.DEEPSEEK else null,
                 preferredModelId = if (useDirectDeepSeek) "deepseek-reasoner" else null
             )
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
             val pool = com.ayra.ai.app.ai.providers.ProviderPool(context, externalProviders)
             pool.executeSync(
                 com.ayra.ai.app.ai.providers.ChatRequest(

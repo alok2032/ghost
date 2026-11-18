@@ -134,8 +134,14 @@ fun PromptEngineeringScreen(
     var isRunningLab by remember { mutableStateOf(false) }
 
     fun copyText(txt: String, label: String) {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText(label, txt))
+        val sensitiveAutoClear = com.ayra.ai.app.data.AyraPreferences.isClipboardAutoClearEnabled(context)
+        com.ayra.ai.app.security.AndroidHardeningHelper.copyWithSensitivityProtection(
+            context = context,
+            label = label,
+            text = txt,
+            isSensitive = sensitiveAutoClear,
+            autoClearMs = if (sensitiveAutoClear) 60_000L else 0L
+        )
         Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 

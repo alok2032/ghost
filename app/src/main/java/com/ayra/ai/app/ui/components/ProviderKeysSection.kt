@@ -49,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -60,6 +59,7 @@ import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.search.TavilySearchEngine
+import com.ayra.ai.app.security.AndroidHardeningHelper
 import com.ayra.ai.app.voice.ElevenLabsVoiceEngine
 import kotlinx.coroutines.launch
 
@@ -412,7 +412,6 @@ fun SingleProviderKeyCard(
 ) {
     val providersEngine = remember { ExternalAiProviders(context) }
     val scope = rememberCoroutineScope()
-    val clipboardManager = LocalClipboardManager.current
 
     var keyInput by remember {
         mutableStateOf(providersEngine.getProviderKey(provider))
@@ -544,7 +543,7 @@ fun SingleProviderKeyCard(
             ) {
                 TextButton(
                     onClick = {
-                        clipboardManager.getText()?.text?.let {
+                        AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
                             if (it.isNotBlank()) keyInput = it.trim()
                         }
                     }
@@ -627,7 +626,6 @@ fun SpecializedIntegrationKeyCard(
     onTest: suspend (String) -> Long
 ) {
     val scope = rememberCoroutineScope()
-    val clipboardManager = LocalClipboardManager.current
 
     var keyInput by remember { mutableStateOf(initialKey) }
     var isPasswordVisible by remember { mutableStateOf(false) }
@@ -758,7 +756,7 @@ fun SpecializedIntegrationKeyCard(
             ) {
                 TextButton(
                     onClick = {
-                        clipboardManager.getText()?.text?.let {
+                        AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
                             if (it.isNotBlank()) keyInput = it.trim()
                         }
                     }

@@ -86,6 +86,14 @@ object AndroidHardeningHelper {
         }
     }
 
+    fun readPlainTextFromClipboard(context: Context): String? {
+        return runCatching {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+            if (!cm.hasPrimaryClip()) return null
+            cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+        }.getOrNull()
+    }
+
     /**
      * Overwrites temporary file bytes with cryptographically random data followed by zeros
      * before unlinking, mitigating lingering plaintext fragments in cache.

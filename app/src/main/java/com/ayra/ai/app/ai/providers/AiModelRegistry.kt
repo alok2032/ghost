@@ -61,7 +61,8 @@ data class RegistryModelEntry(
     val healthStatus: ModelHealthStatus = ModelHealthStatus.UNKNOWN,
     val latencyMs: Long? = null,
     val lastCheckedMs: Long? = null,
-    val lastError: String? = null
+    val lastError: String? = null,
+    val verificationStatus: ModelVerificationStatus = ModelVerificationStatus.CONFIGURED
 )
 
 /**
@@ -77,15 +78,18 @@ object AiModelRegistry {
         val currentMap = _entries.value.associateBy { it.id }
         val rebuilt = buildInitialCatalog(context).map { fresh ->
             val prev = currentMap[fresh.id]
+            val catalogVerification = ModelCatalog.findEntry(fresh.provider, fresh.modelId)?.verificationStatus
+                ?: fresh.verificationStatus
             if (prev != null && prev.lastCheckedMs != null && fresh.healthStatus != ModelHealthStatus.UNCONFIGURED) {
                 fresh.copy(
                     healthStatus = prev.healthStatus,
                     latencyMs = prev.latencyMs,
                     lastCheckedMs = prev.lastCheckedMs,
-                    lastError = prev.lastError
+                    lastError = prev.lastError,
+                    verificationStatus = catalogVerification
                 )
             } else {
-                fresh
+                fresh.copy(verificationStatus = catalogVerification)
             }
         }
         _entries.value = rebuilt
@@ -640,7 +644,8 @@ object AiModelRegistry {
                                 supportsToolCalling = true,
                                 modelVersion = "live",
                                 healthStatus = ModelHealthStatus.UNKNOWN,
-                                lastCheckedMs = now
+                                lastCheckedMs = now,
+                                verificationStatus = ModelVerificationStatus.VERIFIED_LIVE
                             )
                         )
                         addedCount++

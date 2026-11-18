@@ -10,11 +10,14 @@ import {
   type RequestWithAuth,
   type TokenVerifiers,
 } from "./middleware/auth.js";
-import { createZeroTrustRateLimiter } from "./middleware/rateLimit.js";
+import {
+  createCodeSandboxQuotaLimiter,
+  createZeroTrustRateLimiter,
+} from "./middleware/rateLimit.js";
 import { validateOutboundHttpsUrl } from "./security/ssrf.js";
 import { forwardSecureAiRequest, GatewayError } from "./services/aiGateway.js";
 import { logSecurityEvent, redactSensitiveText } from "./services/auditLogger.js";
-import { executeSandboxedCode } from "./services/codeSandbox.js";
+import { executeIsolatedSandbox } from "./services/codeSandbox.js";
 import { buildCuratedModelCatalog } from "./services/modelCatalog.js";
 import {
   AiChatRequestSchema,
@@ -86,6 +89,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
 
   const authMiddleware = requireZeroTrustAuth(config, verifiers);
   const limiter = createZeroTrustRateLimiter(config);
+  const sandboxQuotaLimiter = createCodeSandboxQuotaLimiter(config);
 
   app.get(
     "/api/v1/security/posture",
@@ -95,8 +99,11 @@ export function createZeroTrustApp(deps: AppDependencies) {
       res.status(200).json({
         uid: req.principal?.uid,
         role: req.principal?.role ?? "user",
+        environment: config.nodeEnv,
         appCheckVerified: req.principal?.appCheckVerified ?? false,
         requireAppCheck: config.requireAppCheck,
+        sandboxConfigured:
+          config.sandboxExecutorUrl.length > 0 && config.sandboxExecutorToken.length > 0,
         configuredProviders: {
           gemini: config.geminiApiKey.length > 0,
           openrouter: config.openRouterApiKey.length > 0,
@@ -209,7 +216,8 @@ export function createZeroTrustApp(deps: AppDependencies) {
     "/api/v1/code/run",
     authMiddleware,
     limiter,
-    (req: RequestWithAuth, res: Response) => {
+    sandboxQuotaLimiter,
+    async (req: RequestWithAuth, res: Response) => {
       const parsed = CodeRunRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         logSecurityEvent({
@@ -224,14 +232,26 @@ export function createZeroTrustApp(deps: AppDependencies) {
         });
         return;
       }
-      const outcome = executeSandboxedCode(parsed.data);
+
+      const outcome = await executeIsolatedSandbox(
+        config,
+        parsed.data,
+        req.principal?.uid ?? "anonymous",
+        {
+          fetchFn: deps.fetchFn,
+          ssrfResolver: deps.ssrfResolver,
+        }
+      );
+
       logSecurityEvent({
-        severity: outcome.ok ? "INFO" : "WARN",
+        severity: outcome.ok ? "INFO" : outcome.statusCode === 503 ? "WARN" : "WARN",
         category: "CODE_SANDBOX",
         uid: req.principal?.uid,
-        message: `Sandbox ${parsed.data.language} ok=${outcome.ok} (${outcome.durationMs}ms)`,
+        message: `Sandbox ${parsed.data.language} status=${outcome.statusCode} ok=${outcome.ok} isolated=${outcome.isolated} (${outcome.durationMs}ms)`,
       });
-      res.status(outcome.ok ? 200 : 400).json(outcome);
+
+      const { statusCode, ...publicOutcome } = outcome;
+      res.status(statusCode).json(publicOutcome);
     }
   );
 

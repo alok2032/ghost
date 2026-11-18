@@ -322,8 +322,12 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                     fontSize = 11.sp
                 )
                 Text(
-                    text = "Model: ${entry.modelId} • ${entry.authRequirement}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "Model: ${entry.modelId} • ${entry.verificationStatus.label} • ${entry.authRequirement}",
+                    color = if (entry.verificationStatus == com.ayra.ai.app.ai.providers.ModelVerificationStatus.UNVERIFIED) {
+                        MaterialTheme.colorScheme.tertiary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     fontSize = 11.sp
                 )
                 entry.lastError?.takeIf { it.isNotBlank() }?.let { err ->

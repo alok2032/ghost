@@ -1,160 +1,209 @@
-import vm from "node:vm";
+import type { BackendConfig } from "../config.js";
+import { validateOutboundHttpsUrl } from "../security/ssrf.js";
 import type { CodeRunRequest } from "../validation/schemas.js";
+import { redactSensitiveText } from "./auditLogger.js";
+
+export interface SandboxIsolationProfile {
+  nonRoot: true;
+  readOnlyRootFs: true;
+  networkDisabled: true;
+  memoryMb: number;
+  cpuQuota: number;
+  pidsLimit: number;
+  timeoutMs: number;
+  maxOutputBytes: number;
+}
 
 export interface SandboxExecutionResult {
+  statusCode: number;
   ok: boolean;
+  isolated: boolean;
   language: CodeRunRequest["language"];
   resultText: string;
   stdout: string;
   durationMs: number;
   truncated: boolean;
+  errorCode?: "SANDBOX_DISABLED" | "SANDBOX_MISCONFIGURED" | "INVALID_INPUT" | "EXECUTION_FAILED";
   error?: string;
 }
 
 const MAX_STDOUT_CHARS = 16_384;
+const SANDBOX_MEMORY_MB = 128;
+const SANDBOX_CPU_QUOTA = 0.5;
+const SANDBOX_PIDS_LIMIT = 16;
 
-const FORBIDDEN_STATIC_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\bprocess\b/, reason: "Access to Node 'process' object is prohibited in sandbox" },
-  { pattern: /\brequire\s*\(/, reason: "Module loading via require() is prohibited in sandbox" },
-  { pattern: /\bimport\s*\(/, reason: "Dynamic import() is prohibited in sandbox" },
-  { pattern: /\bchild_process\b/, reason: "Subprocess APIs are prohibited in sandbox" },
-  { pattern: /\bglobalThis\b|\bglobal\b/, reason: "Global escape identifiers are prohibited in sandbox" },
-  { pattern: /\bFunction\s*\(|\beval\s*\(/, reason: "Dynamic code generation is prohibited in sandbox" },
-  { pattern: /\b__proto__\b|\bconstructor\s*\.\s*constructor\b/, reason: "Prototype chain escape patterns are prohibited in sandbox" },
-];
+export function buildSandboxIsolationProfile(timeoutMs: number): SandboxIsolationProfile {
+  return {
+    nonRoot: true,
+    readOnlyRootFs: true,
+    networkDisabled: true,
+    memoryMb: SANDBOX_MEMORY_MB,
+    cpuQuota: SANDBOX_CPU_QUOTA,
+    pidsLimit: SANDBOX_PIDS_LIMIT,
+    timeoutMs: Math.max(50, Math.min(timeoutMs, 1500)),
+    maxOutputBytes: MAX_STDOUT_CHARS,
+  };
+}
 
-export function executeSandboxedCode(req: CodeRunRequest): SandboxExecutionResult {
+/**
+ * Zero-Trust Remote Code Sandbox Client.
+ *
+ * Security Invariant: In-process `node:vm` / `eval` execution is permanently disabled because
+ * `node:vm` is NOT a security boundary against arbitrary JS escapes or prototype pollution.
+ * Code execution strictly requires a hardened out-of-process isolated container runner configured
+ * via SANDBOX_EXECUTOR_URL + SANDBOX_EXECUTOR_TOKEN, and fails CLOSED with HTTP 503 otherwise.
+ */
+export async function executeIsolatedSandbox(
+  config: BackendConfig,
+  req: CodeRunRequest,
+  principalUid: string,
+  deps?: {
+    fetchFn?: typeof fetch;
+    ssrfResolver?: (hostname: string) => Promise<Array<{ address: string }>>;
+  }
+): Promise<SandboxExecutionResult> {
   const started = Date.now();
 
-  for (const rule of FORBIDDEN_STATIC_PATTERNS) {
-    if (rule.pattern.test(req.code)) {
-      return {
-        ok: false,
-        language: req.language,
-        resultText: "",
-        stdout: "",
-        durationMs: Date.now() - started,
-        truncated: false,
-        error: rule.reason,
-      };
-    }
-  }
-
-  let parsedInput: unknown = null;
   if (req.inputJson && req.inputJson.trim().length > 0) {
     try {
-      parsedInput = JSON.parse(req.inputJson);
+      JSON.parse(req.inputJson);
     } catch {
       return {
+        statusCode: 400,
         ok: false,
+        isolated: false,
         language: req.language,
         resultText: "",
         stdout: "",
         durationMs: Date.now() - started,
         truncated: false,
+        errorCode: "INVALID_INPUT",
         error: "Invalid inputJson payload",
       };
     }
   }
 
-  const outputLines: string[] = [];
-  let stdoutChars = 0;
-  let truncated = false;
-
-  const appendLog = (...args: unknown[]) => {
-    const line = args
-      .map((item) => {
-        if (typeof item === "string") return item;
-        try {
-          return JSON.stringify(item);
-        } catch {
-          return String(item);
-        }
-      })
-      .join(" ");
-    if (stdoutChars + line.length + 1 <= MAX_STDOUT_CHARS) {
-      outputLines.push(line);
-      stdoutChars += line.length + 1;
-    } else {
-      truncated = true;
-    }
-  };
-
-  // Fresh null-prototype context with zero Node host capabilities (no fs, net, fetch, process, timers)
-  const sandbox = Object.create(null) as Record<string, unknown>;
-  sandbox.Math = Math;
-  sandbox.JSON = JSON;
-  sandbox.Array = Array;
-  sandbox.Object = Object;
-  sandbox.String = String;
-  sandbox.Number = Number;
-  sandbox.Boolean = Boolean;
-  sandbox.Date = Date;
-  sandbox.RegExp = RegExp;
-  sandbox.Map = Map;
-  sandbox.Set = Set;
-  sandbox.parseInt = parseInt;
-  sandbox.parseFloat = parseFloat;
-  sandbox.isNaN = isNaN;
-  sandbox.isFinite = isFinite;
-  sandbox.input = parsedInput;
-  sandbox.console = Object.freeze({
-    log: appendLog,
-    info: appendLog,
-    warn: appendLog,
-    error: appendLog,
-  });
-
-  const wrappedSource =
-    req.language === "math"
-      ? `"use strict"; (${req.code.trim()})`
-      : `"use strict"; (() => {\n${req.code}\n})()`;
-
-  try {
-    const context = vm.createContext(sandbox, {
-      codeGeneration: { strings: false, wasm: false },
-    });
-    const script = new vm.Script(wrappedSource, { filename: "ayra_sandbox_snippet.js" });
-    const value = script.runInContext(context, {
-      timeout: req.timeoutMs,
-      breakOnSigint: true,
-    });
-
-    let resultText = "";
-    if (value !== undefined) {
-      if (typeof value === "string") {
-        resultText = value;
-      } else {
-        try {
-          resultText = JSON.stringify(value, null, 2) ?? String(value);
-        } catch {
-          resultText = String(value);
-        }
-      }
-    }
-    if (resultText.length > MAX_STDOUT_CHARS) {
-      resultText = resultText.slice(0, MAX_STDOUT_CHARS);
-      truncated = true;
-    }
-
+  if (!config.sandboxExecutorUrl || !config.sandboxExecutorToken) {
     return {
-      ok: true,
-      language: req.language,
-      resultText,
-      stdout: outputLines.join("\n"),
-      durationMs: Date.now() - started,
-      truncated,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Sandbox execution failed";
-    return {
+      statusCode: 503,
       ok: false,
+      isolated: false,
       language: req.language,
       resultText: "",
-      stdout: outputLines.join("\n"),
+      stdout: "",
+      durationMs: Date.now() - started,
+      truncated: false,
+      errorCode: "SANDBOX_DISABLED",
+      error:
+        "Isolated remote code sandbox is not configured. In-process VM execution is disabled.",
+    };
+  }
+
+  const urlVerdict = await validateOutboundHttpsUrl(
+    config.sandboxExecutorUrl,
+    undefined,
+    deps?.ssrfResolver
+  );
+  if (!urlVerdict.allowed || !urlVerdict.normalizedUrl) {
+    return {
+      statusCode: 503,
+      ok: false,
+      isolated: false,
+      language: req.language,
+      resultText: "",
+      stdout: "",
+      durationMs: Date.now() - started,
+      truncated: false,
+      errorCode: "SANDBOX_MISCONFIGURED",
+      error: `Sandbox executor endpoint rejected by SSRF policy: ${urlVerdict.reason ?? "invalid URL"}`,
+    };
+  }
+
+  const profile = buildSandboxIsolationProfile(req.timeoutMs);
+  const fetchFn = deps?.fetchFn ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), profile.timeoutMs + 1500);
+
+  try {
+    const response = await fetchFn(urlVerdict.normalizedUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.sandboxExecutorToken}`,
+        "X-Ayra-Principal": principalUid,
+      },
+      body: JSON.stringify({
+        language: req.language,
+        code: req.code,
+        inputJson: req.inputJson ?? null,
+        isolation: profile,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return {
+        statusCode: response.status >= 500 ? 502 : 400,
+        ok: false,
+        isolated: true,
+        language: req.language,
+        resultText: "",
+        stdout: "",
+        durationMs: Date.now() - started,
+        truncated: false,
+        errorCode: "EXECUTION_FAILED",
+        error: `Isolated sandbox returned HTTP ${response.status}`,
+      };
+    }
+
+    const body = (await response.json()) as {
+      ok?: unknown;
+      resultText?: unknown;
+      stdout?: unknown;
+      truncated?: unknown;
+      error?: unknown;
+    };
+
+    const rawResult = typeof body.resultText === "string" ? body.resultText : "";
+    const rawStdout = typeof body.stdout === "string" ? body.stdout : "";
+    const truncated =
+      Boolean(body.truncated) ||
+      rawResult.length > MAX_STDOUT_CHARS ||
+      rawStdout.length > MAX_STDOUT_CHARS;
+    const isOk = body.ok === true;
+
+    return {
+      statusCode: isOk ? 200 : 400,
+      ok: isOk,
+      isolated: true,
+      language: req.language,
+      resultText: rawResult.slice(0, MAX_STDOUT_CHARS),
+      stdout: rawStdout.slice(0, MAX_STDOUT_CHARS),
       durationMs: Date.now() - started,
       truncated,
-      error: message.slice(0, 300),
+      errorCode: isOk ? undefined : "EXECUTION_FAILED",
+      error:
+        isOk || typeof body.error !== "string"
+          ? undefined
+          : redactSensitiveText(body.error).slice(0, 300),
     };
+  } catch (err) {
+    const safeErr = redactSensitiveText(
+      err instanceof Error ? err.message : "Remote sandbox unavailable"
+    ).slice(0, 300);
+    return {
+      statusCode: 502,
+      ok: false,
+      isolated: true,
+      language: req.language,
+      resultText: "",
+      stdout: "",
+      durationMs: Date.now() - started,
+      truncated: false,
+      errorCode: "EXECUTION_FAILED",
+      error: safeErr,
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
