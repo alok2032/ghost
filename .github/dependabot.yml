@@ -11,6 +11,12 @@ updates:
         update-types: ["version-update:semver-pre"]
 
   - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
     directory: "/backend"
     schedule:
       interval: "weekly"

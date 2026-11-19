@@ -9,6 +9,24 @@ import java.io.File
 import java.io.InputStream
 
 /**
+ * Single Source of Truth for internal/cache export subdirectories referenced by FileProvider (`file_paths.xml`).
+ */
+object ExportPaths {
+    const val GENERATED_PDFS = "generated_pdfs"
+    const val GENERATED_DOCS = "generated_docs"
+    const val GENERATED_IMAGES = "generated_images"
+    const val GENERATED_AUDIO = "generated_audio"
+    const val GENERATED_3D = "generated_3d"
+    const val PROJECT_ZIPS = "project_zips"
+    const val CHAT_EXPORTS = "chat_exports"
+    const val SAVED_ATTACHMENTS = "saved_attachments"
+    const val CODE_PROJECTS = "code_projects"
+    const val INTERNAL_DOCUMENTS = "documents"
+    const val FILES_EXPORTS = "exports"
+    const val CACHE_EXPORTS = "exports"
+}
+
+/**
  * Encrypted & Hardened device storage facade for Ayra AI.
  * - All saved attachments, chat exports, PDFs, Markdown, Word exports, and media artifacts
  *   are stored via [EncryptedVaultStorage] (per-file 256-bit DEK AES-256-GCM + Keystore KEK).
@@ -32,15 +50,16 @@ object StorageHelper {
     )
 
     private val ARTIFACT_FOLDERS = listOf(
-        "generated_pdfs",
-        "generated_docs",
-        "generated_images",
-        "generated_audio",
-        "generated_3d",
-        "project_zips",
-        "chat_exports",
-        "saved_attachments",
-        "code_projects"
+        ExportPaths.GENERATED_PDFS,
+        ExportPaths.GENERATED_DOCS,
+        ExportPaths.GENERATED_IMAGES,
+        ExportPaths.GENERATED_AUDIO,
+        ExportPaths.GENERATED_3D,
+        ExportPaths.PROJECT_ZIPS,
+        ExportPaths.CHAT_EXPORTS,
+        ExportPaths.SAVED_ATTACHMENTS,
+        ExportPaths.CODE_PROJECTS,
+        ExportPaths.FILES_EXPORTS
     )
 
     fun sanitizeFileName(rawName: String): String {

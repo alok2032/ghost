@@ -25,7 +25,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.annotation.SuppressLint
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -553,13 +556,13 @@ fun ThreeDModelCard(
     }
 }
 
-private fun serializeCustomMeshForWebGl(mesh: Model3dMeshCatalog.MeshData?): String {
+internal fun serializeCustomMeshForWebGl(mesh: Model3dMeshCatalog.MeshData?): String {
     if (mesh == null || mesh.vertices.isEmpty() || mesh.faces.isEmpty()) return "null"
     val verts = JSONArray()
     mesh.vertices.forEach { (x, y, z) ->
-        verts.put(x.toDouble())
-        verts.put(y.toDouble())
-        verts.put(z.toDouble())
+        verts.put(if (x.isFinite()) x.toDouble() else 0.0)
+        verts.put(if (y.isFinite()) y.toDouble() else 0.0)
+        verts.put(if (z.isFinite()) z.toDouble() else 0.0)
     }
     val tris = JSONArray()
     mesh.faces.forEach { face ->
@@ -595,8 +598,23 @@ private fun WebGl2PbrViewport(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = false
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = false
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    blockNetworkLoads = true
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    @Suppress("DEPRECATION")
+                    allowFileAccessFromFileURLs = false
+                    @Suppress("DEPRECATION")
+                    allowUniversalAccessFromFileURLs = false
+                }
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+                    @Suppress("DEPRECATION")
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+                }
                 setBackgroundColor(0xFF050811.toInt())
                 loadDataWithBaseURL("https://local.ayra.render", html, "text/html", "UTF-8", null)
             }
@@ -607,14 +625,19 @@ private fun WebGl2PbrViewport(
                 null
             )
         },
+        onRelease = { webView ->
+            webView.stopLoading()
+            webView.destroy()
+        },
         modifier = modifier
     )
 }
 
-private fun buildSelfContainedWebGlHtml(initialKind: Model3dKind, initialCustomJson: String): String = """
+internal fun buildSelfContainedWebGlHtml(initialKind: Model3dKind, initialCustomJson: String): String = """
 <!doctype html>
 <html>
 <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 html,body,canvas{margin:0;padding:0;width:100%;height:100%;background:#050811;overflow:hidden;touch-action:none;}

@@ -2,6 +2,8 @@ package com.ayra.ai.app.voice
 
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBoundedBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,7 +70,9 @@ class ElevenLabsVoiceEngine(private val context: Context) {
             if (!resp.isSuccessful) {
                 throw IOException("ElevenLabs error: HTTP ${resp.code}")
             }
-            resp.body?.bytes() ?: throw IOException("Empty audio response from ElevenLabs.")
+            val audio = resp.readBoundedBytes(maxBytes = NetworkSecurityHelper.DEFAULT_MAX_MEDIA_BYTES)
+            if (audio.isEmpty()) throw IOException("Empty audio response from ElevenLabs.")
+            audio
         }
     }
 

@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai.providers
 
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
@@ -80,11 +81,11 @@ internal object ProviderAnthropicAndFreeTransport {
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
             if (response.code == 404) {
-                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.body?.string() ?: response.message)
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
             }
             if (!response.isSuccessful) throw ProviderError.ServerError(response.code, response.message)
 
-            val json = JSONObject(response.body?.string() ?: "")
+            val json = JSONObject(response.readBounded())
             val contentArr = json.optJSONArray("content")
             if (contentArr != null && contentArr.length() > 0) {
                 val block = contentArr.getJSONObject(0)
@@ -132,10 +133,10 @@ internal object ProviderAnthropicAndFreeTransport {
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
             if (response.code == 404) {
-                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.body?.string() ?: response.message)
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
             }
             if (!response.isSuccessful) {
-                val err = response.body?.string() ?: response.message
+                val err = response.readBounded(truncateOnOverflow = true)
                 throw ProviderError.ServerError(response.code, err.ifBlank { response.message })
             }
             val reader = BufferedReader(InputStreamReader(response.body?.byteStream() ?: return, StandardCharsets.UTF_8))
@@ -169,7 +170,7 @@ internal object ProviderAnthropicAndFreeTransport {
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return
-            val bodyStr = resp.body?.string()?.trim().orEmpty()
+            val bodyStr = resp.readBounded().trim()
             if (bodyStr.isBlank()) return
             val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: JSONArray()
@@ -237,7 +238,7 @@ internal object ProviderAnthropicAndFreeTransport {
 
                 val result = fastFreeClient.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        val text = resp.body?.string()?.trim() ?: ""
+                        val text = resp.readBounded(truncateOnOverflow = true).trim()
                         if (text.length >= 2 && !text.contains("error code", ignoreCase = true) && !text.startsWith("<!DOCTYPE")) text else ""
                     } else ""
                 }

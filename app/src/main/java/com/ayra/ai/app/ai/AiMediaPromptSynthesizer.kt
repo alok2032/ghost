@@ -1,6 +1,7 @@
 package com.ayra.ai.app.ai
 
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -221,7 +222,7 @@ object AiMediaPromptSynthesizer {
 
             httpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
+                    val body = response.readBounded()
                     val json = JSONObject(body)
                     val candidates = json.optJSONArray("candidates")
                     if (candidates != null && candidates.length() > 0) {
@@ -308,7 +309,7 @@ object AiMediaPromptSynthesizer {
 
             (clientOverride ?: httpClient).newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
+                    val body = response.readBounded()
                     val json = JSONObject(body)
                     val msg = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
                     val raw = if (msg != null && !msg.isNull("content")) msg.optString("content", "") else ""

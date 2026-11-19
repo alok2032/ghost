@@ -242,6 +242,41 @@ class DefaultAgentCore(
         var stepCount = 0
         var finalPlannedAnswer: String? = null
 
+        var taintedByUntrustedData = !request.documentText.isNullOrBlank()
+        var webFetchCount = 0
+        val untrustedSourceTools = setOf(
+            "web_fetch", "web_search", "mcp_call", "memory_read", "contacts_lookup", "file_read"
+        )
+
+        fun buildTaintConfirmationIfNeeded(tool: AgentTool, args: JSONObject): ProposedAction? {
+            if (tool.name == "web_fetch") {
+                val targetUrl = args.optString("url", "").trim()
+                val hasQueryOrFragment = targetUrl.contains("?") || targetUrl.contains("#")
+                if (taintedByUntrustedData || hasQueryOrFragment || webFetchCount >= 1) {
+                    val reason = when {
+                        taintedByUntrustedData -> "Fetch external URL after processing untrusted data"
+                        hasQueryOrFragment -> "Fetch external URL containing query/fragment parameters"
+                        else -> "Additional external URL fetch in the same agent turn"
+                    }
+                    return ProposedAction.ExecuteExternalTool(
+                        toolName = "web_fetch",
+                        summary = reason,
+                        targetUrl = targetUrl,
+                        argsJson = args.toString()
+                    )
+                }
+            }
+            if (taintedByUntrustedData && tool.isExternal && tool.name != "web_search") {
+                return ProposedAction.ExecuteExternalTool(
+                    toolName = tool.name,
+                    summary = "Confirm external tool '${tool.name}' after processing untrusted content",
+                    targetUrl = args.optString("url", "").trim(),
+                    argsJson = args.toString()
+                )
+            }
+            return null
+        }
+
         val safeDocumentContext = if (!request.documentText.isNullOrBlank()) {
             AiToolSecurityGuard.inspectAndWrapUntrustedData(
                 context = context,
@@ -306,7 +341,9 @@ class DefaultAgentCore(
 
             val canParallelBatch = invocations.size > 1 && invocations.all { inv ->
                 val t = toolRegistry.getTool(inv.toolName)
-                t != null && t.isReadOnly && (!isLocalOnly || !t.isExternal)
+                t != null && t.isReadOnly && (!isLocalOnly || !t.isExternal) &&
+                    buildTaintConfirmationIfNeeded(t, inv.args) == null &&
+                    !(t.name == "memory_write" && taintedByUntrustedData)
             }
 
             if (canParallelBatch) {
@@ -355,6 +392,10 @@ class DefaultAgentCore(
                         emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.FAILED, finalOutput.output.take(120))))
                     }
                     usedTools.add(tool.name)
+                    if (finalOutput.success) {
+                        if (tool.name == "web_fetch") webFetchCount++
+                        if (tool.name in untrustedSourceTools) taintedByUntrustedData = true
+                    }
                     steps[startIdx + offset] = steps[startIdx + offset].copy(
                         status = if (finalOutput.success) StepStatus.DONE else StepStatus.FAILED,
                         note = finalOutput.output.take(120)
@@ -417,6 +458,28 @@ class DefaultAgentCore(
             }
             emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.VALIDATED)))
 
+            if (tool.name == "memory_write" && taintedByUntrustedData) {
+                val blockedMsg = "Blocked autonomous memory_write after processing untrusted data to prevent memory poisoning."
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.CANCELLED, blockedMsg)))
+                steps[steps.lastIndex] = steps.last().copy(status = StepStatus.SKIPPED, note = "Memory poisoning guard")
+                emit(AgentEvent.PlanUpdated(steps.toList()))
+                collectedObservations.append("[Tool ${tool.name} (BLOCKED)]:\n$blockedMsg\n\n")
+                continue
+            }
+
+            val taintConfirmation = buildTaintConfirmationIfNeeded(tool, invocation.args)
+            if (taintConfirmation != null) {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.PROPOSED, "Taint/exfiltration guard awaiting confirmation")))
+                steps[steps.lastIndex] = steps.last().copy(
+                    status = StepStatus.PENDING,
+                    note = "Waiting user confirmation (${tool.name})"
+                )
+                emit(AgentEvent.PlanUpdated(steps.toList()))
+                emit(AgentEvent.Status("Waiting user confirmation for ${tool.name}..."))
+                emit(AgentEvent.ToolCallProposed(tool.name, invocation.args.toString(), taintConfirmation))
+                return@flow
+            }
+
             emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.EXECUTING)))
             val finalOutput = try {
                 executeSingleToolWithTimeout(tool, invocation.args)
@@ -446,7 +509,11 @@ class DefaultAgentCore(
             }
 
             usedTools.add(tool.name)
-            steps[steps.lastIndex] = steps.last().copy(
+            if (finalOutput.success) {
+                if (tool.name == "web_fetch") webFetchCount++
+                if (tool.name in untrustedSourceTools) taintedByUntrustedData = true
+            }
+            steps[steps.lastIndex] = steps[steps.lastIndex].copy(
                 status = if (finalOutput.success) StepStatus.DONE else StepStatus.FAILED,
                 note = finalOutput.output.take(120)
             )

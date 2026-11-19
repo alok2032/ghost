@@ -7,6 +7,7 @@ import com.ayra.ai.app.security.AyraDiagnosticsEngine
 import com.ayra.ai.app.security.AyraKeyManager
 import com.ayra.ai.app.security.EncryptedPreferences
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.ayra.ai.app.security.SecurityAuditCategory
 import com.ayra.ai.app.security.SecurityAuditLogger
 import com.ayra.ai.app.security.SecurityAuditSeverity
@@ -256,7 +257,7 @@ object McpClientManager {
                     updateServerStatus(context, serverId, "Error: $err", emptyList())
                     error(err)
                 }
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 val json = JSONObject(raw)
                 json.optJSONObject("error")?.let { rpcErr ->
                     error(rpcErr.optString("message", "MCP JSON-RPC error"))
@@ -337,7 +338,7 @@ object McpClientManager {
                     AyraDiagnosticsEngine.record("MCP", "tools/call:$toolName", latency, false, "HTTP ${resp.code}")
                     return@use McpCallResult(false, "", "MCP HTTP ${resp.code}", latency)
                 }
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 val json = JSONObject(raw)
                 json.optJSONObject("error")?.let { rpcErr ->
                     val msg = rpcErr.optString("message", "MCP JSON-RPC error")

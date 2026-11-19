@@ -4,7 +4,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // -------------------------------------------------------------------------
-    // Global Fail-Closed Safety Net (must remain the first match block)
+    // Explicit Root Deny Block
+    // Note: Firestore evaluates rules with OR semantics; unmatched paths are
+    // denied by default because zero wildcard allow statements exist below.
     // -------------------------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;

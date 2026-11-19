@@ -17,7 +17,10 @@ android {
         applicationId = "com.ayra.ai.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        val ciRun = (System.getenv("CI_RUN_NUMBER") ?: project.findProperty("versionCode")?.toString())
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 } ?: 1
+        versionCode = ciRun
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

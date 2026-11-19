@@ -9,12 +9,19 @@ import okhttp3.ConnectionSpec
 import okhttp3.Dispatcher
 import okhttp3.Dns
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import okhttp3.TlsVersion
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.net.UnknownHostException
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -33,8 +40,14 @@ data class UrlValidationResult(
  * - Fails CLOSED on DNS resolution failures, malformed URLs, embedded credentials, non-443 ports,
  *   IPv4/IPv6 private, loopback, link-local, NAT64, 6to4, Teredo, documentation, ULA, and metadata IPs.
  * - Eliminates validation-vs-connect DNS rebinding TOCTOU via [PublicHttpsDnsGuard] bound on OkHttp clients.
+ * - Provides bounded response reading ([readBounded] / [readBoundedBytes]) and SSRF-validated redirect traversal.
  */
 object NetworkSecurityHelper {
+
+    const val DEFAULT_MAX_RESPONSE_BYTES: Long = 2L * 1024L * 1024L
+    const val DEFAULT_MAX_MEDIA_BYTES: Long = 12L * 1024L * 1024L
+
+    private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 
     private val sharedDispatcher: Dispatcher by lazy {
         Dispatcher().apply {
@@ -88,7 +101,7 @@ object NetworkSecurityHelper {
     }
 
     /**
-     * OkHttp [Dns] guard for explicit LAN/localhost clients: still blocks cloud metadata IPs
+     * OkHttp [Dns] guard for explicit loopback/LAN HTTPS clients: still blocks cloud metadata IPs
      * (`169.254.0.0/16`, `metadata.google.internal`, `fd00:ec2::254`) and unspecified `0.0.0.0`/`::`.
      */
     internal object LanDnsGuard : Dns {
@@ -124,8 +137,8 @@ object NetworkSecurityHelper {
     }
 
     /**
-     * Local/LAN client permitting explicit cleartext HTTP ONLY to verified loopback/LAN endpoints
-     * (e.g. Ollama / ComfyUI on private subnet) when user explicitly enables LAN endpoints.
+     * Local/LAN client permitting explicit cleartext HTTP ONLY to loopback hosts declared in
+     * `network_security_config.xml` (`localhost`, `127.0.0.1`, `10.0.2.2`), plus HTTPS to LAN subnets.
      */
     val localLanClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -171,6 +184,168 @@ object NetworkSecurityHelper {
         return hardenedPooledClient.newBuilder()
             .certificatePinner(pinnerBuilder.build())
             .build()
+    }
+
+    /**
+     * Reads up to [maxBytes] from an OkHttp [Response] body to prevent OOM crashes from oversized
+     * or malicious responses. Fails closed with [IOException] on overflow unless [truncateOnOverflow]
+     * is explicitly requested (e.g., HTML web snippet previews).
+     */
+    @JvmOverloads
+    fun Response.readBounded(
+        maxBytes: Long = DEFAULT_MAX_RESPONSE_BYTES,
+        truncateOnOverflow: Boolean = false
+    ): String {
+        val bytes = readBoundedBytes(maxBytes = maxBytes, truncateOnOverflow = truncateOnOverflow)
+        if (bytes.isEmpty()) return ""
+        val charset = body?.contentType()?.charset(StandardCharsets.UTF_8) ?: StandardCharsets.UTF_8
+        return String(bytes, charset)
+    }
+
+    @JvmOverloads
+    fun Response.readBoundedBytes(
+        maxBytes: Long = DEFAULT_MAX_RESPONSE_BYTES,
+        truncateOnOverflow: Boolean = false
+    ): ByteArray {
+        val respBody = body ?: return ByteArray(0)
+        val contentLength = respBody.contentLength()
+        if (contentLength > maxBytes && !truncateOnOverflow) {
+            throw IOException("Response Content-Length ($contentLength bytes) exceeds $maxBytes byte limit.")
+        }
+        respBody.byteStream().use { input ->
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val remaining = maxBytes - total
+                if (remaining <= 0L) {
+                    if (truncateOnOverflow) break
+                    val extra = input.read()
+                    if (extra == -1) break
+                    throw IOException("Response body exceeded $maxBytes byte safety limit.")
+                }
+                val toRead = minOf(buf.size.toLong(), remaining).toInt()
+                val read = input.read(buf, 0, toRead)
+                if (read <= 0) break
+                out.write(buf, 0, read)
+                total += read
+            }
+            return out.toByteArray()
+        }
+    }
+
+    /**
+     * Streams a [Response] body directly to [destFile] while enforcing a strict [maxBytes] ceiling.
+     * Deletes any partial destination file and throws [IOException] if the limit is exceeded.
+     */
+    @JvmOverloads
+    fun copyBoundedToFile(
+        response: Response,
+        destFile: File,
+        maxBytes: Long = DEFAULT_MAX_MEDIA_BYTES
+    ) {
+        val respBody = response.body ?: throw IOException("Empty response body.")
+        val contentLength = respBody.contentLength()
+        if (contentLength > maxBytes) {
+            throw IOException("Download Content-Length ($contentLength bytes) exceeds $maxBytes byte limit.")
+        }
+        try {
+            respBody.byteStream().use { input ->
+                FileOutputStream(destFile).use { output ->
+                    val buf = ByteArray(8192)
+                    var total = 0L
+                    while (true) {
+                        val remaining = maxBytes - total
+                        if (remaining <= 0L) {
+                            if (input.read() == -1) break
+                            throw IOException("Downloaded stream exceeded $maxBytes byte safety limit.")
+                        }
+                        val toRead = minOf(buf.size.toLong(), remaining).toInt()
+                        val read = input.read(buf, 0, toRead)
+                        if (read <= 0) break
+                        output.write(buf, 0, read)
+                        total += read
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            runCatching { destFile.delete() }
+            throw t
+        }
+    }
+
+    /**
+     * Executes an HTTPS request with manual redirect handling (up to [maxRedirects] hops),
+     * re-validating every `Location` target via [urlValidator] (default: [validatePublicHttpsUrl])
+     * and stripping sensitive credentials on cross-origin redirects.
+     */
+    @JvmOverloads
+    fun executePublicHttpsWithValidatedRedirects(
+        client: OkHttpClient,
+        initialRequest: Request,
+        maxRedirects: Int = 5,
+        urlValidator: (String) -> UrlValidationResult = { validatePublicHttpsUrl(it) }
+    ): Response {
+        val nonRedirectingClient = if (client.followRedirects || client.followSslRedirects) {
+            client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        } else {
+            client
+        }
+
+        var currentRequest = initialRequest
+        var currentUrl = initialRequest.url.toString()
+        val initialCheck = urlValidator(currentUrl)
+        if (!initialCheck.allowed) {
+            throw SecurityException(initialCheck.reason ?: "URL blocked by SSRF policy.")
+        }
+
+        var hops = 0
+        while (true) {
+            val response = nonRedirectingClient.newCall(currentRequest).execute()
+            if (response.code !in REDIRECT_STATUS_CODES) {
+                return response
+            }
+            val code = response.code
+            val location = response.header("Location")?.trim().orEmpty()
+            response.close()
+
+            if (location.isEmpty()) {
+                throw IOException("HTTP $code redirect missing Location header.")
+            }
+            if (hops >= maxRedirects) {
+                throw IOException("Exceeded maximum redirect limit ($maxRedirects).")
+            }
+            hops++
+
+            val currentUri = runCatching { URI(currentUrl) }.getOrNull()
+                ?: throw IOException("Malformed current URI during redirect.")
+            val nextUri = runCatching { currentUri.resolve(location) }.getOrNull()
+                ?: throw SecurityException("Malformed redirect Location '$location'.")
+            val nextUrl = nextUri.toString()
+
+            val redirectCheck = urlValidator(nextUrl)
+            if (!redirectCheck.allowed) {
+                throw SecurityException("Blocked redirect target '$nextUrl': ${redirectCheck.reason}")
+            }
+
+            val crossOrigin = !currentUri.scheme.equals(nextUri.scheme, ignoreCase = true) ||
+                !currentUri.host.equals(nextUri.host, ignoreCase = true) ||
+                currentUri.port != nextUri.port
+
+            val nextBuilder = currentRequest.newBuilder().url(nextUrl)
+            if (crossOrigin) {
+                nextBuilder.removeHeader("Authorization")
+                nextBuilder.removeHeader("x-api-key")
+                nextBuilder.removeHeader("x-goog-api-key")
+                nextBuilder.removeHeader("Cookie")
+            }
+            val method = currentRequest.method
+            if (code == 303 || ((code == 301 || code == 302) && method != "GET" && method != "HEAD")) {
+                nextBuilder.method("GET", null)
+            }
+            currentRequest = nextBuilder.build()
+            currentUrl = nextUrl
+        }
     }
 
     /**
@@ -222,7 +397,11 @@ object NetworkSecurityHelper {
 
     /**
      * Validates an explicit local AI server URL (Ollama, LM Studio, ComfyUI).
-     * Fails CLOSED when [context] is null for non-loopback LAN endpoints or when Allow-LAN setting is disabled.
+     * Consistent with `res/xml/network_security_config.xml`:
+     * - Cleartext `http://` is permitted ONLY for loopback hosts (`localhost`, `127.0.0.1`, `::1`, `10.0.2.2`).
+     * - Non-loopback RFC1918 LAN endpoints (`192.168.*`, `10.*`, `.local`, etc.) MUST use `https://`
+     *   (e.g., Tailscale HTTPS, Caddy, or mkcert) AND require Allow-LAN to be enabled in Security Center.
+     * - Fails CLOSED on null context for non-loopback LAN endpoints or when Allow-LAN is disabled.
      */
     fun validateLocalAiEndpointUrl(context: Context?, rawUrl: String): UrlValidationResult {
         val trimmed = rawUrl.trim()
@@ -247,39 +426,24 @@ object NetworkSecurityHelper {
 
         if (scheme == "https") {
             return if (isPrivateHostOrLanLiteral(host)) {
+                if (isLoopbackHost(host)) return UrlValidationResult(true)
                 val allowLan = context?.let { AyraPreferences.isAllowLanEndpointsEnabled(it) } ?: false
-                if (allowLan || isLoopbackHost(host)) UrlValidationResult(true)
-                else UrlValidationResult(false, "LAN endpoints are disabled in Security Center.")
+                if (allowLan) UrlValidationResult(true)
+                else UrlValidationResult(false, "LAN HTTPS endpoints are disabled in Security Center.")
             } else {
                 validatePublicHttpsUrl(trimmed)
             }
         }
 
-        if (isLoopbackHost(host)) return UrlValidationResult(true)
-
-        val allowLan = context?.let { AyraPreferences.isAllowLanEndpointsEnabled(it) } ?: false
-        if (!allowLan) {
-            return UrlValidationResult(false, "Plaintext HTTP LAN endpoints are disabled in Security Center.")
+        // Cleartext HTTP: strictly restricted to loopback hosts permitted by network_security_config.xml
+        if (isLoopbackHost(host)) {
+            return UrlValidationResult(true)
         }
 
-        val resolved = runCatching { InetAddress.getAllByName(host) }.getOrNull()
-        if (resolved == null || resolved.isEmpty()) {
-            return UrlValidationResult(false, "DNS resolution failed for LAN endpoint '$host'.")
-        }
-        for (addr in resolved) {
-            if (isCloudMetadataOrUnspecifiedAddress(addr)) {
-                return UrlValidationResult(false, "Blocked metadata/unspecified IP ${addr.hostAddress}.")
-            }
-        }
-        val isLanIp = resolved.all { it.isSiteLocalAddress } ||
-            host.startsWith("192.168.") ||
-            host.startsWith("10.") ||
-            host.endsWith(".local")
-        return if (isLanIp) {
-            UrlValidationResult(true)
-        } else {
-            UrlValidationResult(false, "Remote non-LAN URLs must use HTTPS.")
-        }
+        return UrlValidationResult(
+            false,
+            "Cleartext HTTP is restricted to loopback (localhost / 127.0.0.1 / 10.0.2.2) per network_security_config.xml. Use HTTPS (e.g. Tailscale HTTPS, Caddy, or mkcert) for LAN endpoints."
+        )
     }
 
     private fun isLoopbackHost(cleanHost: String): Boolean =

@@ -457,8 +457,8 @@ fun SecurityCenterScreen(
                         }
                     )
                     SecurityToggleItem(
-                        title = "Allow LAN HTTP Endpoints (Ollama / ComfyUI)",
-                        subtitle = "Permits RFC1918 LAN HTTP for self-hosted inference while blocking 169.254.169.254",
+                        title = "Allow LAN HTTPS Endpoints (Ollama / ComfyUI)",
+                        subtitle = "Permits HTTPS RFC1918 LAN endpoints (Tailscale/Caddy/mkcert); cleartext http:// is loopback-only",
                         checked = allowLanEndpoints,
                         tag = "toggle_allow_lan",
                         onCheckedChange = {

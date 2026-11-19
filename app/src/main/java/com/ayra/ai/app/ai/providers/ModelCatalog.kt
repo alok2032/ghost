@@ -132,9 +132,9 @@ object ModelCatalog {
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM
         ),
         ModelCatalogEntry(
-            id = "gemini-3.1-flash-tts-preview",
+            id = "gemini-3.8-flash-tts",
             provider = AiProviderType.GEMINI,
-            displayName = "Gemini 3.1 Flash TTS",
+            displayName = "Gemini 3.8 Flash TTS",
             capabilities = setOf(ModelCapability.AUDIO),
             contextTokens = 32_000,
             costTier = ModelCostTier.LOW,

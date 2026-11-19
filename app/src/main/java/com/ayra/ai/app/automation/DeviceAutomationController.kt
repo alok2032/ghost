@@ -51,7 +51,16 @@ class DeviceAutomationController(private val context: Context) {
             )
 
             for (indicator in questionIndicators) {
-                if (lower.startsWith(indicator) || lower.contains(" $indicator ") || lower.contains("$indicator:")) {
+                val matchesIndicator = lower == indicator ||
+                        lower.startsWith("$indicator ") ||
+                        lower.startsWith("$indicator:") ||
+                        lower.startsWith("$indicator?") ||
+                        lower.startsWith("$indicator,") ||
+                        lower.endsWith(" $indicator") ||
+                        lower.contains(" $indicator ") ||
+                        lower.contains(" $indicator?") ||
+                        lower.contains("$indicator:")
+                if (matchesIndicator) {
                     val isDirectCommand = (lower.contains("turn on") || lower.contains("turn off") ||
                             lower.contains("switch on") || lower.contains("switch off") ||
                             lower.contains("জ্বালাও") || lower.contains("নিভাও") ||

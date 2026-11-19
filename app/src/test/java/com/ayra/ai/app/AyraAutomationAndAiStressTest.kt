@@ -358,7 +358,8 @@ class AyraAutomationAndAiStressTest {
         assertTrue(com.ayra.ai.app.ai.GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(q1))
 
         val answer1 = com.ayra.ai.app.ai.GlobalWebKnowledgeGateway.synthesizeGlobalNetworkKnowledge(q1, isBengali = true, isGfMode = false)
-        assertTrue(answer1.contains("Hidden Wiki") || answer1.contains("হিডেন উইকি"))
+        assertTrue(answer1.contains("ডিফেনসিভ") || answer1.contains("defensive", ignoreCase = true))
+        assertTrue(answer1.contains("কোনো ডার্কনেট ডিরেক্টরি") || answer1.contains("does not index", ignoreCase = true))
         assertTrue(answer1.contains("onion") || answer1.contains("অনিয়ন"))
 
         val q2 = "Explain Tor onion routing, rendezvous points, and 3-hop encryption"

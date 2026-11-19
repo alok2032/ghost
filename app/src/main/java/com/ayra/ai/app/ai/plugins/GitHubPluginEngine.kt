@@ -3,6 +3,7 @@ package com.ayra.ai.app.ai.plugins
 import android.content.Context
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.InstalledGitHubPlugin
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -911,7 +912,7 @@ class GitHubPluginEngine @JvmOverloads constructor(
                 reqBuilder.header("Authorization", "Bearer $githubToken")
             }
             httpClient.newCall(reqBuilder.get().build()).execute().use { resp ->
-                val bodyStr = resp.body?.string() ?: ""
+                val bodyStr = resp.readBounded()
                 HttpFetchResult(resp.code, bodyStr)
             }
         } catch (e: Exception) {

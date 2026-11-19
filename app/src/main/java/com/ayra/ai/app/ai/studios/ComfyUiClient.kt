@@ -1,5 +1,7 @@
 package com.ayra.ai.app.ai.studios
 
+import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -10,7 +12,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
 sealed class ComfyUiResult {
@@ -293,7 +294,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 .build()
 
             val promptId = httpClient.newCall(req).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("ComfyUI /prompt returned HTTP ${resp.code}: $raw")
                 }
@@ -312,7 +313,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 val histReq = Request.Builder().url("$cleanBase/history/$promptId").get().build()
                 val found = httpClient.newCall(histReq).execute().use { resp ->
                     if (!resp.isSuccessful) return@use false
-                    val body = resp.body?.string().orEmpty()
+                    val body = resp.readBounded()
                     val root = JSONObject(body)
                     val entry = root.optJSONObject(promptId) ?: return@use false
                     val outputs = entry.optJSONObject("outputs") ?: return@use false
@@ -345,9 +346,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download output file $filename (HTTP ${resp.code})")
                 }
-                resp.body?.byteStream()?.use { input ->
-                    FileOutputStream(outFile).use { output -> input.copyTo(output) }
-                }
+                NetworkSecurityHelper.copyBoundedToFile(resp, outFile, maxBytes = 24L * 1024L * 1024L)
             }
 
             ComfyUiResult.ImageSuccess(
@@ -386,7 +385,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 .build()
 
             val promptId = httpClient.newCall(req).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("ComfyUI video /prompt returned HTTP ${resp.code}: $raw")
                 }
@@ -404,7 +403,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 val histReq = Request.Builder().url("$cleanBase/history/$promptId").get().build()
                 val found = httpClient.newCall(histReq).execute().use { resp ->
                     if (!resp.isSuccessful) return@use false
-                    val body = resp.body?.string().orEmpty()
+                    val body = resp.readBounded()
                     val root = JSONObject(body)
                     val entry = root.optJSONObject(promptId) ?: return@use false
                     val outputs = entry.optJSONObject("outputs") ?: return@use false
@@ -439,9 +438,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download video $filename (HTTP ${resp.code})")
                 }
-                resp.body?.byteStream()?.use { input ->
-                    FileOutputStream(outFile).use { output -> input.copyTo(output) }
-                }
+                NetworkSecurityHelper.copyBoundedToFile(resp, outFile, maxBytes = 64L * 1024L * 1024L)
             }
 
             ComfyUiResult.VideoSuccess(
@@ -483,7 +480,7 @@ class ComfyUiClient @JvmOverloads constructor(
 
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null
-                val json = JSONObject(resp.body?.string().orEmpty())
+                val json = JSONObject(resp.readBounded())
                 json.optString("name", filename).ifBlank { filename }
             }
         }.getOrNull()
@@ -520,7 +517,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 .build()
 
             val promptId = httpClient.newCall(req).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("ComfyUI /prompt returned HTTP ${resp.code}: $raw")
                 }
@@ -538,7 +535,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 val histReq = Request.Builder().url("$cleanBase/history/$promptId").get().build()
                 val found = httpClient.newCall(histReq).execute().use { resp ->
                     if (!resp.isSuccessful) return@use false
-                    val body = resp.body?.string().orEmpty()
+                    val body = resp.readBounded()
                     val root = JSONObject(body)
                     val entry = root.optJSONObject(promptId) ?: return@use false
                     val outputs = entry.optJSONObject("outputs") ?: return@use false
@@ -571,9 +568,7 @@ class ComfyUiClient @JvmOverloads constructor(
                 if (!resp.isSuccessful) {
                     return@withContext ComfyUiResult.Failure("Failed to download output file $filename (HTTP ${resp.code})")
                 }
-                resp.body?.byteStream()?.use { input ->
-                    FileOutputStream(outFile).use { output -> input.copyTo(output) }
-                }
+                NetworkSecurityHelper.copyBoundedToFile(resp, outFile, maxBytes = 24L * 1024L * 1024L)
             }
 
             ComfyUiResult.ImageSuccess(

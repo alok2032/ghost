@@ -15,14 +15,18 @@ import com.ayra.ai.app.automation.ContactResolver
 import com.ayra.ai.app.automation.ProposedAction
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.data.ExportPaths
 import com.ayra.ai.app.data.StorageHelper
 import com.ayra.ai.app.search.TavilySearchEngine
 import com.ayra.ai.app.security.AiToolSecurityGuard
+import com.ayra.ai.app.security.EncryptedVaultStorage
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 data class AgentToolOutput(
@@ -269,11 +273,15 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
             }
             return runCatching {
                 val req = Request.Builder().url(url).header("Accept", "text/html,text/plain,application/json").build()
-                ExternalAiProviders.sharedFastWebClient.newCall(req).execute().use { resp ->
+                NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                    client = ExternalAiProviders.sharedFastWebClient,
+                    initialRequest = req,
+                    maxRedirects = 5
+                ).use { resp ->
                     if (!resp.isSuccessful) {
                         return@use AgentToolOutput(false, "HTTP ${resp.code} fetching $url")
                     }
-                    val raw = resp.body?.string().orEmpty()
+                    val raw = resp.readBounded(truncateOnOverflow = true)
                         .replace(Regex("<script[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), " ")
                         .replace(Regex("<style[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), " ")
                         .replace(Regex("<[^>]+>"), " ")
@@ -399,6 +407,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         override val parametersSchemaJson = """{"type":"object","properties":{"title":{"type":"string"},"content":{"type":"string"},"format":{"type":"string"}},"required":["title","content"]}"""
         override val isExternal = false
         override val requiresConfirmation = false
+        override val isReadOnly = false
         override suspend fun execute(args: JSONObject): AgentToolOutput {
             val title = args.optString("title", "ayra_export").ifBlank { "ayra_export" }
             val content = args.optString("content", "")
@@ -410,7 +419,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
                 "doc" -> StorageHelper.exportWordDocDocument(context, title, content)
                 "csv" -> StorageHelper.exportCsvSpreadsheet(context, title, content)
                 "txt" -> {
-                    val f = File(File(context.filesDir, "exports").apply { mkdirs() }, "${StorageHelper.sanitizeFileName(title)}.txt")
+                    val f = File(File(context.filesDir, ExportPaths.FILES_EXPORTS).apply { mkdirs() }, "${StorageHelper.sanitizeFileName(title)}.txt")
                     f.writeText(content)
                     f
                 }
@@ -437,18 +446,54 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
                 val summary = if (artifacts.isEmpty()) "No workspace artifacts found." else artifacts.take(15).joinToString("\n") { "${it.name} (${it.sizeBytes} bytes)" }
                 return AgentToolOutput(true, summary)
             }
-            val safeName = File(nameArg).name
-            val match = artifacts.firstOrNull { it.name.equals(safeName, ignoreCase = true) }
-                ?: return AgentToolOutput(false, "Artifact '$safeName' not found in workspace storage.")
+            val safeName = File(nameArg.removeSuffix(" 🔒")).name
+            val match = artifacts.firstOrNull {
+                val cleanName = it.name.removeSuffix(" 🔒")
+                cleanName.equals(safeName, ignoreCase = true) || it.file.name.equals(safeName, ignoreCase = true)
+            } ?: return AgentToolOutput(false, "Artifact '$safeName' not found in workspace storage.")
+
+            val maxFileBytes = 1_048_576L
+            val file = match.file
+            if (file.isDirectory) {
+                return AgentToolOutput(false, "Artifact '$safeName' is a directory, not a readable file.")
+            }
+            if (file.length() > maxFileBytes) {
+                return AgentToolOutput(false, "Artifact '$safeName' (${file.length()} bytes) exceeds 1 MiB safe read limit.")
+            }
+
             val text = runCatching {
-                val file = match.file
-                val ext = file.extension.lowercase(Locale.US)
-                if (ext == "docx") file.inputStream().use { StorageHelper.extractDocxText(it) }
-                else if (ext == "xlsx") file.inputStream().use { StorageHelper.extractXlsxText(it, file.name) }
-                else if (ext == "pdf") StorageHelper.extractPdfTextTokensFromBytes(file.readBytes())
-                else file.readText()
+                val isVault = EncryptedVaultStorage.isVaultFile(file)
+                val ext = if (isVault) {
+                    EncryptedVaultStorage.readMetadata(file).originalName.substringAfterLast('.', "").lowercase(Locale.US)
+                } else {
+                    file.extension.lowercase(Locale.US)
+                }
+                val bytes = if (isVault) {
+                    EncryptedVaultStorage.decryptVaultFileBytes(context, file)
+                } else {
+                    file.readBytes()
+                }
+                try {
+                    if (bytes.size > maxFileBytes) {
+                        return@runCatching ""
+                    }
+                    when (ext) {
+                        "docx" -> bytes.inputStream().use { StorageHelper.extractDocxText(it) }
+                        "xlsx" -> bytes.inputStream().use { StorageHelper.extractXlsxText(it, safeName) }
+                        "pdf" -> StorageHelper.extractPdfTextTokensFromBytes(bytes)
+                        else -> String(bytes, StandardCharsets.UTF_8)
+                    }
+                } finally {
+                    bytes.fill(0)
+                }
             }.getOrDefault("").take(5000)
-            return if (text.isNotBlank()) AgentToolOutput(true, text) else AgentToolOutput(false, "File '$safeName' had no readable text.")
+
+            return if (text.isNotBlank()) {
+                val guarded = AiToolSecurityGuard.inspectAndWrapUntrustedData(context, "file:$safeName", text)
+                AgentToolOutput(true, guarded.wrappedUntrustedContent)
+            } else {
+                AgentToolOutput(false, "File '$safeName' had no readable text or exceeded safety limits.")
+            }
         }
     }
 
@@ -512,6 +557,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
         override val parametersSchemaJson = """{"type":"object","properties":{"category":{"type":"string"},"content":{"type":"string"}},"required":["content"]}"""
         override val isExternal = false
         override val requiresConfirmation = false
+        override val isReadOnly = false
         override suspend fun execute(args: JSONObject): AgentToolOutput {
             val cat = args.optString("category", "GENERAL")
             val content = args.optString("content", "")

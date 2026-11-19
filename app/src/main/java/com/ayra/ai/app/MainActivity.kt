@@ -147,7 +147,7 @@ class MainActivity : FragmentActivity() {
                 }
 
                 val fbAudit = FirebaseConfigConsistencyValidator.lastAuditResult
-                val showDebugConfigBanner = BuildConfig.DEBUG && fbAudit != null && !fbAudit.valid
+                val invalidDebugConfig = if (BuildConfig.DEBUG) fbAudit?.takeIf { !it.valid } else null
 
                 val currentUser by authManager.authStateFlow.collectAsStateWithLifecycle(
                     initialValue = authManager.currentUser
@@ -173,7 +173,7 @@ class MainActivity : FragmentActivity() {
                 }
 
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (showDebugConfigBanner && fbAudit != null) {
+                    if (invalidDebugConfig != null) {
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
                             modifier = Modifier
@@ -182,7 +182,7 @@ class MainActivity : FragmentActivity() {
                                 .testTag("debug_firebase_config_banner")
                         ) {
                             Text(
-                                text = "Firebase config warning: ${fbAudit.issues.joinToString("; ")}",
+                                text = "Firebase config warning: ${invalidDebugConfig.issues.joinToString("; ")}",
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

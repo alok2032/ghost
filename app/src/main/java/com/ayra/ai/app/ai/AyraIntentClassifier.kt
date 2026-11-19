@@ -91,11 +91,17 @@ object AyraIntentClassifier {
         // 3. Questions / educational queries that contain keywords must stay CHAT
         val lower = trimmed.lowercase()
         val isExplicitCreation = lower.contains("বানাও") || lower.contains("বানিয়ে দাও") ||
-                lower.contains("আঁকো") || lower.contains("এঁকে দাও") || lower.contains("draw an") ||
-                lower.contains("create a") || lower.contains("generate a") || lower.contains("make a") ||
-                lower.contains("banano") || lower.contains("render")
+                lower.contains("আঁকো") || lower.contains("আঁকুন") || lower.contains("এঁকে দাও") ||
+                lower.contains("draw an") || lower.contains("create a") || lower.contains("generate a") ||
+                lower.contains("make a") || lower.contains("banano") || lower.contains("render")
+
+        val isExplanatoryBnHi = lower.contains("নিয়ম") || lower.contains("ব্যাখ্যা") ||
+                lower.contains("পদ্ধতি") || lower.contains("উপকারিতা") || lower.contains("পার্থক্য") ||
+                lower.contains("কাকে বলে") || lower.contains("কীভাবে") || lower.contains("কিভাবে") ||
+                lower.contains("अंतर") || lower.contains("क्या है")
 
         if (!isExplicitCreation && (QUESTION_PREFIX_REGEX.matcher(trimmed).find() ||
+            isExplanatoryBnHi ||
             lower.contains("cadastral map") || lower.contains("shopping cart") ||
             lower.contains("wrapping") || lower.contains("tips of composition") ||
             lower.contains("history of music") || lower.contains("video game industry") ||
@@ -116,10 +122,13 @@ object AyraIntentClassifier {
         }
 
         val isQuestionForm = QUESTION_PREFIX_REGEX.matcher(trimmed).find() ||
+                isExplanatoryBnHi ||
                 lower.startsWith("how to ") || lower.contains("kivabe")
 
         // Image Intent
-        if (lower.contains("আঁকো") || lower.contains("এঁকে দাও") || lower.contains("ছবি আঁকো") || lower.contains("ছবি আঁক")) {
+        val hasExplicitBnDraw = lower.contains("আঁকো") || lower.contains("আঁকুন") ||
+                lower.contains("এঁকে দাও") || Regex("ছবি\\s+আঁক(?:ো|ুন)?(?:\\s|$|[।!?])").containsMatchIn(lower)
+        if (!isQuestionForm && hasExplicitBnDraw) {
             return AyraToolIntent.IMAGE
         }
         val hasImgTerm = Regex("\\b(image|photo|picture|wallpaper|portrait|artwork|illustration)\\b").containsMatchIn(lower) ||

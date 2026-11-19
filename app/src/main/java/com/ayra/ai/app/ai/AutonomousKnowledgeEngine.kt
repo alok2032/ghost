@@ -6,6 +6,7 @@ import com.ayra.ai.app.ai.plugins.GitHubPluginEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -425,7 +426,7 @@ object AutonomousKnowledgeEngine {
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return Pair("", null)
-                val body = resp.body?.string() ?: return Pair("", null)
+                val body = resp.readBounded().ifBlank { return Pair("", null) }
                 val json = JSONObject(body)
                 val published = json.optString("relays_published", "").trim()
                 val relays = json.optJSONArray("relays") ?: JSONArray()
@@ -466,7 +467,7 @@ object AutonomousKnowledgeEngine {
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
-                val body = resp.body?.string()?.trim() ?: return Pair("", emptyList())
+                val body = resp.readBounded().trim()
                 if (body.isBlank()) return Pair("", emptyList())
                 val entries = mutableListOf<JSONObject>()
                 if (body.startsWith("[")) {
@@ -513,7 +514,7 @@ object AutonomousKnowledgeEngine {
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
-                val body = resp.body?.string() ?: return Pair("", emptyList())
+                val body = resp.readBounded().ifBlank { return Pair("", emptyList()) }
                 val arr = JSONObject(body).optJSONArray("search") ?: return Pair("", emptyList())
                 val sb = StringBuilder()
                 val citations = mutableListOf<WikiCitation>()
@@ -550,7 +551,7 @@ object AutonomousKnowledgeEngine {
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
             val pmids = httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
-                val body = resp.body?.string() ?: return Pair("", emptyList())
+                val body = resp.readBounded().ifBlank { return Pair("", emptyList()) }
                 val ids = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist")
                     ?: return Pair("", emptyList())
                 (0 until ids.length()).mapNotNull { ids.optString(it).takeIf { id -> id.isNotBlank() } }
@@ -564,7 +565,7 @@ object AutonomousKnowledgeEngine {
             val summaryResult = try {
                 httpClient.newCall(summaryReq).execute().use { sResp ->
                     if (sResp.isSuccessful) {
-                        val sBody = sResp.body?.string().orEmpty()
+                        val sBody = sResp.readBounded()
                         if (sBody.isNotBlank()) JSONObject(sBody).optJSONObject("result") else null
                     } else null
                 }
@@ -643,7 +644,7 @@ object AutonomousKnowledgeEngine {
 
                 httpClient.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return null
-                    val body = resp.body?.string() ?: ""
+                    val body = resp.readBounded()
                     val root = JSONObject(body)
                     val pages = root.optJSONObject("query")?.optJSONObject("pages") ?: return null
                     val firstKey = pages.keys().asSequence().firstOrNull() ?: return null
@@ -671,7 +672,7 @@ object AutonomousKnowledgeEngine {
 
                 httpClient.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return null
-                    val body = resp.body?.string() ?: ""
+                    val body = resp.readBounded()
                     val json = JSONObject(body)
                     val extract = json.optString("extract", "").trim()
                     val title = json.optString("title", term)
@@ -731,7 +732,7 @@ object AutonomousKnowledgeEngine {
 
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return ""
-                val body = resp.body?.string() ?: return ""
+                val body = resp.readBounded().ifBlank { return "" }
                 val json = JSONObject(body)
                 val heading = json.optString("Heading", "").trim()
                 val abstractText = json.optString("AbstractText", "").trim()
@@ -785,7 +786,7 @@ object AutonomousKnowledgeEngine {
 
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return ""
-                val body = resp.body?.string() ?: return ""
+                val body = resp.readBounded().ifBlank { return "" }
                 val results = JSONObject(body).optJSONArray("results") ?: JSONArray()
                 if (results.length() == 0) return ""
                 val sb = StringBuilder()
@@ -847,7 +848,7 @@ object AutonomousKnowledgeEngine {
 
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return ""
-                val xml = resp.body?.string() ?: return ""
+                val xml = resp.readBounded().ifBlank { return "" }
                 val entryRegex = Regex("<entry>([\\s\\S]*?)</entry>")
                 val titleRegex = Regex("<title>([\\s\\S]*?)</title>")
                 val summaryRegex = Regex("<summary>([\\s\\S]*?)</summary>")
@@ -888,7 +889,7 @@ object AutonomousKnowledgeEngine {
 
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return ""
-                val body = resp.body?.string() ?: return ""
+                val body = resp.readBounded().ifBlank { return "" }
                 val items = JSONObject(body).optJSONObject("message")?.optJSONArray("items") ?: JSONArray()
                 if (items.length() == 0) return ""
                 val sb = StringBuilder()
@@ -949,7 +950,7 @@ object AutonomousKnowledgeEngine {
                 if (!resp.isSuccessful) {
                     return Result.failure(RuntimeException("HTTP ${resp.code}"))
                 }
-                val rawHtml = resp.body?.string().orEmpty()
+                val rawHtml = resp.readBounded(truncateOnOverflow = true)
                 if (rawHtml.isBlank()) {
                     return Result.failure(RuntimeException("Empty response body"))
                 }

@@ -2,6 +2,7 @@ package com.ayra.ai.app.search
 
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -86,7 +87,7 @@ class TavilySearchEngine(private val context: Context) {
                 throw IOException("Tavily Search API error: HTTP ${resp.code} ${resp.message}")
             }
 
-            val body = resp.body?.string() ?: throw IOException("Empty response from Tavily search.")
+            val body = resp.readBounded().ifBlank { throw IOException("Empty response from Tavily search.") }
             val json = JSONObject(body)
 
             val resultsArray = json.optJSONArray("results") ?: JSONArray()

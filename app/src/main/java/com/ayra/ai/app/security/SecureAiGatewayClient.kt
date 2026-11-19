@@ -3,6 +3,7 @@ package com.ayra.ai.app.security
 import android.content.Context
 import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -144,7 +145,7 @@ object SecureAiGatewayClient {
 
         runCatching {
             NetworkSecurityHelper.hardenedPooledClient.newCall(reqBuilder.build()).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
+                val raw = resp.readBounded()
                 if (!resp.isSuccessful) {
                     throw IllegalStateException("Backend gateway HTTP ${resp.code}: ${raw.take(250)}")
                 }

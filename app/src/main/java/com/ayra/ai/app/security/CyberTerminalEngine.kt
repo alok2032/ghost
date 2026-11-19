@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Process
 import android.os.SystemClock
 import androidx.compose.runtime.Immutable
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.ayra.ai.app.vpn.AyraVpnPrivacyController
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -594,7 +595,7 @@ object CyberTerminalEngine {
                 .header("User-Agent", "AyraAi-CVE-Lookup/1.0")
                 .build()
             client.newCall(req).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
+                val body = resp.readBounded()
                 if (!resp.isSuccessful || body.isBlank() || body == "null") {
                     return "[$cveId] Live CVE API returned HTTP ${resp.code} (not found or unavailable).\nReference: https://nvd.nist.gov/vuln/detail/$cveId"
                 }
@@ -756,7 +757,7 @@ object CyberTerminalEngine {
                 .build()
             quickClient.newCall(rdapReq).execute().use { resp ->
                 if (resp.isSuccessful) {
-                    val body = resp.body?.string().orEmpty()
+                    val body = resp.readBounded()
                     val json = JSONObject(body)
                     val ldhName = json.optString("ldhName", domain.uppercase(Locale.US))
                     val statusArr = json.optJSONArray("status")

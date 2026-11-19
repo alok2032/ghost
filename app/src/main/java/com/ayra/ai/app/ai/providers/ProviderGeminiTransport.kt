@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai.providers
 
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -121,11 +122,11 @@ internal object ProviderGeminiTransport {
             if (response.code == 429) throw ProviderError.RateLimited("Gemini quota exceeded.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.GEMINI)
             if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
+                val errBody = response.readBounded(truncateOnOverflow = true)
                 throw ProviderError.ServerError(response.code, errBody.ifBlank { response.message })
             }
 
-            val json = JSONObject(response.body?.string() ?: "")
+            val json = JSONObject(response.readBounded())
             val candidates = json.optJSONArray("candidates")
             if (candidates != null && candidates.length() > 0) {
                 val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
@@ -174,7 +175,7 @@ internal object ProviderGeminiTransport {
             if (response.code == 429) throw ProviderError.RateLimited("Gemini quota exceeded.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.GEMINI)
             if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
+                val errBody = response.readBounded(truncateOnOverflow = true)
                 throw ProviderError.ServerError(response.code, errBody.ifBlank { response.message })
             }
 
@@ -244,7 +245,7 @@ internal object ProviderGeminiTransport {
         val req = Request.Builder().url(url).header("x-goog-api-key", key).get().build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return
-            val root = JSONObject(resp.body?.string() ?: "")
+            val root = JSONObject(resp.readBounded())
             val arr = root.optJSONArray("models") ?: JSONArray()
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)

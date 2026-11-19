@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.Environment
 import android.os.StatFs
 import android.widget.Toast
+import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -367,10 +369,14 @@ fun DeviceAndUsageDashboardPanel(
                             scope.launch(Dispatchers.IO) {
                                 val (statusMsg, models) = runCatching {
                                     val base = ollamaHost.trim().trimEnd('/')
+                                    val check = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, base)
+                                    if (!check.allowed) {
+                                        return@runCatching (check.reason ?: "Blocked endpoint URL") to emptyList()
+                                    }
                                     val req = Request.Builder().url("$base/api/tags").get().build()
-                                    ExternalAiProviders.sharedFastWebClient.newCall(req).execute().use { resp ->
+                                    NetworkSecurityHelper.newClient(allowLanCleartext = true).newCall(req).execute().use { resp ->
                                         if (!resp.isSuccessful) return@use "HTTP ${resp.code}" to emptyList()
-                                        val json = JSONObject(resp.body?.string().orEmpty())
+                                        val json = JSONObject(resp.readBounded())
                                         val arr = json.optJSONArray("models") ?: return@use "Connected (0 models)" to emptyList()
                                         val names = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name")?.takeIf { n -> n.isNotBlank() } }
                                         "Connected • ${names.size} local model(s) loaded" to names

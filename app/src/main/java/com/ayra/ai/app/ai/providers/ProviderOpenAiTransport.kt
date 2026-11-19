@@ -3,6 +3,7 @@ package com.ayra.ai.app.ai.providers
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
@@ -149,10 +150,10 @@ internal object ProviderOpenAiTransport {
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.body?.string() ?: "")
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true))
             }
             if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
+                val errBody = response.readBounded(truncateOnOverflow = true)
                 if (errBody.contains("model_not_found", ignoreCase = true) ||
                     errBody.contains("does not exist", ignoreCase = true)
                 ) {
@@ -161,7 +162,7 @@ internal object ProviderOpenAiTransport {
                 throw ProviderError.ServerError(response.code, errBody.ifBlank { response.message })
             }
 
-            val json = JSONObject(response.body?.string() ?: "")
+            val json = JSONObject(response.readBounded())
             val choices = json.optJSONArray("choices")
             if (choices != null && choices.length() > 0) {
                 val message = choices.getJSONObject(0).optJSONObject("message")
@@ -224,12 +225,12 @@ internal object ProviderOpenAiTransport {
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.body?.string() ?: "")
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true))
             }
             if (!response.isSuccessful) {
-                throw ProviderError.ServerError(response.code, response.body?.string() ?: response.message)
+                throw ProviderError.ServerError(response.code, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
             }
-            val json = JSONObject(response.body?.string().orEmpty())
+            val json = JSONObject(response.readBounded())
             val choices = json.optJSONArray("choices") ?: return ExternalAiProviders.OpenAiToolTurnResponse()
             if (choices.length() == 0) return ExternalAiProviders.OpenAiToolTurnResponse()
             val message = choices.getJSONObject(0).optJSONObject("message") ?: return ExternalAiProviders.OpenAiToolTurnResponse()
@@ -288,10 +289,10 @@ internal object ProviderOpenAiTransport {
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.body?.string() ?: response.message)
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
             }
             if (!response.isSuccessful) {
-                val err = response.body?.string() ?: response.message
+                val err = response.readBounded(truncateOnOverflow = true)
                 throw ProviderError.ServerError(response.code, err.ifBlank { response.message })
             }
             val reader = BufferedReader(InputStreamReader(response.body?.byteStream() ?: return, StandardCharsets.UTF_8))
@@ -377,7 +378,7 @@ internal object ProviderOpenAiTransport {
         }
         client.newCall(reqBuilder.get().build()).execute().use { resp ->
             if (!resp.isSuccessful) return
-            val bodyStr = resp.body?.string()?.trim().orEmpty()
+            val bodyStr = resp.readBounded().trim()
             if (bodyStr.isBlank()) return
             val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: root.optJSONArray("models") ?: JSONArray()

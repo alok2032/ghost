@@ -6,7 +6,7 @@ AYRA AI enforces a unified Zero-Trust security architecture across all three AI 
 
 | Execution Plane | Components | Security Controls Enforced |
 |---|---|---|
-| **Plane 1: On-Device Local AI** | `OpenModelEngine`, `ComfyUiClient`, `ExternalAiProviders (LOCAL_OLLAMA)` | Zero external egress when **Local-Only Privacy Mode** is active; SSRF guard blocking metadata IPs and non-LAN cleartext (`validateLocalAiEndpointUrl`). |
+| **Plane 1: On-Device Local AI** | `OpenModelEngine`, `ComfyUiClient`, `ExternalAiProviders (LOCAL_OLLAMA)` | Zero external egress when **Local-Only Privacy Mode** is active; SSRF guard blocking metadata IPs and enforcing `network_security_config.xml` (cleartext `http://` loopback-only; LAN endpoints require `https://` via Tailscale/Caddy/mkcert). |
 | **Plane 2: AYRA Node.js / TypeScript Backend (`/backend`)** | `app.ts`, `auth.ts`, `ssrf.ts`, `schemas.ts`, `aiGateway.ts`, `codeSandbox.ts` | Firebase ID token (`checkRevoked=true`) + Firebase App Check enforcement; strict `.strict()` Zod schemas; Helmet HSTS/CSP; exact-origin CORS; DNS-rebinding & IPv6-aware SSRF defense; per-UID rate limiting; server-side credential isolation; `/api/v1/code/run` fails closed (`HTTP 503`, `node:vm` removed) unless `SANDBOX_EXECUTOR_URL` + `SANDBOX_EXECUTOR_TOKEN` are configured. |
 | **Plane 3: External AI Providers & Firebase Cloud** | `SecureAiGatewayClient`, `FirebaseAiEngine`, `ProviderPool`, `AyraCloudRepository`, `firestore.rules` | Strict consent & Local-Only policy gating; outbound PII/secret redaction when Privacy Mode is active; App Check status explicitly tracked via `AppCheckStatusRegistry` (`DEBUG_ACTIVE`, `RELEASE_RECAPTCHA_ACTIVE`, `MISSING_RELEASE_CONFIG`); E2EE ciphertext envelopes in Firestore; owner-only Firestore rules. |
 

@@ -5,6 +5,7 @@ import com.ayra.ai.app.AyraApplication
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.ayra.ai.app.security.SecureAiGatewayClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -877,7 +878,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                     .build()
 
                 httpClient.newCall(req).execute().use { resp ->
-                    val raw = resp.body?.string().orEmpty()
+                    val raw = resp.readBounded()
                     val latency = (System.currentTimeMillis() - start).coerceAtLeast(1L)
                     if (resp.isSuccessful && raw.isNotBlank()) {
                         val text = runCatching { JSONObject(raw).optString("text", "") }.getOrDefault("")

@@ -284,32 +284,54 @@ object AyraPreferences {
         )
     }
 
-    // --- Provider Keys (Hardware Keystore Encrypted) ---
+    // --- Provider Keys (Hardware Keystore Consolidated SSOT: SecureKeyStore) ---
+
+    private fun readSecretWithLegacyMigration(
+        context: Context,
+        secureKeyName: String,
+        legacyEncPrefKey: String
+    ): String {
+        val current = SecureKeyStore.getSecret(context, secureKeyName)
+        if (current.isNotBlank()) return current
+        val legacyPrefs = EncryptedPreferences(context)
+        val legacy = legacyPrefs.getString(legacyEncPrefKey)
+        if (legacy.isNotBlank()) {
+            SecureKeyStore.putSecret(context, secureKeyName, legacy)
+            legacyPrefs.remove(legacyEncPrefKey)
+        }
+        return legacy
+    }
+
+    private fun writeSecretOnly(
+        context: Context,
+        secureKeyName: String,
+        legacyEncPrefKey: String,
+        value: String,
+        markExternalConsent: Boolean = true
+    ) {
+        SecureKeyStore.putSecret(context, secureKeyName, value)
+        EncryptedPreferences(context).remove(legacyEncPrefKey)
+        if (markExternalConsent && value.isNotBlank()) {
+            setExternalAiConsent(context, true)
+        }
+    }
 
     fun getEffectiveGeminiKey(context: Context?): String {
         if (context == null) return ""
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_GEMINI).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_GEMINI)
-        }
+        return readSecretWithLegacyMigration(context, SecureKeyStore.KEY_GEMINI, EncryptedPreferences.KEY_GEMINI)
     }
 
     fun getEffectiveOpenRouterKey(context: Context?): String {
         if (context == null) return ""
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_OPENROUTER).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_OPENROUTER)
-        }
+        return readSecretWithLegacyMigration(context, SecureKeyStore.KEY_OPENROUTER, EncryptedPreferences.KEY_OPENROUTER)
     }
 
     fun setCustomGeminiKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_GEMINI, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_GEMINI, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_GEMINI, EncryptedPreferences.KEY_GEMINI, key)
     }
 
     fun setCustomOpenRouterKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_OPENROUTER, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_OPENROUTER, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_OPENROUTER, EncryptedPreferences.KEY_OPENROUTER, key)
     }
 
     fun getCustomGeminiKey(context: Context): String = getEffectiveGeminiKey(context)
@@ -317,64 +339,43 @@ object AyraPreferences {
     fun getCustomOpenRouterKey(context: Context): String = getEffectiveOpenRouterKey(context)
 
     // NVIDIA NIM Multi-Model Encrypted Keys
-    fun getNvidiaKey(context: Context): String {
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_NVIDIA).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_NVIDIA)
-        }
-    }
+    fun getNvidiaKey(context: Context): String =
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_NVIDIA, EncryptedPreferences.KEY_NVIDIA)
 
     fun setNvidiaKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_NVIDIA, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_NVIDIA, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_NVIDIA, EncryptedPreferences.KEY_NVIDIA, key)
     }
 
-    fun getNvidiaMinimaxKey(context: Context): String {
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_NVIDIA_MINIMAX).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_NVIDIA_MINIMAX)
-        }.ifBlank { getNvidiaKey(context) }
-    }
+    fun getNvidiaMinimaxKey(context: Context): String =
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_NVIDIA_MINIMAX, EncryptedPreferences.KEY_NVIDIA_MINIMAX)
+            .ifBlank { getNvidiaKey(context) }
 
     fun setNvidiaMinimaxKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_NVIDIA_MINIMAX, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_NVIDIA_MINIMAX, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_NVIDIA_MINIMAX, EncryptedPreferences.KEY_NVIDIA_MINIMAX, key)
     }
 
-    fun getNvidiaGlmKey(context: Context): String {
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_NVIDIA_GLM).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_NVIDIA_GLM)
-        }.ifBlank { getNvidiaKey(context) }
-    }
+    fun getNvidiaGlmKey(context: Context): String =
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_NVIDIA_GLM, EncryptedPreferences.KEY_NVIDIA_GLM)
+            .ifBlank { getNvidiaKey(context) }
 
     fun setNvidiaGlmKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_NVIDIA_GLM, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_NVIDIA_GLM, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_NVIDIA_GLM, EncryptedPreferences.KEY_NVIDIA_GLM, key)
     }
 
-    fun getNvidiaMuseKey(context: Context): String {
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_NVIDIA_MUSE).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_NVIDIA_MUSE)
-        }.ifBlank { getNvidiaKey(context) }
-    }
+    fun getNvidiaMuseKey(context: Context): String =
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_NVIDIA_MUSE, EncryptedPreferences.KEY_NVIDIA_MUSE)
+            .ifBlank { getNvidiaKey(context) }
 
     fun setNvidiaMuseKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_NVIDIA_MUSE, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_NVIDIA_MUSE, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_NVIDIA_MUSE, EncryptedPreferences.KEY_NVIDIA_MUSE, key)
     }
 
-    fun getNvidiaGemmaKey(context: Context): String {
-        return SecureKeyStore.getSecret(context, SecureKeyStore.KEY_NVIDIA_GEMMA).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_NVIDIA_GEMMA)
-        }.ifBlank { getNvidiaKey(context) }
-    }
+    fun getNvidiaGemmaKey(context: Context): String =
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_NVIDIA_GEMMA, EncryptedPreferences.KEY_NVIDIA_GEMMA)
+            .ifBlank { getNvidiaKey(context) }
 
     fun setNvidiaGemmaKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_NVIDIA_GEMMA, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_NVIDIA_GEMMA, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_NVIDIA_GEMMA, EncryptedPreferences.KEY_NVIDIA_GEMMA, key)
     }
 
     // Additional Major Providers
@@ -456,69 +457,46 @@ object AyraPreferences {
     }
 
     fun getGroqKey(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_GROQ).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_GROQ)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_GROQ, EncryptedPreferences.KEY_GROQ)
 
     fun setGroqKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_GROQ, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_GROQ, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_GROQ, EncryptedPreferences.KEY_GROQ, key)
     }
 
     fun getHuggingFaceKey(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_HUGGINGFACE).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_HUGGINGFACE)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_HUGGINGFACE, EncryptedPreferences.KEY_HUGGINGFACE)
 
     fun setHuggingFaceKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_HUGGINGFACE, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_HUGGINGFACE, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_HUGGINGFACE, EncryptedPreferences.KEY_HUGGINGFACE, key)
     }
 
     fun getGitHubModelsKey(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_GITHUB_MODELS).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_GITHUB_MODELS)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_GITHUB_MODELS, EncryptedPreferences.KEY_GITHUB_MODELS)
 
     fun setGitHubModelsKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_GITHUB_MODELS, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_GITHUB_MODELS, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_GITHUB_MODELS, EncryptedPreferences.KEY_GITHUB_MODELS, key)
     }
 
     fun getCerebrasKey(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_CEREBRAS).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_CEREBRAS)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_CEREBRAS, EncryptedPreferences.KEY_CEREBRAS)
 
     fun setCerebrasKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_CEREBRAS, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_CEREBRAS, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_CEREBRAS, EncryptedPreferences.KEY_CEREBRAS, key)
     }
 
     fun getSambaNovaKey(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_SAMBANOVA).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_SAMBANOVA)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_SAMBANOVA, EncryptedPreferences.KEY_SAMBANOVA)
 
     fun setSambaNovaKey(context: Context, key: String) {
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_SAMBANOVA, key)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_SAMBANOVA, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
+        writeSecretOnly(context, SecureKeyStore.KEY_SAMBANOVA, EncryptedPreferences.KEY_SAMBANOVA, key)
     }
 
     fun getComfyUiUrl(context: Context): String =
-        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_COMFYUI_URL).ifBlank {
-            EncryptedPreferences(context).getString(EncryptedPreferences.KEY_COMFYUI_URL)
-        }
+        readSecretWithLegacyMigration(context, SecureKeyStore.KEY_COMFYUI_URL, EncryptedPreferences.KEY_COMFYUI_URL)
 
     fun setComfyUiUrl(context: Context, url: String) {
         val clean = url.trim().trimEnd('/')
-        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_COMFYUI_URL, clean)
-        EncryptedPreferences(context).putString(EncryptedPreferences.KEY_COMFYUI_URL, clean)
+        writeSecretOnly(context, SecureKeyStore.KEY_COMFYUI_URL, EncryptedPreferences.KEY_COMFYUI_URL, clean, markExternalConsent = false)
     }
 
     fun hasAnyCustomKeyConfigured(context: Context): Boolean {
@@ -578,14 +556,29 @@ object AyraPreferences {
         return resolveSafePersona(context, stored)
     }
 
+    private fun migrateLegacyTierId(raw: String): String {
+        val clean = raw.trim().lowercase(java.util.Locale.ROOT)
+        return when (clean) {
+            "godmode" -> com.ayra.ai.app.ai.providers.ModelTier.SECURITY_RESEARCH.id
+            "qwen_uncensored" -> com.ayra.ai.app.ai.providers.ModelTier.OPEN_WEIGHTS.id
+            else -> raw
+        }
+    }
+
     fun saveModelTier(context: Context, tier: String) {
-        val canonical = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(tier)
+        val canonical = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(migrateLegacyTierId(tier))
         getPrefs(context).edit().putString(KEY_SELECTED_MODEL_TIER, canonical).apply()
     }
 
     fun getSavedModelTier(context: Context): String {
-        val stored = getPrefs(context).getString(KEY_SELECTED_MODEL_TIER, "auto") ?: "auto"
-        return com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(stored)
+        val prefs = getPrefs(context)
+        val stored = prefs.getString(KEY_SELECTED_MODEL_TIER, "auto") ?: "auto"
+        val migrated = migrateLegacyTierId(stored)
+        val canonical = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(migrated)
+        if (migrated != stored) {
+            prefs.edit().putString(KEY_SELECTED_MODEL_TIER, canonical).apply()
+        }
+        return canonical
     }
 
     fun saveSelectedProvider(context: Context, providerId: String) {

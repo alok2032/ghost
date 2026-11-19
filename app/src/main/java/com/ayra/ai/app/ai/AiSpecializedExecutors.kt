@@ -9,6 +9,7 @@ import com.ayra.ai.app.ai.superpowers.AyraSuperpowersEngine
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.StorageHelper
 import com.ayra.ai.app.search.TavilySearchEngine
+import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -400,7 +401,7 @@ internal class AiSpecializedExecutors(
         return try {
             httpClient.newCall(reqBuilder.build()).execute().use { response ->
                 if (response.isSuccessful) {
-                    val json = JSONObject(response.body?.string() ?: "")
+                    val json = JSONObject(response.readBounded())
                     val candidates = json.optJSONArray("candidates")
                     if (candidates != null && candidates.length() > 0) {
                         val contentObj = candidates.getJSONObject(0).optJSONObject("content")
@@ -453,7 +454,7 @@ internal class AiSpecializedExecutors(
         return try {
             httpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    val json = JSONObject(response.body?.string() ?: "")
+                    val json = JSONObject(response.readBounded())
                     val choices = json.optJSONArray("choices")
                     if (choices != null && choices.length() > 0) {
                         return choices.getJSONObject(0).optJSONObject("message")?.optString("content", "") ?: ""

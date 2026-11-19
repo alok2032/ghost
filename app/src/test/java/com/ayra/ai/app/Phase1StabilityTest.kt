@@ -136,9 +136,12 @@ class Phase1StabilityTest {
 
         // Legacy unsafe tier strings must be migrated in AyraPreferences cleanly
         AyraPreferences.saveModelTier(context, "open_weights")
-        context.getSharedPreferences("ayra_ai_prefs", android.content.Context.MODE_PRIVATE)
+        context.getSharedPreferences("ayra_ai_user_prefs", android.content.Context.MODE_PRIVATE)
             .edit().putString("selected_model_tier", "godmode").commit()
         assertEquals("security_research", AyraPreferences.getSavedModelTier(context))
+        context.getSharedPreferences("ayra_ai_user_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putString("selected_model_tier", "qwen_uncensored").commit()
+        assertEquals("open_weights", AyraPreferences.getSavedModelTier(context))
 
         assertEquals(AiRoutingMode.OPEN_WEIGHTS, AiRoutingMode.fromId("open_weights"))
         assertEquals(AiRoutingMode.AUTO, AiRoutingMode.fromId("balanced"))

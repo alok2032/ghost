@@ -11,4 +11,5 @@
     <files-path name="code_projects" path="code_projects" />
     <files-path name="project_zips" path="project_zips" />
     <files-path name="saved_attachments" path="saved_attachments" />
+    <files-path name="files_exports" path="exports" />
 </paths>

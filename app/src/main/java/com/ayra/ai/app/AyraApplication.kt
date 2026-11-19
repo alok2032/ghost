@@ -38,9 +38,10 @@ class AyraApplication : Application() {
             )
         }
 
-        // Seed encrypted AI provider vault & verify Firebase config off the main thread
+        // Seed encrypted AI provider vault, apply cached catalog overrides & verify Firebase config off the main thread
         appScope.launch {
             ensureActiveAiKeysSeeded(this@AyraApplication)
+            com.ayra.ai.app.ai.providers.ModelCatalog.loadCachedRemoteOverrides(this@AyraApplication)
             val fbAudit = FirebaseConfigConsistencyValidator.validate(this@AyraApplication)
             if (!fbAudit.valid) {
                 SecurityAuditLogger.log(

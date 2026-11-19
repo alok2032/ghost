@@ -31,8 +31,8 @@ object CrisisDetector {
 
     // Bengali explicit self-harm / suicidal intent patterns
     private val bengaliCrisisRegexes = listOf(
-        Regex("(?:\\b|\\s|^)(?:আত্মহত্যা|আত্মঘাতী|মরে\\s*যেতে\\s*চাই|বাঁচতে\\s*চাই\\s*না|জীবন\\s*শেষ\\s*কর|গলায়\\s*দড়ি|বিষ\\s*খেয়ে)(?:\\b|\\s|$)"),
-        Regex("(?i)(?:\\b|\\s|^)(?:মরতে\\s*চাই|নিজেকে\\s*শেষ\\s*কর|suicide|suicidal)(?:\\b|\\s|$)")
+        Regex("(?:\\s|^)(?:আত্মহত্যা|আত্মঘাতী|মরে\\s*যেতে\\s*চাই|বাঁচতে\\s*চাই\\s*না|জীবন\\s*শেষ\\s*কর[\\u0980-\\u09FF]*|গলায়\\s*দড়ি|বিষ\\s*খেয়ে)(?:\\s|[।!?,.]|$)"),
+        Regex("(?i)(?:\\b|\\s|^)(?:মরতে\\s*চাই|নিজেকে\\s*শেষ\\s*কর[\\u0980-\\u09FF]*|suicide|suicidal)(?:\\b|\\s|[।!?,.]|$)")
     )
 
     // Banglish, Romanized Hindi, & Devanagari Hindi patterns

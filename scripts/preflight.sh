@@ -204,6 +204,69 @@ else
   ok "zero stray .cjs/.sh/.ts/.js scripts in app/src/main/assets"
 fi
 
+# ---------------------------------------------------------------- 10
+section "10. Bounded HTTP Response Reads & Redirect SSRF Guard (P12)"
+RAW_BODY_READS=$(MAIN_KT | grep -v 'NetworkSecurityHelper\.kt' | xargs grep -nE '\.body\?\.(string|bytes)\(' 2>/dev/null || true)
+if [ -n "$RAW_BODY_READS" ]; then
+  fail "unbounded resp.body?.string()/bytes() found outside NetworkSecurityHelper.kt:"
+  echo "$RAW_BODY_READS" | sed 's/^/        /' | cut -c1-170
+else
+  ok "zero unbounded .body?.string()/.bytes() calls outside NetworkSecurityHelper.kt"
+fi
+
+# ---------------------------------------------------------------- 11
+section "11. Network Security Config & Cleartext Parity (P11)"
+NSC="app/src/main/res/xml/network_security_config.xml"
+if grep -q 'cleartextTrafficPermitted="false"' "$NSC" 2>/dev/null && \
+   grep -q 'localhost' "$NSC" 2>/dev/null && \
+   grep -q '127.0.0.1' "$NSC" 2>/dev/null; then
+  ok "network_security_config.xml enforces HTTPS default with loopback-only cleartext"
+else
+  fail "network_security_config.xml missing cleartextTrafficPermitted=\"false\" base-config or loopback domains"
+fi
+
+# ---------------------------------------------------------------- 12
+section "12. Room Schema Export Verification (P13)"
+ROOM_VER=$(grep -oE 'version\s*=\s*[0-9]+' app/src/main/java/com/ayra/ai/app/data/ChatDatabase.kt | head -1 | sed 's/.*= *//')
+SCHEMA_FILE="app/schemas/com.ayra.ai.app.data.ChatDatabase/${ROOM_VER}.json"
+if [ -n "$ROOM_VER" ] && [ -f "$SCHEMA_FILE" ]; then
+  ok "committed Room schema JSON exists ($SCHEMA_FILE)"
+else
+  fail "missing committed Room schema JSON ($SCHEMA_FILE)"
+fi
+
+# ---------------------------------------------------------------- 13
+section "13. Prompt Boundary, WebView CSP & Keystore Consolidation (P9, P10, P14)"
+if grep -q 'wrappedUntrustedContent' app/src/main/java/com/ayra/ai/app/security/AiToolSecurityGuard.kt 2>/dev/null && \
+   grep -q 'SPOOFED_TAG_REGEX' app/src/main/java/com/ayra/ai/app/security/AiToolSecurityGuard.kt 2>/dev/null && \
+   grep -q 'ZERO_WIDTH_OR_BIDI_REGEX' app/src/main/java/com/ayra/ai/app/security/AiToolSecurityGuard.kt 2>/dev/null; then
+  ok "AiToolSecurityGuard enforces unconditional boundary wrapping + NFKC/zero-width normalization"
+else
+  fail "AiToolSecurityGuard missing unconditional wrapping or zero-width normalization"
+fi
+
+if grep -q 'taintedByUntrustedData' app/src/main/java/com/ayra/ai/app/ai/agent/AgentCore.kt 2>/dev/null; then
+  ok "AgentCore enforces untrusted-data taint and exfiltration guard"
+else
+  fail "AgentCore missing taintedByUntrustedData exfiltration guard"
+fi
+
+if grep -q 'allowFileAccess = false' app/src/main/java/com/ayra/ai/app/ui/components/ThreeDModelCard.kt 2>/dev/null && \
+   grep -q 'blockNetworkLoads = true' app/src/main/java/com/ayra/ai/app/ui/components/ThreeDModelCard.kt 2>/dev/null && \
+   grep -q 'Content-Security-Policy' app/src/main/java/com/ayra/ai/app/ui/components/ThreeDModelCard.kt 2>/dev/null; then
+  ok "ThreeDModelCard WebView hardened with CSP and network/file lockdown"
+else
+  fail "ThreeDModelCard WebView missing CSP or file/network lockdown settings"
+fi
+
+DUAL_WRITES=$(grep -nE 'EncryptedPreferences\(context\)\.putString' app/src/main/java/com/ayra/ai/app/data/AyraPreferences.kt 2>/dev/null || true)
+if [ -n "$DUAL_WRITES" ]; then
+  fail "AyraPreferences still dual-writes API keys to EncryptedPreferences:"
+  echo "$DUAL_WRITES" | sed 's/^/        /'
+else
+  ok "AyraPreferences consolidates API key writes exclusively to SecureKeyStore"
+fi
+
 echo
 if [ "$FAILS" -gt 0 ]; then
   echo "PREFLIGHT: $FAILS FAIL(s), $WARNS WARN(s)."
