@@ -21,16 +21,16 @@ Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 
 |---|---|---|
 | `ai/UnifiedAiEngine.kt` | 596 | Modularized AI facade delegating craft generation (`AiCraftGenerators.kt`), streaming provider dispatch, persona prompts, and consent gating |
 | `ai/AyraOrchestrator.kt` | 515 | Streaming Flow (`AyraEvent`) pipeline: CrisisDetector -> Automation `ProposedAction` -> `AyraIntentClassifier` -> `DefaultAgentCore` / `ProviderPool` / `UnifiedAiEngine` |
-| `ai/agent/AgentCore.kt` & `AgentToolRegistry.kt` | 568 / 534 | Bounded multi-step tool agent (21 tools, `HARD_MAX_STEPS = 12`, `STEP_TIMEOUT_MS = 25_000L`, `MAX_PARALLEL_READONLY_TOOLS = 3`, confirmation tools stay `StepStatus.PENDING` via `ToolCallProposed`, `CancellationException` propagated) |
-| `ai/agents/AyraAgentOrchestrator.kt` | 366 | 12-domain intent classifier + Banglish detector + `computeVerifiedConfidence(...)` (returns `null` / `"Unverified"` when zero citations/tools/quorum evidence) |
+| `ai/agent/AgentCore.kt` & `AgentToolRegistry.kt` | — | Bounded multi-step tool agent (21 tools, `HARD_MAX_STEPS = 12`, `STEP_TIMEOUT_MS = 25_000L`, `MAX_PARALLEL_READONLY_TOOLS = 3`, 8-state `AgentActionLifecycleState`, pre-dispatch `ToolArgumentValidator`, prompt-injection wrapping on both `documentText` and tool outputs, confirmation tools stay `StepStatus.PENDING` via `ToolCallProposed`, `CancellationException` propagated) |
+| `ai/agents/AyraAgentOrchestrator.kt` | — | 12-domain intent classifier + Banglish detector + `VerificationReport` (`evidenceCoverage`, `sourceReliability`, `citationValidity`, `uncertaintyNotes`, nullable `confidenceScore`) |
 | `ai/AiComparisonEngine.kt` | 237 | Parallel multi-model Arena runner with latency measurement & synthesis |
 | `ai/FirebaseAiEngine.kt` | 421 | Firebase AI Logic (`Firebase.ai`) wrapper using `gemini-3.8-flash`, `gemini-4-argon`, `gemini-3.5-flash-lite`, `gemini-nano-banana-2.1` |
-| `ai/providers/ExternalAiProviders.kt` + transports (`ProviderOpenAiTransport.kt`, `ProviderGeminiTransport.kt`, `ProviderAnthropicAndFreeTransport.kt`, `AiProviderModels.kt`) | 901 + 1,394 | Modular HTTP clients (SSE streaming + sync) using pooled `NetworkSecurityHelper` clients across OpenRouter, Groq, Cerebras, SambaNova, NVIDIA NIM, HuggingFace, DeepSeek, Ollama, Pollinations |
-| `ai/providers/ProviderPool.kt` | 884 | Bounded cache, priority selection, failover, Local-Only Privacy gate |
-| `ai/providers/ModelCatalog.kt` & `AiModelRegistry.kt` | 639 / 661 | Single-source-of-truth model metadata with explicit `ModelVerificationStatus` (`VERIFIED_PLATFORM`, `VERIFIED_LIVE`, `CONFIGURED`, `UNVERIFIED`), live `/models` discovery, and fallback chains |
+| `ai/providers/ExternalAiProviders.kt` + transports (`ProviderOpenAiTransport.kt`, `ProviderGeminiTransport.kt`, `ProviderAnthropicAndFreeTransport.kt`, `AiProviderModels.kt`) | — | Modular HTTP clients (SSE streaming + sync) using pooled `NetworkSecurityHelper` clients + validated LAN checks across OpenRouter, Groq, Cerebras, SambaNova, NVIDIA NIM, HuggingFace, DeepSeek, Ollama, Pollinations |
+| `ai/providers/ProviderPool.kt` | — | Bounded cache, priority selection, failover, Local-Only Privacy gate |
+| `ai/providers/ModelCatalog.kt` & `AiModelRegistry.kt` | — | Single-source-of-truth model metadata with `ModelVerificationStatus` (`VERIFIED_PLATFORM`, `VERIFIED_LIVE`, `CONFIGURED`, `RATE_LIMITED`, `RETIRED`, `UNAVAILABLE`, `UNVERIFIED`), provenance (`verifiedAtMs`, `verifiedByProvider`, `verificationMethod`, `lastSuccessMs`, `expiresAtMs`, `failureReason`, `pricingVerified`), live `/models` discovery, and fallback chains |
 | `ai/providers/ProviderCircuitBreaker.kt` & `AiUsageTracker.kt` | 156 / 285 | Failure cooldown circuit breaker and persistent provider usage metrics |
 | `ai/AyraIntentClassifier.kt` | — | Regex/slash-command classifier (`AyraToolIntent`) |
-| `ai/AutonomousKnowledgeEngine.kt` | 1086 | Multi-step research / Wikipedia / CVE / knowledge aggregation |
+| `ai/AutonomousKnowledgeEngine.kt` | — | Multi-step research / Wikipedia / CVE / knowledge aggregation with synchronized bounded 250-entry LRU cache (evicts oldest entries cleanly without wipe-to-zero cliffs) |
 | `ai/BuildYourOwnXKnowledgeEngine.kt` | 848 | Curated engineering/architecture tutorial corpus |
 | `ai/GlobalWebKnowledgeGateway.kt` | 287 | External web/wiki gateway guarded by explicit consent & SSRF checks |
 | `ai/PromptQualityAnalyzer.kt` | — | Heuristic prompt clarity/quality scorer |
@@ -56,7 +56,7 @@ Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 
 |---|---|---|
 | `search/TavilySearchEngine.kt` | — | Web search client with SSRF/URL validation |
 | `ai/rag/DocumentRagEngine.kt` | — | Document chunking, keyword + vector retrieval for uploaded files |
-| `ai/rag/VectorKnowledgeRepository.kt` & `LocalVectorEmbedder.kt` | 621 / — | Room-backed vector index & local hash/TF-IDF embeddings |
+| `ai/rag/VectorKnowledgeRepository.kt` & `LocalVectorEmbedder.kt` | — | Room-backed vector index with pluggable `EmbeddingProvider` / `SemanticEmbeddingAdapter` and automatic `embeddingModelId` + `embeddingFingerprint` mismatch reindexing |
 | `ai/rag/CuratedDarkDeepKnowledgeCorpus.kt` | — | Curated offline cybersecurity defensive knowledge corpus |
 | `voice/VoiceAssistantManager.kt` | 774 | Speech recognition & TTS coordinator (mic/TTS lifecycle hardened) |
 | `voice/ElevenLabsVoiceEngine.kt` | — | ElevenLabs neural voice synthesis client |
@@ -70,7 +70,7 @@ Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 
 ## 4. Data Persistence, Cloud & Device Automation
 | File | Lines | Responsibility |
 |---|---|---|
-| `data/ChatDatabase.kt` | 347 | SQLCipher-encrypted Room database (`schema v9`, migrations `4->5->6->7->8->9`, fail-closed wrapped passphrase) |
+| `data/ChatDatabase.kt` | — | SQLCipher-encrypted Room database (`schema v10`, migrations `4->5->6->7->8->9->10`, fail-closed wrapped passphrase) |
 | `data/ChatDao.kt`, `ChatSessionDao.kt`, `GitHubPluginDao.kt`, `ScheduledTaskDao.kt`, `VectorKnowledgeDao.kt`, `AyraWorkspaceDao.kt`, `LongTermMemoryDao.kt` | — | Room DAOs |
 | `data/ChatMessage.kt`, `ChatSession.kt`, `InstalledGitHubPlugin.kt`, `ScheduledTask.kt`, `KnowledgeDocument.kt`, `VectorKnowledgeEntities.kt`, `AyraWorkspaceEntities.kt`, `LongTermMemoryEntity.kt` | — | Room entities |
 | `data/ChatRepository.kt` | — | Session & message repository (Room + optional encrypted Firestore sync) |
@@ -92,9 +92,11 @@ Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 
 | `security/EncryptedPreferences.kt` | — | AES-GCM encrypted SharedPreferences with synchronous `.commit()` |
 | `security/SecureKeyStore.kt` | — | Provider API key storage backed by Keystore |
 | `security/EncryptedVaultStorage.kt` | 293 | `AYRAVLT1` AEAD file vault with canonical path confinement & temp wipe |
-| `security/AyraE2eeEngine.kt` | 532 | P-256 ECDH + HKDF-SHA256 device-to-device E2EE + multi-epoch revocation |
+| `security/AyraE2eeEngine.kt` | — | P-256 ECDH + HKDF-SHA256 device-to-device E2EE + persisted encrypted replay watermarks, strict IV/mode check & multi-epoch revocation |
 | `security/BiometricAuthManager.kt` & `VaultLockManager.kt` | — | `BiometricPrompt` `CryptoObject` binding & auto-lock state machine |
-| `security/NetworkSecurityHelper.kt` | 238 | TLS 1.3/1.2 OkHttpClient, DNS/IPv4/IPv6 SSRF guard, LAN endpoint allowlist, SPKI pinning builder |
+| `security/NetworkSecurityHelper.kt` | — | TLS 1.3/1.2 OkHttpClient, fail-closed DNS, IPv4/IPv4-mapped IPv6/NAT64/6to4/Teredo/ULA SSRF guard, validated-IP binding `PinnedResolvedDns`, redirect validation, LAN endpoint allowlist, SPKI pinning builder |
+| `security/FirebaseConfigConsistencyValidator.kt` | — | Validates `google-services.json` vs `firebase_applet_config.xml` alignment and blocks retired Firebase project IDs |
+| `security/AyraDiagnosticsEngine.kt` | — | Bounded ring-buffer latency/p95/error telemetry with automatic secret redaction (`AIza`, `sk-proj-`, `ghp_`, Bearer tokens) and JSON export |
 | `security/SecureAiGatewayClient.kt` | — | Authenticated client for `/backend` using Firebase ID Token + App Check header |
 | `security/AiToolSecurityGuard.kt` | — | Prompt-injection, dangerous-tool rate limit & schema verification guard |
 | `security/CyberTerminalEngine.kt` | 824 | Sandbox FS + safe diagnostic probes (`ping`, `traceroute`, `dig`, `curl`, `cve`, `owasp`, `nmap`) |
@@ -114,7 +116,7 @@ Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 
 | `ui/components/ProviderKeysSection.kt` | 955 | Keystore-backed API key management, live ping, model catalog controls |
 | `ui/components/ThreeDModelCard.kt` & `SolarSystem3DCanvas.kt` | 745 / 638 | Interactive 3D mesh & Canvas views |
 | `ui/screens/SecurityCenterScreen.kt` & `SecurityCenterComponents.kt` | 666 / — | Vault posture, E2EE devices, HMAC audit log, erasure UI |
-| `ui/screens/PromptEngineeringScreen.kt` & `DiagnosticsToolsScreen.kt` | 585 / 537 | Prompt analyzer & terminal/diagnostics UI |
+| `ui/screens/PromptEngineeringScreen.kt`, `DiagnosticsToolsScreen.kt` & `ui/components/AyraDiagnosticsSection.kt` | — | Prompt analyzer, terminal probes, and live secret-redacted p95/error diagnostics panel |
 | `ui/screens/ProjectsAndAssistantsScreen.kt` & `ModelsArenaScreen.kt` | 537 / 499 | Workspaces, custom personas, `ModelVerificationStatus` badges & Model Comparison Arena |
 | `ui/screens/AuthScreen.kt`, `VaultLockScreen.kt`, `SettingsAppearanceScreen.kt`, `DataAnalysisWorkspaceScreen.kt` | 266–284 | Sign-in, biometric lock, theming, CSV/JSON workspace |
 | `ui/components/*` | — | `ActionConfirmationCard`, `RichMarkdownView`, `SongPlayerCard`, `VideoPlayerCard`, `PdfDocumentDownloadCard`, `CyberTerminalCard`, `GitHubPluginCard`, `VoiceCommandOverlay`, `ChatSessionsSheet` |

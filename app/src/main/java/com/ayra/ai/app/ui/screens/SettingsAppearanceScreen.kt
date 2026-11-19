@@ -1,5 +1,7 @@
 package com.ayra.ai.app.ui.screens
 
+import java.util.Locale
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -193,7 +195,7 @@ fun SettingsAppearanceScreen(
 
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Font Scale: ${String.format("%.2fx", fontScale)}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Font Scale: ${String.format(Locale.US, "%.2fx", fontScale)}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(0.88f to "Small", 1.0f to "Default", 1.12f to "Large", 1.24f to "XL").forEach { (sc, label) ->
                                 FilterChip(
@@ -250,7 +252,7 @@ fun SettingsAppearanceScreen(
                     Column(modifier = Modifier.padding(uiConfig.bubblePaddingDp)) {
                         Text("Live Bubble Preview", color = uiConfig.accentColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(4.dp))
-                        Text("Theme: $themeMode • Density: $uiDensity • Font: ${String.format("%.2fx", fontScale)}", style = MaterialTheme.typography.bodyMedium)
+                        Text("Theme: $themeMode • Density: $uiDensity • Font: ${String.format(Locale.US, "%.2fx", fontScale)}", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

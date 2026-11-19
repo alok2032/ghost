@@ -1,6 +1,7 @@
 package com.ayra.ai.app.ui.screens
 
 import android.widget.Toast
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -186,7 +187,7 @@ fun DataAnalysisWorkspaceScreen(
                         Text("${col.name} (${if (col.isNumeric) "Numeric" else "Text"} • n=${col.nonEmptyCount}, missing=${col.missingCount})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         if (col.isNumeric) {
                             Text(
-                                String.format("min=%.2f • mean=%.2f • median=%.2f • max=%.2f • std=%.2f", col.min ?: 0.0, col.mean ?: 0.0, col.median ?: 0.0, col.max ?: 0.0, col.stdDev ?: 0.0),
+                                String.format(Locale.US, "min=%.2f • mean=%.2f • median=%.2f • max=%.2f • std=%.2f", col.min ?: 0.0, col.mean ?: 0.0, col.median ?: 0.0, col.max ?: 0.0, col.stdDev ?: 0.0),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

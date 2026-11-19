@@ -74,14 +74,9 @@ fun configureAppCheck(
             return
         }
 
-        val siteKey = recaptchaSiteKeyOverride?.trim() ?: run {
-            val resId = appContext.resources.getIdentifier(
-                RECAPTCHA_SITE_KEY_RES,
-                "string",
-                appContext.packageName
-            )
-            if (resId != 0) appContext.getString(resId).trim() else ""
-        }
+        val siteKey = recaptchaSiteKeyOverride?.trim() ?: runCatching {
+            appContext.getString(R.string.recaptcha_site_key).trim()
+        }.getOrDefault("")
         if (siteKey.isNotEmpty()) {
             appCheck.installAppCheckProviderFactory(
                 RecaptchaAppCheckProviderFactory.getInstance(siteKey)

@@ -17,6 +17,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.ayra.ai.app.vpn.AyraVpnPrivacyController
+import java.util.Locale
 import java.util.regex.Pattern
 
 data class AutomationResult(
@@ -657,7 +658,7 @@ class DeviceAutomationController(private val context: Context) {
 
         return try {
             context.startActivity(intent)
-            val formatted = String.format("%02d:%02d", hour, minute)
+            val formatted = String.format(Locale.US, "%02d:%02d", hour, minute)
             AutomationResult(
                 executed = true,
                 feedbackMessage = "⏰ Alarm set for $formatted! / $formatted এ এলার্ম সক্রিয় করা হয়েছে।",
@@ -815,21 +816,24 @@ class DeviceAutomationController(private val context: Context) {
             }
         }
 
-        // Search installed packages
+        // Search launcher activities (Play-compliant via <queries> MAIN/LAUNCHER intent filter)
         try {
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            for (appInfo in installedApps) {
-                val label = pm.getApplicationLabel(appInfo).toString().lowercase()
-                if (label.contains(appName) || appName.contains(label)) {
-                    val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val launcherActivities = pm.queryIntentActivities(launcherIntent, 0)
+            for (resolveInfo in launcherActivities) {
+                val pkg = resolveInfo.activityInfo?.packageName ?: continue
+                val label = resolveInfo.loadLabel(pm).toString()
+                val labelLower = label.lowercase(Locale.ROOT)
+                if (labelLower.contains(appName.lowercase(Locale.ROOT)) || appName.lowercase(Locale.ROOT).contains(labelLower)) {
+                    val launchIntent = pm.getLaunchIntentForPackage(pkg)
                     if (launchIntent != null) {
                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         context.startActivity(launchIntent)
                         return AutomationResult(
                             executed = true,
-                            feedbackMessage = "🚀 Opening ${pm.getApplicationLabel(appInfo)}... / অ্যাপটি খোলা হয়েছে...",
+                            feedbackMessage = "🚀 Opening $label... / অ্যাপটি খোলা হয়েছে...",
                             actionType = "OPEN_APP",
-                            extraData = appInfo.packageName
+                            extraData = pkg
                         )
                     }
                 }

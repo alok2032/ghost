@@ -46,7 +46,7 @@ Before publishing to Play Console / internal testing:
    - Your **Upload Key** SHA-1 and SHA-256.
    - Your **Play App Signing** key SHA-1 and SHA-256 (from Play Console -> Release -> Setup -> App signing).
 3. Download the updated `app/google-services.json` and commit the public client config (never private keystores).
-4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key (already populated for project `gen-lang-client-0595455617`) so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE` (or `MISSING_RELEASE_CONFIG` if blank/removed).
+4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key (already populated for active project `gen-lang-client-0153630349`) so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE` (or `MISSING_RELEASE_CONFIG` if blank/removed).
 
 ---
 
@@ -65,41 +65,26 @@ Before publishing to Play Console / internal testing:
    keyAlias=ayra_ai_upload
    keyPassword=<strong_key_password>
    ```
-3. Wire externalized `signingConfigs.create("release")` in your standalone CI/local release branch `app/build.gradle.kts`:
-   ```kotlin
-   import java.util.Properties
-
-   val keystorePropsFile = rootProject.file("keystore.properties")
-   val keystoreProps = Properties().apply {
-       if (keystorePropsFile.exists()) {
-           keystorePropsFile.inputStream().use { load(it) }
-       }
-   }
-
-   val releaseStorePath = System.getenv("AYRA_RELEASE_STORE_FILE")
-       ?: keystoreProps.getProperty("storeFile")
-   val releaseStorePassword = System.getenv("AYRA_RELEASE_STORE_PASSWORD")
-       ?: keystoreProps.getProperty("storePassword")
-   val releaseKeyAlias = System.getenv("AYRA_RELEASE_KEY_ALIAS")
-       ?: keystoreProps.getProperty("keyAlias")
-   val releaseKeyPassword = System.getenv("AYRA_RELEASE_KEY_PASSWORD")
-       ?: keystoreProps.getProperty("keyPassword")
+3. Enforce fail-closed verification via Gradle before producing or distributing release artifacts:
+   ```bash
+   gradle :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true
+   gradle :app:assembleRelease :app:verifyReleaseSigningCertificate -PayraRequireProductionSigning=true
    ```
-4. Validate inputs fail-closed when assembling a signed production release:
-   - Ensure `storeFile` exists on disk.
-   - Ensure `storePassword`, `keyAlias`, and `keyPassword` are non-blank.
-   - Only permit an explicit local unsigned release artifact (`-Payra.allowUnsignedRelease=true`) for dry-run R8/ProGuard verification—and **never** label an unsigned or debug-key-signed APK as production-signed.
+4. `ValidateProductionReleaseSigningTask` in `app/build.gradle.kts` automatically:
+   - Reads `AYRA_UPLOAD_KEYSTORE_PATH` / `AYRA_UPLOAD_KEY_ALIAS` / `AYRA_UPLOAD_KEYSTORE_PASSWORD` / `AYRA_UPLOAD_KEY_PASSWORD` (or `keystore.properties`) without logging any password.
+   - Fails closed if the path points to `debug.keystore`, alias is `androiddebugkey`, password is `"android"`, the keystore file does not exist, or `keytool -list -v` fails to confirm the alias and SHA-256 certificate fingerprint.
+   - Prevents release packaging in CI whenever `-PayraRequireProductionSigning=true` or `AYRA_REQUIRE_PRODUCTION_SIGNING=true` is enabled with missing or debug signing credentials.
 
 ### GitHub Actions Encrypted Secrets
 
 Store the following repository secrets under **Settings -> Secrets and variables -> Actions**:
 - `AYRA_UPLOAD_KEYSTORE_BASE64` (`base64 -w0 upload-keystore.jks`)
-- `AYRA_RELEASE_STORE_PASSWORD`
-- `AYRA_RELEASE_KEY_ALIAS`
-- `AYRA_RELEASE_KEY_PASSWORD`
+- `AYRA_UPLOAD_KEYSTORE_PASSWORD`
+- `AYRA_UPLOAD_KEY_ALIAS`
+- `AYRA_UPLOAD_KEY_PASSWORD`
 - `AYRA_RECAPTCHA_SITE_KEY` (optional, for release App Check)
 
-Decode into a runner temp path (`$RUNNER_TEMP/upload-keystore.jks`) with `chmod 600`, execute `:app:bundleRelease`, and remove the temporary keystore in an `always()` cleanup step.
+Decode into a runner temp path (`$RUNNER_TEMP/upload-keystore.jks`) with `chmod 600`, export `AYRA_REQUIRE_PRODUCTION_SIGNING=true` and `AYRA_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/upload-keystore.jks`, execute `:app:bundleRelease`, and remove the temporary keystore in an `always()` cleanup step.
 
 ---
 

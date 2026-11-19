@@ -36,9 +36,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +70,20 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.File
+import java.util.Locale
+
+@Immutable
+private data class ParsedVideoPayload(
+    val title: String = "AI Cinematic Video",
+    val previewUrl: String = "",
+    val localVideoPath: String = "",
+    val videoUrl: String = "",
+    val keyframeUrls: List<String> = emptyList(),
+    val cameraMotion: String = "",
+    val lensType: String = "",
+    val isPortraitAspect: Boolean = false,
+    val durationTotalSeconds: Int = 15
+)
 
 @Composable
 fun VideoPlayerCard(
@@ -77,29 +91,10 @@ fun VideoPlayerCard(
     onExpand: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf("AI Cinematic Video") }
-    var previewUrl by remember { mutableStateOf("") }
-    var localVideoPath by remember { mutableStateOf("") }
-    var videoUrl by remember { mutableStateOf("") }
-    var keyframeUrls by remember { mutableStateOf<List<String>>(emptyList()) }
-    var cameraMotion by remember { mutableStateOf("") }
-    var lensType by remember { mutableStateOf("") }
-    var isPortraitAspect by remember { mutableStateOf(false) }
-    var prompt by remember { mutableStateOf("") }
-    var durationTotalSeconds by remember { mutableIntStateOf(15) }
-    var retryTick by remember { mutableIntStateOf(0) }
-
-    remember(jsonPayload) {
+    val parsed = remember(jsonPayload) {
         try {
             val json = JSONObject(jsonPayload)
-            title = json.optString("title", "AI Cinematic Video")
-            previewUrl = json.optString("previewUrl", "")
-            localVideoPath = json.optString("localVideoPath", "")
-            videoUrl = json.optString("videoUrl", "")
-            prompt = json.optString("prompt", "")
-            cameraMotion = json.optString("cameraMotion", "")
-            lensType = json.optString("lensType", "")
-            isPortraitAspect = json.optString("aspectRatio", "16:9") == "9:16"
+            val parsedPreview = json.optString("previewUrl", "")
             val arr = json.optJSONArray("keyframes")
             val parsedFrames = mutableListOf<String>()
             if (arr != null) {
@@ -108,17 +103,40 @@ fun VideoPlayerCard(
                     if (u.isNotBlank()) parsedFrames.add(u)
                 }
             }
-            if (parsedFrames.isEmpty() && previewUrl.isNotBlank()) {
-                parsedFrames.add(previewUrl)
+            if (parsedFrames.isEmpty() && parsedPreview.isNotBlank()) {
+                parsedFrames.add(parsedPreview)
             }
-            keyframeUrls = parsedFrames
             val dur = json.optString("duration", "0:15")
-            durationTotalSeconds = if (dur.contains(":")) {
+            val parsedDurSec = if (dur.contains(":")) {
                 val parts = dur.split(":")
                 parts[0].toIntOrNull()?.times(60)?.plus(parts.getOrNull(1)?.toIntOrNull() ?: 15) ?: 15
             } else 15
-        } catch (_: Exception) {}
+            ParsedVideoPayload(
+                title = json.optString("title", "AI Cinematic Video"),
+                previewUrl = parsedPreview,
+                localVideoPath = json.optString("localVideoPath", ""),
+                videoUrl = json.optString("videoUrl", ""),
+                keyframeUrls = parsedFrames,
+                cameraMotion = json.optString("cameraMotion", ""),
+                lensType = json.optString("lensType", ""),
+                isPortraitAspect = json.optString("aspectRatio", "16:9") == "9:16",
+                durationTotalSeconds = parsedDurSec
+            )
+        } catch (_: Exception) {
+            ParsedVideoPayload()
+        }
     }
+
+    val title = parsed.title
+    val previewUrl = parsed.previewUrl
+    val localVideoPath = parsed.localVideoPath
+    val videoUrl = parsed.videoUrl
+    val keyframeUrls = parsed.keyframeUrls
+    val cameraMotion = parsed.cameraMotion
+    val lensType = parsed.lensType
+    var isPortraitAspect by remember(parsed) { mutableStateOf(parsed.isPortraitAspect) }
+    var durationTotalSeconds by remember(parsed) { mutableIntStateOf(parsed.durationTotalSeconds) }
+    var retryTick by remember(parsed) { mutableIntStateOf(0) }
 
     val playableVideoUri = remember(localVideoPath, videoUrl) {
         val localFile = localVideoPath.takeIf { it.isNotBlank() }?.let { File(it) }
@@ -472,8 +490,8 @@ fun VideoPlayerCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    val curStr = String.format("0:%02d", currentSeconds)
-                    val totStr = String.format("0:%02d", durationTotalSeconds)
+                    val curStr = String.format(Locale.US, "0:%02d", currentSeconds)
+                    val totStr = String.format(Locale.US, "0:%02d", durationTotalSeconds)
                     Text(
                         text = "$curStr / $totStr",
                         color = TextSecondary,

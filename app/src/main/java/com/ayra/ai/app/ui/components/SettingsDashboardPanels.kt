@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Environment
 import android.os.StatFs
 import android.widget.Toast
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -324,7 +325,7 @@ fun DeviceAndUsageDashboardPanel(
                 val stat = StatFs(Environment.getDataDirectory().path)
                 val availGb = (stat.availableBlocksLong * stat.blockSizeLong) / (1024.0 * 1024.0 * 1024.0)
                 val totalGb = (stat.blockCountLong * stat.blockSizeLong) / (1024.0 * 1024.0 * 1024.0)
-                storageSummary = String.format("%.1f GB free / %.1f GB total", availGb, totalGb)
+                storageSummary = String.format(Locale.US, "%.1f GB free / %.1f GB total", availGb, totalGb)
             }
         }
     }

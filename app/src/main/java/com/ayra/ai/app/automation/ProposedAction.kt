@@ -1,5 +1,7 @@
 package com.ayra.ai.app.automation
 
+import java.util.Locale
+
 sealed class ProposedAction {
     abstract val title: String
     abstract val description: String
@@ -31,7 +33,7 @@ sealed class ProposedAction {
         val label: String
     ) : ProposedAction() {
         override val title: String = "Set Alarm"
-        val formattedTime: String = String.format("%02d:%02d", hour, minute)
+        val formattedTime: String = String.format(Locale.US, "%02d:%02d", hour, minute)
         override val description: String = "Set device alarm for $formattedTime (Label: \"$label\")"
         override val isCritical: Boolean = false
     }
