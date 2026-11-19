@@ -30,7 +30,10 @@ enum class ModelVerificationStatus(val label: String) {
     VERIFIED_PLATFORM("Verified Platform"),
     VERIFIED_LIVE("Verified Live (/models)"),
     CONFIGURED("Configured Default"),
-    UNVERIFIED("Unverified (Opt-In Only)")
+    UNVERIFIED("Unverified (Opt-In Only)"),
+    UNAVAILABLE("Unavailable (Cooldown)"),
+    RETIRED("Retired"),
+    RATE_LIMITED("Rate Limited (Cooldown)")
 }
 
 data class ModelCatalogEntry(
@@ -43,7 +46,14 @@ data class ModelCatalogEntry(
     val verificationStatus: ModelVerificationStatus,
     val isDefaultCandidate: Boolean = true,
     val fallbackModelId: String? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val verifiedAtMs: Long? = null,
+    val verifiedByProvider: String? = null,
+    val verificationMethod: String = "static_baseline",
+    val lastSuccessMs: Long? = null,
+    val expiresAtMs: Long? = null,
+    val failureReason: String? = null,
+    val pricingVerified: Boolean = false
 )
 
 /**
@@ -55,7 +65,8 @@ object ModelCatalog {
     private data class HealthBlock(
         val httpStatus: Int,
         val reason: String,
-        val blockedUntilMs: Long
+        val blockedUntilMs: Long,
+        val statusOverride: ModelVerificationStatus
     )
 
     private val baselineCatalog: List<ModelCatalogEntry> = listOf(
@@ -461,33 +472,76 @@ object ModelCatalog {
     private val discoveredModels = ConcurrentHashMap<String, ModelCatalogEntry>()
     private val remoteOverrideEntries = ConcurrentHashMap<String, ModelCatalogEntry>()
     private val blockedModels = ConcurrentHashMap<String, HealthBlock>()
+    private val retiredModels = ConcurrentHashMap<String, String>()
+    private val lastSuccessTimestamps = ConcurrentHashMap<String, Long>()
 
     private const val MODEL_COOLDOWN_MS = 10 * 60 * 1000L
+    private const val LIVE_DISCOVERY_TTL_MS = 24 * 60 * 60 * 1000L
 
     private fun key(provider: AiProviderType, modelId: String): String =
         "${provider.id}::${modelId.trim().lowercase()}"
 
+    private fun applyRuntimeHealth(entry: ModelCatalogEntry): ModelCatalogEntry {
+        val k = key(entry.provider, entry.id)
+        val lastSuccess = lastSuccessTimestamps[k] ?: entry.lastSuccessMs
+        val retiredReason = retiredModels[k]
+        if (retiredReason != null) {
+            return entry.copy(
+                verificationStatus = ModelVerificationStatus.RETIRED,
+                isDefaultCandidate = false,
+                lastSuccessMs = lastSuccess,
+                failureReason = retiredReason
+            )
+        }
+        val block = blockedModels[k]
+        if (block != null) {
+            if (System.currentTimeMillis() > block.blockedUntilMs) {
+                blockedModels.remove(k)
+            } else {
+                return entry.copy(
+                    verificationStatus = block.statusOverride,
+                    isDefaultCandidate = false,
+                    lastSuccessMs = lastSuccess,
+                    expiresAtMs = block.blockedUntilMs,
+                    failureReason = block.reason
+                )
+            }
+        }
+        return if (lastSuccess != null && lastSuccess != entry.lastSuccessMs) {
+            entry.copy(lastSuccessMs = lastSuccess)
+        } else {
+            entry
+        }
+    }
+
     fun allEntries(): List<ModelCatalogEntry> {
         val merged = LinkedHashMap<String, ModelCatalogEntry>()
-        baselineCatalog.forEach { merged[key(it.provider, it.id)] = it }
-        remoteOverrideEntries.forEach { (k, v) -> merged[k] = v }
-        discoveredModels.forEach { (k, v) -> merged[k] = v }
+        baselineCatalog.forEach { merged[key(it.provider, it.id)] = applyRuntimeHealth(it) }
+        remoteOverrideEntries.forEach { (k, v) -> merged[k] = applyRuntimeHealth(v) }
+        discoveredModels.forEach { (k, v) -> merged[k] = applyRuntimeHealth(v) }
         return merged.values.toList()
     }
 
     fun findEntry(provider: AiProviderType, modelId: String): ModelCatalogEntry? {
         val k = key(provider, modelId)
-        return discoveredModels[k]
+        val raw = discoveredModels[k]
             ?: remoteOverrideEntries[k]
             ?: baselineCatalog.firstOrNull { key(it.provider, it.id) == k }
+            ?: return null
+        return applyRuntimeHealth(raw)
     }
 
     fun isVerifiedOrConfigured(provider: AiProviderType, modelId: String): Boolean {
         val entry = findEntry(provider, modelId) ?: return false
-        return entry.verificationStatus != ModelVerificationStatus.UNVERIFIED && entry.isDefaultCandidate
+        return entry.verificationStatus in setOf(
+            ModelVerificationStatus.VERIFIED_PLATFORM,
+            ModelVerificationStatus.VERIFIED_LIVE,
+            ModelVerificationStatus.CONFIGURED
+        ) && entry.isDefaultCandidate
     }
 
     fun registerLiveDiscoveredModels(provider: AiProviderType, models: List<AiModelInfo>) {
+        val now = System.currentTimeMillis()
         models.forEach { info ->
             val caps = buildSet {
                 add(ModelCapability.TEXT)
@@ -506,26 +560,56 @@ object ModelCatalog {
                 costTier = if (provider == AiProviderType.LOCAL_OLLAMA) ModelCostTier.LOCAL else ModelCostTier.MEDIUM,
                 verificationStatus = ModelVerificationStatus.VERIFIED_LIVE,
                 isDefaultCandidate = true,
-                notes = "Discovered via live provider /models API"
+                notes = "Discovered via live provider /models API",
+                verifiedAtMs = now,
+                verifiedByProvider = provider.id,
+                verificationMethod = "live_models_api",
+                lastSuccessMs = now,
+                expiresAtMs = now + LIVE_DISCOVERY_TTL_MS,
+                pricingVerified = false
             )
-            discoveredModels[key(provider, info.id)] = entry
-            blockedModels.remove(key(provider, info.id))
+            val k = key(provider, info.id)
+            discoveredModels[k] = entry
+            blockedModels.remove(k)
+            retiredModels.remove(k)
         }
+    }
+
+    fun recordModelSuccess(provider: AiProviderType, modelId: String) {
+        val k = key(provider, modelId)
+        val now = System.currentTimeMillis()
+        lastSuccessTimestamps[k] = now
+        blockedModels.remove(k)
+        retiredModels.remove(k)
+    }
+
+    fun markModelRetired(provider: AiProviderType, modelId: String, reason: String) {
+        val k = key(provider, modelId)
+        retiredModels[k] = reason.take(180)
+        blockedModels.remove(k)
     }
 
     fun markModelUnavailable(provider: AiProviderType, modelId: String, httpStatus: Int, reason: String) {
         val k = key(provider, modelId)
+        val statusOverride = when {
+            httpStatus == 429 -> ModelVerificationStatus.RATE_LIMITED
+            httpStatus == 410 -> ModelVerificationStatus.RETIRED
+            else -> ModelVerificationStatus.UNAVAILABLE
+        }
         blockedModels[k] = HealthBlock(
             httpStatus = httpStatus,
             reason = reason.take(180),
-            blockedUntilMs = System.currentTimeMillis() + MODEL_COOLDOWN_MS
+            blockedUntilMs = System.currentTimeMillis() + MODEL_COOLDOWN_MS,
+            statusOverride = statusOverride
         )
     }
 
     fun isModelTemporarilyUnavailable(provider: AiProviderType, modelId: String): Boolean {
-        val block = blockedModels[key(provider, modelId)] ?: return false
+        val k = key(provider, modelId)
+        if (retiredModels.containsKey(k)) return true
+        val block = blockedModels[k] ?: return false
         if (System.currentTimeMillis() > block.blockedUntilMs) {
-            blockedModels.remove(key(provider, modelId))
+            blockedModels.remove(k)
             return false
         }
         return true
@@ -538,7 +622,11 @@ object ModelCatalog {
         val candidates = allEntries().filter { entry ->
             entry.provider == provider &&
                 entry.isDefaultCandidate &&
-                entry.verificationStatus != ModelVerificationStatus.UNVERIFIED &&
+                entry.verificationStatus in setOf(
+                    ModelVerificationStatus.VERIFIED_PLATFORM,
+                    ModelVerificationStatus.VERIFIED_LIVE,
+                    ModelVerificationStatus.CONFIGURED
+                ) &&
                 !isModelTemporarilyUnavailable(provider, entry.id) &&
                 (requiredCapability == null || entry.capabilities.contains(requiredCapability))
         }
@@ -568,7 +656,11 @@ object ModelCatalog {
                 entry.provider == provider &&
                     !entry.id.equals(failedModelId, ignoreCase = true) &&
                     entry.isDefaultCandidate &&
-                    entry.verificationStatus != ModelVerificationStatus.UNVERIFIED &&
+                    entry.verificationStatus in setOf(
+                        ModelVerificationStatus.VERIFIED_PLATFORM,
+                        ModelVerificationStatus.VERIFIED_LIVE,
+                        ModelVerificationStatus.CONFIGURED
+                    ) &&
                     !isModelTemporarilyUnavailable(provider, entry.id) &&
                     (requiredCapability == null || entry.capabilities.contains(requiredCapability))
             }
@@ -578,6 +670,9 @@ object ModelCatalog {
                     ModelVerificationStatus.VERIFIED_LIVE -> 1
                     ModelVerificationStatus.CONFIGURED -> 2
                     ModelVerificationStatus.UNVERIFIED -> 3
+                    ModelVerificationStatus.RATE_LIMITED -> 4
+                    ModelVerificationStatus.UNAVAILABLE -> 5
+                    ModelVerificationStatus.RETIRED -> 6
                 }
             }
             .firstOrNull()
@@ -599,6 +694,7 @@ object ModelCatalog {
         if (jsonText.isBlank()) return 0
         val root = JSONObject(jsonText)
         val arr = root.optJSONArray("models") ?: JSONArray()
+        val now = System.currentTimeMillis()
         var applied = 0
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
@@ -610,6 +706,7 @@ object ModelCatalog {
             val fallback = obj.optString("fallbackModelId", "").ifBlank { null }
             val contextTokens = obj.optInt("contextTokens", 128_000).coerceAtLeast(4096)
             val isDefault = obj.optBoolean("isDefault", true)
+            val pricingVerified = obj.optBoolean("pricingVerified", false)
             val entry = ModelCatalogEntry(
                 id = modelId,
                 provider = provider,
@@ -620,7 +717,11 @@ object ModelCatalog {
                 verificationStatus = ModelVerificationStatus.CONFIGURED,
                 isDefaultCandidate = isDefault,
                 fallbackModelId = fallback,
-                notes = "Remote catalog override"
+                notes = "Remote catalog override",
+                verifiedAtMs = now,
+                verifiedByProvider = provider.id,
+                verificationMethod = "remote_override",
+                pricingVerified = pricingVerified
             )
             remoteOverrideEntries[key(provider, modelId)] = entry
             applied++
@@ -633,6 +734,8 @@ object ModelCatalog {
 
     fun clearRuntimeHealth() {
         blockedModels.clear()
+        retiredModels.clear()
+        lastSuccessTimestamps.clear()
         discoveredModels.clear()
         remoteOverrideEntries.clear()
     }

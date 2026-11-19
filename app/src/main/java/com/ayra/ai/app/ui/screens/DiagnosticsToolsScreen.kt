@@ -63,6 +63,7 @@ import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.StorageHelper
 import com.ayra.ai.app.data.StorageHelper.WorkspaceArtifact
+import com.ayra.ai.app.ui.components.AyraDiagnosticsSection
 import com.ayra.ai.app.ui.components.CyberTerminalCard
 import com.ayra.ai.app.ui.components.GitHubPluginHubSection
 import com.ayra.ai.app.ui.components.ProviderKeysSection
@@ -189,6 +190,7 @@ fun DiagnosticsToolsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     WorkspaceAndBackupPanel(context = context)
+                    AyraDiagnosticsSection(context = context)
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }

@@ -189,27 +189,7 @@ class GitHubPluginEngine @JvmOverloads constructor(
         }
 
         fun isSafePublicHttpsUrl(rawUrl: String): Boolean {
-            return try {
-                val uri = URI(rawUrl.trim())
-                if (!uri.scheme.equals("https", ignoreCase = true)) return false
-                val host = uri.host?.lowercase(Locale.ROOT) ?: return false
-                if (host == "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return false
-                val ipLiteral = host.removePrefix("[").removeSuffix("]")
-                if (ipLiteral == "127.0.0.1" || ipLiteral == "::1" || ipLiteral == "0.0.0.0" ||
-                    ipLiteral.startsWith("10.") || ipLiteral.startsWith("192.168.") || ipLiteral.startsWith("169.254.")
-                ) return false
-                if (ipLiteral.startsWith("172.")) {
-                    val secondOctet = ipLiteral.split(".").getOrNull(1)?.toIntOrNull()
-                    if (secondOctet != null && secondOctet in 16..31) return false
-                }
-                val addr = runCatching { InetAddress.getByName(host) }.getOrNull()
-                if (addr != null && (addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress || addr.isAnyLocalAddress)) {
-                    return false
-                }
-                true
-            } catch (_: Exception) {
-                false
-            }
+            return com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrl(rawUrl).allowed
         }
     }
 

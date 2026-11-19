@@ -380,6 +380,9 @@ class AyraOrchestrator(private val context: Context) {
                             is com.ayra.ai.app.ai.agent.AgentEvent.PlanUpdated -> emit(AyraEvent.PlanUpdated(agEvent.steps))
                             is com.ayra.ai.app.ai.agent.AgentEvent.Status -> emit(AyraEvent.Status(agEvent.message))
                             is com.ayra.ai.app.ai.agent.AgentEvent.TextDelta -> emit(AyraEvent.Token(agEvent.text))
+                            is com.ayra.ai.app.ai.agent.AgentEvent.ActionLifecycleChanged -> emit(
+                                AyraEvent.Status("${agEvent.record.toolName}: ${agEvent.record.state.name}")
+                            )
                             is com.ayra.ai.app.ai.agent.AgentEvent.ToolCallProposed -> emit(AyraEvent.ActionRequired(agEvent.action))
                             is com.ayra.ai.app.ai.agent.AgentEvent.ToolResult -> emit(AyraEvent.Status("Completed tool: ${agEvent.toolName}"))
                             is com.ayra.ai.app.ai.agent.AgentEvent.Citation -> emit(AyraEvent.CitationAdded(agEvent.citation))

@@ -5,6 +5,46 @@ import java.nio.ByteOrder
 import kotlin.math.ln
 import kotlin.math.sqrt
 
+enum class EmbeddingKind {
+    LEXICAL_HASH_FALLBACK,
+    SEMANTIC_VECTOR
+}
+
+interface EmbeddingProvider {
+    val modelId: String
+    val dimensions: Int
+    val kind: EmbeddingKind
+    val versionFingerprint: String
+    fun embed(
+        text: String,
+        title: String = "",
+        keywordsCsv: String = ""
+    ): FloatArray
+}
+
+class SemanticEmbeddingAdapter(
+    override val modelId: String,
+    override val dimensions: Int,
+    override val versionFingerprint: String = "$modelId:v1:$dimensions",
+    private val encoder: (text: String, title: String, keywordsCsv: String) -> FloatArray
+) : EmbeddingProvider {
+    override val kind: EmbeddingKind = EmbeddingKind.SEMANTIC_VECTOR
+
+    override fun embed(text: String, title: String, keywordsCsv: String): FloatArray {
+        val raw = encoder(text, title, keywordsCsv)
+        val sized = if (raw.size == dimensions) raw.copyOf() else FloatArray(dimensions) { idx ->
+            if (idx < raw.size) raw[idx] else 0f
+        }
+        var sumSq = 0.0
+        for (v in sized) sumSq += v * v
+        if (sumSq > 1e-12) {
+            val invNorm = (1.0 / sqrt(sumSq)).toFloat()
+            for (i in sized.indices) sized[i] *= invNorm
+        }
+        return sized
+    }
+}
+
 /**
  * Deterministic, multilingual (English / Bengali / Banglish / Technical IDs) on-device dense vectorizer
  * producing 256-dimensional L2-normalized Float32 embeddings stored compactly as SQLite BLOBs.
@@ -16,10 +56,16 @@ import kotlin.math.sqrt
  * - Cross-lingual Bengali <-> English Deep/Dark Web concept alignment
  * - Signed dual-hash projection + L2 unit normalization (so cosine similarity == dot product)
  */
-object LocalVectorEmbedder {
+object LocalVectorEmbedder : EmbeddingProvider {
 
     const val DIMENSIONS: Int = 256
     const val EMBEDDING_MODEL_ID: String = "ayra-bilingual-subword-256d"
+    const val EMBEDDING_VERSION_FINGERPRINT: String = "$EMBEDDING_MODEL_ID:v2:$DIMENSIONS"
+
+    override val modelId: String = EMBEDDING_MODEL_ID
+    override val dimensions: Int = DIMENSIONS
+    override val kind: EmbeddingKind = EmbeddingKind.LEXICAL_HASH_FALLBACK
+    override val versionFingerprint: String = EMBEDDING_VERSION_FINGERPRINT
 
     private val STOP_WORDS = setOf(
         "the", "a", "an", "is", "are", "was", "were", "be", "been", "in", "on", "at", "to",
@@ -70,10 +116,10 @@ object LocalVectorEmbedder {
             .filter { it.length >= 2 && it !in STOP_WORDS }
     }
 
-    fun embed(
+    override fun embed(
         text: String,
-        title: String = "",
-        keywordsCsv: String = ""
+        title: String,
+        keywordsCsv: String
     ): FloatArray {
         val vec = FloatArray(DIMENSIONS)
 

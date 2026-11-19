@@ -16,7 +16,16 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
     @Test
     fun ownerProfileAndMessagesCrud_succeedsAndStreams() = runBlocking {
         val aliceUid = signInTestUser(ALICE_EMAIL)
-        val repo = AyraCloudRepository(firestore, auth)
+        val failClosedRepo = AyraCloudRepository(firestore, auth, appContext = null)
+        val failClosedResult = runCatching {
+            failClosedRepo.syncMessageToCloud(
+                ChatMessage(id = 1L, role = "user", content = "Must fail closed without context"),
+                "fail_closed_check"
+            )
+        }
+        assertTrue(failClosedResult.exceptionOrNull() is SecurityException)
+
+        val repo = AyraCloudRepository(firestore, auth, syncMode = CloudSyncMode.STANDARD_UNENCRYPTED)
 
         withTimeout(OP_TIMEOUT_MS) {
             repo.upsertUserProfile(
@@ -61,7 +70,7 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
     @Test
     fun ownerPluginAndCreationSync_succeedsAndDeletes() = runBlocking {
         signInTestUser(ALICE_EMAIL)
-        val repo = AyraCloudRepository(firestore, auth)
+        val repo = AyraCloudRepository(firestore, auth, syncMode = CloudSyncMode.STANDARD_UNENCRYPTED)
 
         val repoName = "owner/plugin-${UUID.randomUUID().toString().take(8)}"
         val plugin = InstalledGitHubPlugin(
@@ -110,7 +119,7 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
     @Test
     fun crossUserReadAndWrite_deniedWithPermissionDenied() = runBlocking {
         val aliceUid = signInTestUser(ALICE_EMAIL)
-        val aliceRepo = AyraCloudRepository(firestore, auth)
+        val aliceRepo = AyraCloudRepository(firestore, auth, syncMode = CloudSyncMode.STANDARD_UNENCRYPTED)
         val msg = ChatMessage(
             id = 100L,
             role = "assistant",
@@ -157,7 +166,7 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
         val targetUid = signInTestUser(ALICE_EMAIL)
         auth.signOut()
 
-        val repo = AyraCloudRepository(firestore, auth)
+        val repo = AyraCloudRepository(firestore, auth, syncMode = CloudSyncMode.STANDARD_UNENCRYPTED)
         assertTrue(runCatching { repo.requireUserId() }.isFailure)
 
         var readError: Throwable? = null

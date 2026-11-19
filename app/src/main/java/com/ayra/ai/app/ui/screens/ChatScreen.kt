@@ -413,6 +413,13 @@ fun ChatScreen(
                         showExactAlarmWarningBanner = true
                         exactAlarmBannerDismissed = false
                     }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        requestPermissionWithRationale(Manifest.permission.POST_NOTIFICATIONS) {
+                            singlePermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                     viewModel.persistMessage(
                         ChatMessage(role = "assistant", content = scheduleResult.feedbackMessage, craftType = scheduleResult.actionType, craftPayload = scheduleResult.extraData)
                     )

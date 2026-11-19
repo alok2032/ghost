@@ -4,7 +4,11 @@ import android.app.Application
 import android.content.Context
 import android.os.StrictMode
 import com.ayra.ai.app.security.EncryptedPreferences
+import com.ayra.ai.app.security.FirebaseConfigConsistencyValidator
 import com.ayra.ai.app.security.SecureKeyStore
+import com.ayra.ai.app.security.SecurityAuditCategory
+import com.ayra.ai.app.security.SecurityAuditLogger
+import com.ayra.ai.app.security.SecurityAuditSeverity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,9 +38,18 @@ class AyraApplication : Application() {
             )
         }
 
-        // Seed encrypted AI provider vault off the main thread so startup stays jank-free
+        // Seed encrypted AI provider vault & verify Firebase config off the main thread
         appScope.launch {
             ensureActiveAiKeysSeeded(this@AyraApplication)
+            val fbAudit = FirebaseConfigConsistencyValidator.validate(this@AyraApplication)
+            if (!fbAudit.valid) {
+                SecurityAuditLogger.log(
+                    context = this@AyraApplication,
+                    category = SecurityAuditCategory.NETWORK,
+                    severity = SecurityAuditSeverity.CRITICAL,
+                    message = "Firebase config inconsistency detected: ${fbAudit.issues.joinToString("; ")}"
+                )
+            }
         }
     }
 

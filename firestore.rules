@@ -82,7 +82,8 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'userId', 'localMessageId', 'role', 'content',
-          'modelUsed', 'craftType', 'craftPayload', 'e2ee', 'timestampMs',
+          'modelUsed', 'craftType', 'craftPayload', 'e2ee',
+          'chunkCount', 'contentSha256', 'timestampMs',
           'createdAt', 'updatedAt'
         ])
         && data.userId == userId
@@ -93,7 +94,27 @@ service cloud.firestore {
         && data.craftType is string && data.craftType.size() <= 40
         && data.craftPayload is string && data.craftPayload.size() <= 100000
         && (!('e2ee' in data) || data.e2ee is bool)
+        && (!('chunkCount' in data) || (data.chunkCount is int && data.chunkCount >= 0 && data.chunkCount <= 50))
+        && (!('contentSha256' in data) || (data.contentSha256 is string && data.contentSha256.matches('^[0-9a-fA-F]{64}$')))
         && data.timestampMs is int && data.timestampMs >= 0;
+    }
+
+    function isValidPayloadChunk(userId, data) {
+      return data.keys().hasAll([
+          'userId', 'fieldName', 'chunkIndex', 'totalChunks',
+          'data', 'chunkSha256', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'fieldName', 'chunkIndex', 'totalChunks',
+          'data', 'chunkSha256', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.fieldName in ['content', 'craftPayload', 'encryptedPayloadJson']
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex < 50
+        && data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 50
+        && data.chunkIndex < data.totalChunks
+        && data.data is string && data.data.size() >= 1 && data.data.size() <= 90000
+        && data.chunkSha256 is string && data.chunkSha256.matches('^[0-9a-fA-F]{64}$');
     }
 
     function isValidCloudPlugin(userId, data) {
@@ -192,13 +213,14 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'userId', 'backupId', 'format', 'encryptedPayloadJson',
-          'payloadSha256', 'createdAtMs', 'createdAt', 'updatedAt'
+          'payloadSha256', 'chunkCount', 'createdAtMs', 'createdAt', 'updatedAt'
         ])
         && data.userId == userId
         && data.backupId == backupId
         && data.format is string && data.format.size() >= 1 && data.format.size() <= 60
         && data.encryptedPayloadJson is string && data.encryptedPayloadJson.size() >= 16 && data.encryptedPayloadJson.size() <= 800000
         && data.payloadSha256 is string && data.payloadSha256.matches('^[0-9a-fA-F]{64}$')
+        && (!('chunkCount' in data) || (data.chunkCount is int && data.chunkCount >= 0 && data.chunkCount <= 50))
         && data.createdAtMs is int && data.createdAtMs >= 0;
     }
 
@@ -292,9 +314,21 @@ service cloud.firestore {
           && incoming().role == existing().role
           && incoming().timestampMs == existing().timestampMs
           && incoming().diff(existing()).affectedKeys().hasOnly([
-            'content', 'modelUsed', 'craftType', 'craftPayload', 'e2ee', 'updatedAt'
+            'content', 'modelUsed', 'craftType', 'craftPayload', 'e2ee',
+            'chunkCount', 'contentSha256', 'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(messageId);
+
+        match /chunks/{chunkId} {
+          allow get, list: if isOwner(userId) && isValidId(messageId);
+          allow create: if isOwner(userId)
+            && isValidId(messageId)
+            && isValidId(chunkId)
+            && isValidPayloadChunk(userId, incoming())
+            && hasValidCreateTimestamps(incoming());
+          allow update: if false;
+          allow delete: if isOwner(userId) && isValidId(messageId) && isValidId(chunkId);
+        }
       }
 
       match /plugins/{pluginId} {
@@ -392,6 +426,17 @@ service cloud.firestore {
           && hasValidCreateTimestamps(incoming());
         allow update: if false;
         allow delete: if isOwner(userId) && isValidId(backupId);
+
+        match /chunks/{chunkId} {
+          allow get, list: if isOwner(userId) && isValidId(backupId);
+          allow create: if isOwner(userId)
+            && isValidId(backupId)
+            && isValidId(chunkId)
+            && isValidPayloadChunk(userId, incoming())
+            && hasValidCreateTimestamps(incoming());
+          allow update: if false;
+          allow delete: if isOwner(userId) && isValidId(backupId) && isValidId(chunkId);
+        }
       }
 
       match /securityEvents/{eventId} {

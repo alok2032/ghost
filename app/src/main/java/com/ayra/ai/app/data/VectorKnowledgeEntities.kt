@@ -1,5 +1,6 @@
 package com.ayra.ai.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -70,7 +71,11 @@ data class VectorKnowledgeChunkEntity(
     val tokenCount: Int,
     val embeddingDims: Int,
     val embeddingBlob: ByteArray,
-    val fetchedAt: Long = System.currentTimeMillis()
+    val fetchedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "ayra-bilingual-subword-256d")
+    val embeddingModelId: String = "ayra-bilingual-subword-256d",
+    @ColumnInfo(defaultValue = "ayra-bilingual-subword-256d:v2:256")
+    val embeddingFingerprint: String = "ayra-bilingual-subword-256d:v2:256"
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -82,6 +87,8 @@ data class VectorKnowledgeChunkEntity(
             chunkIndex == other.chunkIndex &&
             content == other.content &&
             embeddingDims == other.embeddingDims &&
+            embeddingModelId == other.embeddingModelId &&
+            embeddingFingerprint == other.embeddingFingerprint &&
             embeddingBlob.contentEquals(other.embeddingBlob)
     }
 
@@ -91,6 +98,8 @@ data class VectorKnowledgeChunkEntity(
         result = 31 * result + sourceKey.hashCode()
         result = 31 * result + chunkIndex
         result = 31 * result + content.hashCode()
+        result = 31 * result + embeddingModelId.hashCode()
+        result = 31 * result + embeddingFingerprint.hashCode()
         result = 31 * result + embeddingBlob.contentHashCode()
         return result
     }

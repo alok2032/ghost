@@ -55,7 +55,8 @@ data class VectorSyncReport(
  */
 class VectorKnowledgeRepository(
     private val dao: VectorKnowledgeDao,
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val embeddingProvider: EmbeddingProvider = LocalVectorEmbedder
 ) {
 
     companion object {
@@ -105,8 +106,66 @@ class VectorKnowledgeRepository(
                     seeded++
                 }
             }
+            reindexMismatchedEmbeddingsIfNeeded()
             seeded
         }
+    }
+
+    /**
+     * Re-indexes any stored vector chunks whose embedding modelId or versionFingerprint differs
+     * from the active [embeddingProvider], preventing vector space corruption after model upgrades.
+     */
+    suspend fun reindexMismatchedEmbeddingsIfNeeded(): Int = withContext(Dispatchers.IO) {
+        val mismatchedSourceIds = dao.getSourceIdsWithMismatchedEmbeddings(
+            expectedModelId = embeddingProvider.modelId,
+            expectedFingerprint = embeddingProvider.versionFingerprint
+        )
+        if (mismatchedSourceIds.isEmpty()) return@withContext 0
+
+        val curatedByKey = CuratedDarkDeepKnowledgeCorpus.entries.associateBy { it.sourceKey }
+        var reindexedCount = 0
+        mismatchedSourceIds.chunked(200).forEach { idBatch ->
+            val sources = dao.getSourcesByIds(idBatch)
+            for (source in sources) {
+                val curated = if (source.originType == "CURATED_OFFLINE") curatedByKey[source.sourceKey] else null
+                if (curated != null) {
+                    indexTextSourceInternal(
+                        sourceKey = curated.sourceKey,
+                        title = curated.title,
+                        layer = curated.layer,
+                        providerName = curated.providerName,
+                        sourceUrl = curated.sourceUrl,
+                        originType = "CURATED_OFFLINE",
+                        language = "en",
+                        fullText = curated.body,
+                        keywordsCsv = curated.keywordsCsv,
+                        ttlMillis = 0L
+                    )
+                    reindexedCount++
+                } else {
+                    val oldChunks = dao.getChunksForSourceOnce(source.id)
+                    if (oldChunks.isNotEmpty()) {
+                        val updatedChunks = oldChunks.map { chunk ->
+                            val vec = embeddingProvider.embed(
+                                text = chunk.content,
+                                title = chunk.title,
+                                keywordsCsv = chunk.keywordsCsv
+                            )
+                            chunk.copy(
+                                id = 0L,
+                                embeddingDims = embeddingProvider.dimensions,
+                                embeddingBlob = LocalVectorEmbedder.toByteArray(vec),
+                                embeddingModelId = embeddingProvider.modelId,
+                                embeddingFingerprint = embeddingProvider.versionFingerprint
+                            )
+                        }
+                        dao.upsertSourceWithChunks(source, updatedChunks)
+                        reindexedCount++
+                    }
+                }
+            }
+        }
+        reindexedCount
     }
 
     suspend fun indexTextSource(
@@ -170,7 +229,7 @@ class VectorKnowledgeRepository(
         )
 
         val chunkEntities = chunks.mapIndexed { idx, chunkContent ->
-            val vec = LocalVectorEmbedder.embed(
+            val vec = embeddingProvider.embed(
                 text = chunkContent,
                 title = title,
                 keywordsCsv = keywordsCsv
@@ -189,9 +248,11 @@ class VectorKnowledgeRepository(
                 content = chunkContent,
                 keywordsCsv = keywordsCsv,
                 tokenCount = LocalVectorEmbedder.tokenize(chunkContent).size,
-                embeddingDims = LocalVectorEmbedder.DIMENSIONS,
+                embeddingDims = embeddingProvider.dimensions,
                 embeddingBlob = blob,
-                fetchedAt = now
+                fetchedAt = now,
+                embeddingModelId = embeddingProvider.modelId,
+                embeddingFingerprint = embeddingProvider.versionFingerprint
             )
         }
 
@@ -320,7 +381,7 @@ class VectorKnowledgeRepository(
         }
         if (chunks.isEmpty()) return@withContext emptyList()
 
-        val queryVec = LocalVectorEmbedder.embed(cleanQuery)
+        val queryVec = embeddingProvider.embed(cleanQuery)
         val queryTokens = LocalVectorEmbedder.tokenize(cleanQuery)
         val lowerQuery = cleanQuery.lowercase(Locale.ROOT)
         val cveInQuery = CVE_REGEX.find(cleanQuery)?.value?.lowercase(Locale.ROOT)

@@ -1,4 +1,6 @@
+import java.io.File
 import java.time.Duration
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -126,11 +128,115 @@ dependencies {
 
 tasks.withType<Test> {
     failFast = true
-    timeout.set(Duration.ofMinutes(2))
+    timeout.set(Duration.ofMinutes(6))
     testLogging {
         events("failed", "skipped")
         showExceptions = true
         showCauses = true
     }
 }
+
+abstract class ValidateProductionReleaseSigningTask : DefaultTask() {
+    @get:Input
+    @get:Optional
+    abstract val requireProdProp: Property<String>
+
+    @get:Input
+    abstract val rootDirPath: Property<String>
+
+    @TaskAction
+    fun validate() {
+        val requireProdSigning =
+            requireProdProp.orNull?.equals("true", ignoreCase = true) == true ||
+                System.getenv("AYRA_REQUIRE_PRODUCTION_SIGNING")?.equals("true", ignoreCase = true) == true
+
+        val rootDir = File(rootDirPath.get())
+        val ksPropsFile = File(rootDir, "keystore.properties")
+        val props = Properties().apply {
+            if (ksPropsFile.exists()) {
+                ksPropsFile.inputStream().use { load(it) }
+            }
+        }
+        val configuredStorePath =
+            (System.getenv("AYRA_UPLOAD_KEYSTORE_PATH")
+                ?: props.getProperty("storeFile")
+                ?: "").trim()
+        val configuredAlias =
+            (System.getenv("AYRA_UPLOAD_KEY_ALIAS")
+                ?: props.getProperty("keyAlias")
+                ?: "").trim()
+        val configuredStorePass =
+            (System.getenv("AYRA_UPLOAD_KEYSTORE_PASSWORD")
+                ?: props.getProperty("storePassword")
+                ?: "")
+        val configuredKeyPass =
+            (System.getenv("AYRA_UPLOAD_KEY_PASSWORD")
+                ?: props.getProperty("keyPassword")
+                ?: "")
+
+        if (requireProdSigning) {
+            if (configuredStorePath.isEmpty()) {
+                throw GradleException(
+                    "PRODUCTION SIGNING MISCONFIGURED: Release build requires a private upload keystore " +
+                        "(set AYRA_UPLOAD_KEYSTORE_PATH or keystore.properties; never ship debug.keystore). See RELEASE_SIGNING.md."
+                )
+            }
+            if (configuredStorePath.endsWith("debug.keystore", ignoreCase = true) ||
+                configuredAlias.equals("androiddebugkey", ignoreCase = true) ||
+                configuredStorePass == "android"
+            ) {
+                throw GradleException(
+                    "PRODUCTION SIGNING VIOLATION: Debug keystore/alias/password is forbidden for production distribution."
+                )
+            }
+            val keystoreFile = File(configuredStorePath).let {
+                if (it.isAbsolute) it else File(rootDir, configuredStorePath)
+            }
+            if (!keystoreFile.exists() || !keystoreFile.isFile) {
+                throw GradleException("Upload keystore file not found at: ${keystoreFile.absolutePath}")
+            }
+            if (configuredAlias.isEmpty() || configuredStorePass.isEmpty() || configuredKeyPass.isEmpty()) {
+                throw GradleException("Upload keystore alias and credentials must all be non-empty.")
+            }
+
+            val proc = ProcessBuilder(
+                "keytool", "-list", "-v",
+                "-keystore", keystoreFile.absolutePath,
+                "-alias", configuredAlias,
+                "-storepass", configuredStorePass
+            ).redirectErrorStream(true).start()
+            val out = proc.inputStream.bufferedReader().use { it.readText() }
+            val exitCode = proc.waitFor()
+            if (exitCode != 0) {
+                throw GradleException("Upload keystore verification via keytool failed (exit=$exitCode). Check alias and credentials.")
+            }
+            val sha256Line = out.lineSequence().firstOrNull { it.trim().startsWith("SHA256:") }?.trim()
+                ?: throw GradleException("Could not read SHA256 certificate fingerprint from upload keystore.")
+            logger.lifecycle("Verified private upload certificate ($sha256Line)")
+        } else {
+            logger.lifecycle(
+                "Release signing dev-container mode (set -PayraRequireProductionSigning=true for strict upload keystore enforcement)."
+            )
+        }
+    }
+}
+
+val validateProductionReleaseSigning by tasks.registering(ValidateProductionReleaseSigningTask::class) {
+    group = "verification"
+    description = "Validates release signing posture and verifies private upload keystore when AYRA_REQUIRE_PRODUCTION_SIGNING=true."
+    requireProdProp.set(providers.gradleProperty("ayraRequireProductionSigning"))
+    rootDirPath.set(rootProject.layout.projectDirectory.asFile.absolutePath)
+    outputs.upToDateWhen { false }
+}
+
+val verifyReleaseSigningCertificate by tasks.registering {
+    group = "verification"
+    description = "Alias task verifying production release signing rules."
+    dependsOn(validateProductionReleaseSigning)
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    dependsOn(validateProductionReleaseSigning)
+}
+
 

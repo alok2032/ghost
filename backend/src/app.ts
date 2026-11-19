@@ -11,11 +11,17 @@ import {
   type TokenVerifiers,
 } from "./middleware/auth.js";
 import {
-  createCodeSandboxQuotaLimiter,
-  createZeroTrustRateLimiter,
+  QuotaCoordinator,
+  QuotaExceededError,
+  type RateLimitStore,
 } from "./middleware/rateLimit.js";
 import { validateOutboundHttpsUrl } from "./security/ssrf.js";
-import { forwardSecureAiRequest, GatewayError } from "./services/aiGateway.js";
+import {
+  estimateRequestUsage,
+  forwardSecureAiRequest,
+  GatewayError,
+  ProviderCircuitBreaker,
+} from "./services/aiGateway.js";
 import { logSecurityEvent, redactSensitiveText } from "./services/auditLogger.js";
 import { executeIsolatedSandbox } from "./services/codeSandbox.js";
 import { buildCuratedModelCatalog } from "./services/modelCatalog.js";
@@ -32,6 +38,8 @@ export interface AppDependencies {
   revokeRefreshTokensFn?: (uid: string) => Promise<void>;
   fetchFn?: typeof fetch;
   ssrfResolver?: (hostname: string) => Promise<Array<{ address: string }>>;
+  rateLimitStore?: RateLimitStore;
+  circuitBreaker?: ProviderCircuitBreaker;
 }
 
 export function createZeroTrustApp(deps: AppDependencies) {
@@ -40,6 +48,8 @@ export function createZeroTrustApp(deps: AppDependencies) {
   const revokeTokensFn =
     deps.revokeRefreshTokensFn ??
     ((uid: string) => revokeUserRefreshTokens(config.firebaseProjectId, uid));
+  const quotaCoordinator = new QuotaCoordinator(config, deps.rateLimitStore);
+  const circuitBreaker = deps.circuitBreaker ?? new ProviderCircuitBreaker();
 
   const app = express();
   app.disable("x-powered-by");
@@ -88,8 +98,16 @@ export function createZeroTrustApp(deps: AppDependencies) {
   });
 
   const authMiddleware = requireZeroTrustAuth(config, verifiers);
-  const limiter = createZeroTrustRateLimiter(config);
-  const sandboxQuotaLimiter = createCodeSandboxQuotaLimiter(config);
+  const limiter = quotaCoordinator.createUserWindowLimiter();
+  const concurrencyGuard = quotaCoordinator.createConcurrencyGuard();
+  const sandboxQuotaLimiter = quotaCoordinator.createToolQuotaLimiter(
+    "sandbox",
+    config.codeSandboxMaxPerWindow
+  );
+  const networkToolLimiter = quotaCoordinator.createToolQuotaLimiter(
+    "network_tool",
+    config.toolRateLimitMax ?? 20
+  );
 
   app.get(
     "/api/v1/security/posture",
@@ -100,10 +118,14 @@ export function createZeroTrustApp(deps: AppDependencies) {
         uid: req.principal?.uid,
         role: req.principal?.role ?? "user",
         environment: config.nodeEnv,
+        firebaseProjectId: config.firebaseProjectId,
+        rateLimitStore: quotaCoordinator.store.kind,
         appCheckVerified: req.principal?.appCheckVerified ?? false,
         requireAppCheck: config.requireAppCheck,
         sandboxConfigured:
-          config.sandboxExecutorUrl.length > 0 && config.sandboxExecutorToken.length > 0,
+          config.sandboxExecutorUrl.length > 0 &&
+          config.sandboxExecutorToken.length > 0 &&
+          config.sandboxAttestationSecret.length >= 16,
         configuredProviders: {
           gemini: config.geminiApiKey.length > 0,
           openrouter: config.openRouterApiKey.length > 0,
@@ -114,10 +136,26 @@ export function createZeroTrustApp(deps: AppDependencies) {
     }
   );
 
+  app.get(
+    "/api/v1/quotas/status",
+    authMiddleware,
+    limiter,
+    async (req: RequestWithAuth, res: Response, next: NextFunction) => {
+      try {
+        const uid = req.principal?.uid ?? "anonymous";
+        const status = await quotaCoordinator.getQuotaStatus(uid);
+        res.status(200).json(status);
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   app.post(
     "/api/v1/ai/chat",
     authMiddleware,
     limiter,
+    concurrencyGuard,
     async (req: RequestWithAuth, res: Response, next: NextFunction) => {
       const parsed = AiChatRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -134,16 +172,53 @@ export function createZeroTrustApp(deps: AppDependencies) {
         return;
       }
 
+      const uid = req.principal?.uid ?? "anonymous";
+      const est = estimateRequestUsage(parsed.data);
+
       try {
-        const result = await forwardSecureAiRequest(config, parsed.data, deps.fetchFn);
+        await quotaCoordinator.enforceAiQuotas({
+          uid,
+          provider: parsed.data.provider,
+          model: parsed.data.model,
+          estimatedTokens: est.estimatedTokens,
+          estimatedUsdMicros: est.estimatedSpendUsdMicros,
+        });
+
+        const result = await forwardSecureAiRequest(
+          config,
+          parsed.data,
+          deps.fetchFn,
+          circuitBreaker,
+          deps.ssrfResolver
+        );
+
+        await quotaCoordinator.recordAiUsage({
+          uid,
+          tokensUsed: result.estimatedTokens,
+          spendUsdMicros: result.estimatedSpendUsdMicros,
+        });
+
         logSecurityEvent({
           severity: "INFO",
           category: "AI_GATEWAY",
           uid: req.principal?.uid,
-          message: `Completed proxied AI inference (${parsed.data.provider}/${parsed.data.model})`,
+          message: `Completed proxied AI inference (${parsed.data.provider}/${parsed.data.model}, estTokens=${result.estimatedTokens})`,
         });
-        res.status(200).json(result);
+        res.status(200).json({
+          provider: result.provider,
+          model: result.model,
+          content: result.content,
+          estimatedTokens: result.estimatedTokens,
+        });
       } catch (err) {
+        if (err instanceof QuotaExceededError) {
+          res.setHeader("Retry-After", String(err.retryAfterSeconds));
+          res.status(429).json({
+            errorCode: err.errorCode,
+            error: err.message,
+          });
+          return;
+        }
         next(err);
       }
     }
@@ -153,6 +228,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
     "/api/v1/network/inspect-url",
     authMiddleware,
     limiter,
+    networkToolLimiter,
     async (req: RequestWithAuth, res: Response) => {
       const parsed = InspectUrlRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -208,7 +284,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
     authMiddleware,
     limiter,
     (_req: RequestWithAuth, res: Response) => {
-      res.status(200).json(buildCuratedModelCatalog(config));
+      res.status(200).json(buildCuratedModelCatalog(config, circuitBreaker.getSnapshot()));
     }
   );
 
@@ -216,6 +292,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
     "/api/v1/code/run",
     authMiddleware,
     limiter,
+    concurrencyGuard,
     sandboxQuotaLimiter,
     async (req: RequestWithAuth, res: Response) => {
       const parsed = CodeRunRequestSchema.safeParse(req.body);
@@ -244,10 +321,10 @@ export function createZeroTrustApp(deps: AppDependencies) {
       );
 
       logSecurityEvent({
-        severity: outcome.ok ? "INFO" : outcome.statusCode === 503 ? "WARN" : "WARN",
+        severity: outcome.ok ? "INFO" : "WARN",
         category: "CODE_SANDBOX",
         uid: req.principal?.uid,
-        message: `Sandbox ${parsed.data.language} status=${outcome.statusCode} ok=${outcome.ok} isolated=${outcome.isolated} (${outcome.durationMs}ms)`,
+        message: `Sandbox ${parsed.data.language} status=${outcome.statusCode} ok=${outcome.ok} isolated=${outcome.isolated} attested=${outcome.attestationVerified} (${outcome.durationMs}ms)`,
       });
 
       const { statusCode, ...publicOutcome } = outcome;

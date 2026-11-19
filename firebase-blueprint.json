@@ -16,7 +16,7 @@
       "required": ["userId", "displayName", "email", "photoUrl", "preferredPersona", "preferredModelTier", "createdAt", "updatedAt"]
     },
     "CloudChatMessage": {
-      "description": "Cloud-synced AI conversation message (ciphertext when E2EE is enabled)",
+      "description": "Cloud-synced AI conversation message (ciphertext when E2EE is enabled, with chunked subcollection pointer when exceeding inline limit)",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -27,11 +27,28 @@
         "craftType": { "type": "string" },
         "craftPayload": { "type": "string" },
         "e2ee": { "type": "boolean" },
+        "chunkCount": { "type": "integer" },
+        "contentSha256": { "type": "string" },
         "timestampMs": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "localMessageId", "role", "content", "modelUsed", "craftType", "craftPayload", "timestampMs", "createdAt", "updatedAt"]
+    },
+    "PayloadChunk": {
+      "description": "Authenticated SHA-256 verified ordered ciphertext payload chunk under messages or backups",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fieldName": { "type": "string" },
+        "chunkIndex": { "type": "integer" },
+        "totalChunks": { "type": "integer" },
+        "data": { "type": "string" },
+        "chunkSha256": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fieldName", "chunkIndex", "totalChunks", "data", "chunkSha256", "createdAt", "updatedAt"]
     },
     "CloudGitHubPlugin": {
       "description": "Cloud-synced installed GitHub plugin, Claude skill pack, OpenAPI tool, or MCP integration",
@@ -114,7 +131,7 @@
       "required": ["userId", "sessionId", "deviceId", "deviceName", "status", "createdAtMs", "lastActiveMs", "createdAt", "updatedAt"]
     },
     "EncryptedCloudBackup": {
-      "description": "Passphrase-encrypted Argon2/PBKDF2 + AES-GCM zero-knowledge vault backup",
+      "description": "Passphrase-encrypted Argon2/PBKDF2 + AES-GCM zero-knowledge vault backup (supports ordered chunks)",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -122,6 +139,7 @@
         "format": { "type": "string" },
         "encryptedPayloadJson": { "type": "string" },
         "payloadSha256": { "type": "string" },
+        "chunkCount": { "type": "integer" },
         "createdAtMs": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -153,6 +171,10 @@
       "schema": { "$ref": "#/entities/CloudChatMessage" },
       "description": "Per-user synced chat history"
     },
+    "/users/{userId}/messages/{messageId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/PayloadChunk" },
+      "description": "Ordered authenticated payload chunks for oversized encrypted messages"
+    },
     "/users/{userId}/plugins/{pluginId}": {
       "schema": { "$ref": "#/entities/CloudGitHubPlugin" },
       "description": "Per-user synced installed GitHub repository plugins and skills"
@@ -172,6 +194,10 @@
     "/users/{userId}/backups/{backupId}": {
       "schema": { "$ref": "#/entities/EncryptedCloudBackup" },
       "description": "Per-user encrypted backup snapshots"
+    },
+    "/users/{userId}/backups/{backupId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/PayloadChunk" },
+      "description": "Ordered authenticated payload chunks for oversized encrypted backups"
     },
     "/users/{userId}/securityEvents/{eventId}": {
       "schema": { "$ref": "#/entities/SecurityEvent" },

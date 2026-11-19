@@ -369,3 +369,61 @@ test("Root /users collection enumeration, unmodeled subcollections, anonymous au
   await assertFails(devRef.update({ isRevoked: false, updatedAt: tsNow() }));
   await assertFails(devRef.update({ epochAdded: 1, updatedAt: tsNow() }));
 });
+
+test("Message and backup chunk subcollections enforce owner-only immutable writes and valid SHA-256 chunks", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const aliceMsg = aliceDb.collection("users").doc(ALICE_UID).collection("messages").doc("msg_chunked_1");
+  const validChunk = {
+    userId: ALICE_UID,
+    fieldName: "content",
+    chunkIndex: 0,
+    totalChunks: 2,
+    data: "E2EEv1:chunkPayloadDataSegmentZero",
+    chunkSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    createdAt: tsNow(),
+    updatedAt: tsNow(),
+  };
+
+  await assertSucceeds(
+    aliceMsg.set({
+      ...validMessage(ALICE_UID),
+      chunkCount: 2,
+      contentSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    })
+  );
+  await assertSucceeds(aliceMsg.collection("chunks").doc("c_content_0").set(validChunk));
+  await assertSucceeds(aliceMsg.collection("chunks").get());
+
+  // Cross-user read/write denied
+  await assertFails(
+    bobDb.collection("users").doc(ALICE_UID).collection("messages").doc("msg_chunked_1").collection("chunks").get()
+  );
+
+  // Immutable chunks (update denied) and invalid index/sha denied
+  await assertFails(
+    aliceMsg.collection("chunks").doc("c_content_0").update({ data: "tampered", updatedAt: tsNow() })
+  );
+  await assertFails(
+    aliceMsg.collection("chunks").doc("bad_idx").set({ ...validChunk, chunkIndex: 5, totalChunks: 2 })
+  );
+  await assertFails(
+    aliceMsg.collection("chunks").doc("bad_sha").set({ ...validChunk, chunkSha256: "not-hex" })
+  );
+  await assertSucceeds(aliceMsg.collection("chunks").doc("c_content_0").delete());
+
+  // Backup chunks follow the same owner-only immutable rules
+  const aliceBak = aliceDb.collection("users").doc(ALICE_UID).collection("backups").doc("bak_chunked_1");
+  await assertSucceeds(aliceBak.set({ ...validBackup(ALICE_UID, "bak_chunked_1"), chunkCount: 1 }));
+  await assertSucceeds(
+    aliceBak.collection("chunks").doc("c_bak_0").set({
+      ...validChunk,
+      fieldName: "encryptedPayloadJson",
+      totalChunks: 1,
+    })
+  );
+  await assertFails(
+    aliceBak.collection("chunks").doc("c_bak_0").update({ data: "tampered", updatedAt: tsNow() })
+  );
+});
+

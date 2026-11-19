@@ -40,7 +40,7 @@ abstract class FirestoreEmulatorTestBase {
         )
         val context = ApplicationProvider.getApplicationContext<Context>()
         val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
-        databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-ghost-90b6536a-2960-4824-8f02-e93f3c0c0b76"
+        databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-ghost-2c608f6c-6552-4164-9357-e96f739c5178"
 
         val existing = FirebaseApp.getApps(context).firstOrNull { it.name == TEST_APP_NAME }
         val app = existing ?: FirebaseApp.initializeApp(

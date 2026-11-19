@@ -370,6 +370,7 @@ internal object ProviderOpenAiTransport {
         out: MutableList<AiModelInfo>
     ) {
         val baseUrl = getBaseUrlForProvider(provider, context, baseUrlOverrides)
+        validateEndpointIfLocal(provider, context, baseUrl, baseUrlOverrides.isNotEmpty())
         val reqBuilder = Request.Builder().url("${baseUrl}models")
         if (key.isNotBlank()) {
             reqBuilder.addHeader("Authorization", "Bearer $key")

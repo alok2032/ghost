@@ -62,7 +62,10 @@ data class RegistryModelEntry(
     val latencyMs: Long? = null,
     val lastCheckedMs: Long? = null,
     val lastError: String? = null,
-    val verificationStatus: ModelVerificationStatus = ModelVerificationStatus.CONFIGURED
+    val verificationStatus: ModelVerificationStatus = ModelVerificationStatus.CONFIGURED,
+    val verificationMethod: String = "static_baseline",
+    val pricingVerified: Boolean = false,
+    val failureReason: String? = null
 )
 
 /**
@@ -78,18 +81,29 @@ object AiModelRegistry {
         val currentMap = _entries.value.associateBy { it.id }
         val rebuilt = buildInitialCatalog(context).map { fresh ->
             val prev = currentMap[fresh.id]
-            val catalogVerification = ModelCatalog.findEntry(fresh.provider, fresh.modelId)?.verificationStatus
-                ?: fresh.verificationStatus
+            val catalogEntry = ModelCatalog.findEntry(fresh.provider, fresh.modelId)
+            val catalogVerification = catalogEntry?.verificationStatus ?: fresh.verificationStatus
+            val catalogMethod = catalogEntry?.verificationMethod ?: fresh.verificationMethod
+            val catalogPricingVerified = catalogEntry?.pricingVerified ?: fresh.pricingVerified
+            val catalogReason = catalogEntry?.failureReason
             if (prev != null && prev.lastCheckedMs != null && fresh.healthStatus != ModelHealthStatus.UNCONFIGURED) {
                 fresh.copy(
                     healthStatus = prev.healthStatus,
                     latencyMs = prev.latencyMs,
                     lastCheckedMs = prev.lastCheckedMs,
-                    lastError = prev.lastError,
-                    verificationStatus = catalogVerification
+                    lastError = prev.lastError ?: catalogReason,
+                    verificationStatus = catalogVerification,
+                    verificationMethod = catalogMethod,
+                    pricingVerified = catalogPricingVerified,
+                    failureReason = catalogReason
                 )
             } else {
-                fresh.copy(verificationStatus = catalogVerification)
+                fresh.copy(
+                    verificationStatus = catalogVerification,
+                    verificationMethod = catalogMethod,
+                    pricingVerified = catalogPricingVerified,
+                    failureReason = catalogReason
+                )
             }
         }
         _entries.value = rebuilt
@@ -563,18 +577,33 @@ object AiModelRegistry {
 
         return@withContext try {
             val latency = ext.testProviderConnection(entry.provider, customModel = entry.modelId)
+            ModelCatalog.recordModelSuccess(entry.provider, entry.modelId)
             entry.copy(
                 healthStatus = ModelHealthStatus.OPERATIONAL,
                 latencyMs = latency,
                 lastCheckedMs = now,
-                lastError = null
+                lastError = null,
+                failureReason = null
             )
         } catch (e: Exception) {
             val status = if (e is ProviderError.RateLimited) ModelHealthStatus.DEGRADED else ModelHealthStatus.OFFLINE
+            val httpStatus = when (e) {
+                is ProviderError.RateLimited -> 429
+                is ProviderError.ModelNotFound -> 404
+                else -> 503
+            }
+            ModelCatalog.markModelUnavailable(
+                entry.provider,
+                entry.modelId,
+                httpStatus,
+                e.message ?: "Connection failed"
+            )
             entry.copy(
                 healthStatus = status,
                 lastCheckedMs = now,
-                lastError = e.message ?: "Connection failed"
+                lastError = e.message ?: "Connection failed",
+                verificationStatus = if (e is ProviderError.RateLimited) ModelVerificationStatus.RATE_LIMITED else ModelVerificationStatus.UNAVAILABLE,
+                failureReason = e.message
             )
         }
     }

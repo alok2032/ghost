@@ -12,7 +12,6 @@ import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
-import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
@@ -45,7 +44,7 @@ data class E2eeDeviceKeyBundle(
 )
 
 /**
- * End-to-End Encryption Engine for AYRA AI (Phase 4).
+ * End-to-End Encryption Engine for AYRA AI.
  *
  * Cryptographic Primitives:
  * - Identity Keys: ECDSA P-256 (`secp256r1`) hardware-backed in [AyraKeyManager.ALIAS_E2EE_IDENTITY].
@@ -53,7 +52,8 @@ data class E2eeDeviceKeyBundle(
  * - Authenticated Encryption: AES-256-GCM with 96-bit SecureRandom IV and AAD binding `(senderDeviceId|epoch|seq|context)`.
  * - Epoch Key Rotation & Forward Secrecy: Revoking a device rotates the active epoch and re-wraps the new
  *   epoch root key exclusively for remaining non-revoked devices; prior/revoked epochs reject decrypts when rotated.
- * - Replay Protection: Tracks highest observed monotonic `(epoch, seq)` per sender device.
+ * - Persistent Replay Protection: Tracks & persists highest observed monotonic `(epoch, seq)` watermarks per sender
+ *   inside hardware-encrypted storage ([KEY_REPLAY_MAP_ENC]) so replay protection survives process restarts.
  */
 object AyraE2eeEngine {
 
@@ -72,6 +72,10 @@ object AyraE2eeEngine {
 
     private val secureRandom = SecureRandom()
     private val inMemoryReplayMap = ConcurrentHashMap<String, Long>()
+    private val replayLock = Any()
+
+    @Volatile
+    private var replayMapLoadedFromPrefs = false
 
     private fun e2eePrefs(context: Context): EncryptedPreferences =
         EncryptedPreferences(
@@ -79,6 +83,36 @@ object AyraE2eeEngine {
             prefsFileName = PREFS_NAME,
             keyAlias = AyraKeyManager.ALIAS_MASTER_SECRETS
         )
+
+    private fun ensureReplayWatermarksLoadedLocked(context: Context) {
+        if (replayMapLoadedFromPrefs) return
+        val raw = e2eePrefs(context).getString(KEY_REPLAY_MAP_ENC, "{}")
+        val obj = runCatching { JSONObject(raw) }.getOrNull()
+        if (obj != null) {
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val v = obj.optLong(k, -1L)
+                if (v >= 0L) {
+                    val prev = inMemoryReplayMap[k] ?: -1L
+                    if (v > prev) inMemoryReplayMap[k] = v
+                }
+            }
+        }
+        replayMapLoadedFromPrefs = true
+    }
+
+    private fun persistReplayWatermarksLocked(context: Context) {
+        val obj = JSONObject()
+        // Keep bounded to the highest 500 sender|epoch pairs to prevent unbounded pref growth
+        val entries = inMemoryReplayMap.entries
+            .sortedByDescending { it.value }
+            .take(500)
+        for ((k, v) in entries) {
+            obj.put(k, v)
+        }
+        e2eePrefs(context).putString(KEY_REPLAY_MAP_ENC, obj.toString())
+    }
 
     /**
      * Initializes local device E2EE identity & ECDH keypair + Epoch-1 root key if not present.
@@ -116,7 +150,6 @@ object AyraE2eeEngine {
         val fingerprint = computeVisualFingerprint(identityPub.encoded, ecdhPubB64)
         val deviceName = "${Build.MANUFACTURER.orEmpty()} ${Build.MODEL.orEmpty()}".trim().ifBlank { "Android Device" }
 
-        // Ensure self is in trusted devices list
         val existing = getTrustedDevices(context)
         if (existing.none { it.deviceId == deviceId }) {
             upsertTrustedDevice(
@@ -232,10 +265,6 @@ object AyraE2eeEngine {
         e2eePrefs(context).putString(KEY_TRUSTED_DEVICES_ENC, arr.toString())
     }
 
-    /**
-     * Wraps an Epoch Root Key for another enrolled device using ECDH P-256 + HKDF-SHA256 + AES-256-GCM
-     * and signs the distribution blob with our hardware Keystore ECDSA identity key.
-     */
     fun wrapEpochKeyForPeerDevice(
         context: Context,
         peerDevice: TrustedE2eeDevice,
@@ -274,9 +303,6 @@ object AyraE2eeEngine {
         }
     }
 
-    /**
-     * Unwraps a peer-distributed Epoch Root Key after verifying sender ECDSA signature.
-     */
     fun receiveWrappedEpochKey(
         context: Context,
         packet: JSONObject,
@@ -322,10 +348,6 @@ object AyraE2eeEngine {
         return true
     }
 
-    /**
-     * Revokes a trusted device and rotates the active Epoch Root Key forward,
-     * ensuring the revoked device cannot decrypt future messages.
-     */
     @Synchronized
     fun revokeDeviceAndRotateEpoch(context: Context, targetDeviceId: String): Int {
         val nextEpoch = getCurrentEpoch(context) + 1
@@ -352,10 +374,6 @@ object AyraE2eeEngine {
         return nextEpoch
     }
 
-    /**
-     * Encrypts [plaintext] into an authenticated, signed, forward-secret E2EE envelope (`E2EEv1:...`).
-     * Binds [aadContext] (e.g. `uid|docId|fieldName`) into GCM AAD to prevent cross-document ciphertext transplantation.
-     */
     fun encryptEnvelope(context: Context, plaintext: String, aadContext: String): String {
         val bundle = getOrCreateLocalDeviceBundle(context)
         val epoch = bundle.currentEpoch
@@ -365,7 +383,6 @@ object AyraE2eeEngine {
         val seq = prefs.getLong(KEY_SEND_SEQ, 0L) + 1L
         prefs.putLong(KEY_SEND_SEQ, seq)
 
-        // Derive per-message symmetric key with forward-ratcheting info context
         val msgKey = deriveMessageKey(epochRoot, bundle.deviceId, epoch, seq)
         epochRoot.fill(0)
 
@@ -399,27 +416,39 @@ object AyraE2eeEngine {
     }
 
     /**
-     * Decrypts and verifies an E2EE envelope. If [enforceReplayProtection] is true (live stream mode),
-     * rejects duplicate/replayed sequence numbers from the same `(senderDeviceId, epoch)`.
+     * Decrypts and verifies an E2EE envelope.
+     * - [enforceReplayProtection]: rejects duplicate/stale monotonic sequence numbers using persisted watermarks.
+     * - [requireEncrypted]: when true, fails closed with [SecurityException] if [envelopeString] is unencrypted plaintext.
      */
+    @JvmOverloads
     fun decryptEnvelope(
         context: Context,
         envelopeString: String,
         aadContext: String,
-        enforceReplayProtection: Boolean = false
+        enforceReplayProtection: Boolean = false,
+        requireEncrypted: Boolean = false
     ): String {
         if (!envelopeString.startsWith(ENVELOPE_PREFIX)) {
+            if (requireEncrypted) {
+                throw SecurityException("Expected E2EE encrypted envelope ('${ENVELOPE_PREFIX}') but received unencrypted payload.")
+            }
             return envelopeString
         }
         val json = JSONObject(envelopeString.removePrefix(ENVELOPE_PREFIX))
         val senderDeviceId = json.getString("senderDeviceId")
         val epoch = json.getInt("epoch")
         val seq = json.getLong("seq")
+        if (epoch < 1 || seq < 1L) {
+            throw SecurityException("Invalid E2EE envelope epoch ($epoch) or sequence ($seq)")
+        }
         val ivB64 = json.getString("iv")
         val ctB64 = json.getString("ct")
         val sigB64 = json.getString("sig")
+        val ivBytes = AyraKeyManager.decodeB64(ivB64)
+        if (ivBytes.size != GCM_IV_BYTES) {
+            throw SecurityException("Invalid E2EE GCM IV size (${ivBytes.size})")
+        }
 
-        // Verify sender device identity & revocation status
         val devices = getTrustedDevices(context)
         val senderDevice = devices.find { it.deviceId == senderDeviceId }
             ?: throw SecurityException("Unknown E2EE sender device '$senderDeviceId'")
@@ -438,15 +467,6 @@ object AyraE2eeEngine {
             throw SecurityException("E2EE signature verification failed for sender '$senderDeviceId'")
         }
 
-        if (enforceReplayProtection) {
-            val watermarkKey = "$senderDeviceId|$epoch"
-            val lastSeq = inMemoryReplayMap[watermarkKey] ?: -1L
-            if (seq <= lastSeq) {
-                throw SecurityException("Replay detected: seq=$seq <= lastSeen=$lastSeq for $watermarkKey")
-            }
-            inMemoryReplayMap[watermarkKey] = seq
-        }
-
         val epochRoot = getEpochRootKeyOrNull(context, epoch)
             ?: throw SecurityException("Missing E2EE epoch key for epoch $epoch")
         val msgKey = deriveMessageKey(epochRoot, senderDeviceId, epoch, seq)
@@ -454,20 +474,46 @@ object AyraE2eeEngine {
 
         val plainBytes = aesGcmDecrypt(
             key = msgKey,
-            iv = AyraKeyManager.decodeB64(ivB64),
+            iv = ivBytes,
             ciphertext = AyraKeyManager.decodeB64(ctB64),
             aad = fullAad.toByteArray(StandardCharsets.UTF_8)
         )
         msgKey.fill(0)
+
+        if (enforceReplayProtection) {
+            val watermarkKey = "$senderDeviceId|$epoch"
+            synchronized(replayLock) {
+                ensureReplayWatermarksLoadedLocked(context)
+                val lastSeq = inMemoryReplayMap[watermarkKey] ?: -1L
+                if (seq <= lastSeq) {
+                    throw SecurityException("Replay detected: seq=$seq <= lastSeen=$lastSeq for $watermarkKey")
+                }
+                inMemoryReplayMap[watermarkKey] = seq
+                persistReplayWatermarksLocked(context)
+            }
+        }
+
         return String(plainBytes, StandardCharsets.UTF_8)
     }
 
-    fun clearAllE2eeState(context: Context) {
-        inMemoryReplayMap.clear()
-        e2eePrefs(context).clear()
+    /**
+     * Clears only the volatile in-memory cache of replay watermarks to simulate process restart
+     * in tests without wiping encrypted persistent replay protection.
+     */
+    internal fun resetInMemoryReplayCacheForTesting() {
+        synchronized(replayLock) {
+            inMemoryReplayMap.clear()
+            replayMapLoadedFromPrefs = false
+        }
     }
 
-    // --- Cryptographic Primitives ---
+    fun clearAllE2eeState(context: Context) {
+        synchronized(replayLock) {
+            inMemoryReplayMap.clear()
+            replayMapLoadedFromPrefs = false
+        }
+        e2eePrefs(context).clear()
+    }
 
     internal fun deriveMessageKey(epochRoot: ByteArray, senderDeviceId: String, epoch: Int, seq: Long): ByteArray {
         val salt = "msg|$senderDeviceId|epoch=$epoch".toByteArray(StandardCharsets.UTF_8)

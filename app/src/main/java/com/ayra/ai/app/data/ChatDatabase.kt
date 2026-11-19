@@ -23,7 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         VectorKnowledgeChunkEntity::class,
         LongTermMemoryEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {
@@ -286,6 +286,17 @@ abstract class ChatDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `vector_knowledge_chunks` ADD COLUMN `embeddingModelId` TEXT NOT NULL DEFAULT 'ayra-bilingual-subword-256d'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `vector_knowledge_chunks` ADD COLUMN `embeddingFingerprint` TEXT NOT NULL DEFAULT 'ayra-bilingual-subword-256d:v2:256'"
+                )
+            }
+        }
+
         private val seedDefaultSessionCallback = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)
@@ -324,7 +335,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     ChatDatabase::class.java,
                     "ayra_chat_database"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .addCallback(seedDefaultSessionCallback)
                     .fallbackToDestructiveMigration(false)
 

@@ -1,13 +1,9 @@
 package com.ayra.ai.app
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
@@ -17,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -37,7 +32,6 @@ import com.ayra.ai.app.ui.screens.VaultLockScreen
 import com.ayra.ai.app.ui.theme.AyraTheme
 import com.ayra.ai.app.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -48,12 +42,6 @@ import kotlinx.coroutines.launch
  * and manages lifecycle vault auto-lock & temp wiping.
  */
 class MainActivity : FragmentActivity() {
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        // Notification permission evaluated
-    }
 
     private val chatRepository by lazy {
         val db = ChatDatabase.getDatabase(applicationContext)
@@ -206,20 +194,6 @@ class MainActivity : FragmentActivity() {
                             )
                         }
                     }
-                }
-            }
-        }
-
-        // Defer runtime notification permission dialog until after Frame 1 SurfaceSyncGroup settles
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            lifecycleScope.launch {
-                delay(1500L)
-                if (!isFinishing && !isDestroyed &&
-                    ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
         }

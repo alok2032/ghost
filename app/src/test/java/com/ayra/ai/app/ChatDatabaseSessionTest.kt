@@ -45,7 +45,7 @@ class ChatDatabaseSessionTest {
 
     private fun openDiskDb(name: String = dbFileName): ChatDatabase {
         return Room.databaseBuilder(context, ChatDatabase::class.java, name)
-            .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9)
+            .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9, ChatDatabase.MIGRATION_9_10)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     val now = System.currentTimeMillis()
@@ -235,7 +235,7 @@ class ChatDatabaseSessionTest {
 
             // Open through Room with MIGRATION_4_5 + MIGRATION_5_6
             val upgradedDb = Room.databaseBuilder(context, ChatDatabase::class.java, migrationDbName)
-                .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9)
+                .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9, ChatDatabase.MIGRATION_9_10)
                 .allowMainThreadQueries()
                 .build()
 

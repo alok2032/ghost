@@ -15,6 +15,8 @@ import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.automation.ProposedAction
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
+import com.ayra.ai.app.security.AiToolSecurityGuard
+import com.ayra.ai.app.security.AyraDiagnosticsEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -48,6 +50,25 @@ enum class AgentExecutionStatus {
     CANCELLED,
     TIMED_OUT
 }
+
+enum class AgentActionLifecycleState {
+    PROPOSED,
+    VALIDATED,
+    USER_APPROVED,
+    EXECUTING,
+    VERIFIED,
+    COMPLETED,
+    FAILED,
+    CANCELLED
+}
+
+@Immutable
+data class AgentActionLifecycleRecord(
+    val stepId: Int,
+    val toolName: String,
+    val state: AgentActionLifecycleState,
+    val detail: String = ""
+)
 
 @Immutable
 data class AgentCitation(
@@ -85,6 +106,7 @@ sealed class AgentEvent {
     data class PlanUpdated(val steps: List<AgentPlanStep>) : AgentEvent()
     data class Status(val message: String) : AgentEvent()
     data class TextDelta(val text: String) : AgentEvent()
+    data class ActionLifecycleChanged(val record: AgentActionLifecycleRecord) : AgentEvent()
     data class ToolCallProposed(
         val toolName: String,
         val argsJson: String,
@@ -220,14 +242,22 @@ class DefaultAgentCore(
         var stepCount = 0
         var finalPlannedAnswer: String? = null
 
+        val safeDocumentContext = if (!request.documentText.isNullOrBlank()) {
+            AiToolSecurityGuard.inspectAndWrapUntrustedData(
+                context = context,
+                sourceLabel = request.documentName ?: "attached_document",
+                rawContent = request.documentText.take(4000)
+            ).wrappedUntrustedContent
+        } else null
+
         while (stepCount < maxSteps) {
             currentCoroutineContext().ensureActive()
             stepCount++
 
             val turnPrompt = buildString {
                 append("User goal: \"$cleanPrompt\"\n")
-                if (!request.documentText.isNullOrBlank()) {
-                    append("\nAttached document (${request.documentName ?: "doc"}):\n${request.documentText.take(4000)}\n")
+                if (!safeDocumentContext.isNullOrBlank()) {
+                    append("\nAttached document (${request.documentName ?: "doc"}):\n$safeDocumentContext\n")
                 }
                 if (collectedObservations.isNotBlank()) {
                     append("\nVerified tool observations so far:\n")
@@ -293,6 +323,9 @@ class DefaultAgentCore(
                 steps.addAll(batchSteps)
                 emit(AgentEvent.PlanUpdated(steps.toList()))
                 emit(AgentEvent.Status("Running ${invocations.size} read-only tools in bounded parallel..."))
+                invocations.forEachIndexed { idx, inv ->
+                    emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(steps[startIdx + idx].id, inv.toolName, AgentActionLifecycleState.PROPOSED)))
+                }
 
                 val sem = Semaphore(MAX_PARALLEL_READONLY_TOOLS)
                 val outcomes = coroutineScope {
@@ -300,7 +333,12 @@ class DefaultAgentCore(
                         async {
                             sem.withPermit {
                                 val t = toolRegistry.getTool(inv.toolName)!!
-                                inv to executeSingleToolWithTimeout(t, inv.args)
+                                val validation = ToolArgumentValidator.validate(t, inv.args)
+                                if (!validation.valid) {
+                                    inv to AgentToolOutput(false, validation.reason ?: "Invalid arguments.")
+                                } else {
+                                    inv to executeSingleToolWithTimeout(t, inv.args)
+                                }
                             }
                         }
                     }.awaitAll()
@@ -309,6 +347,13 @@ class DefaultAgentCore(
                 for ((offset, pair) in outcomes.withIndex()) {
                     val (inv, finalOutput) = pair
                     val tool = toolRegistry.getTool(inv.toolName)!!
+                    val stepId = steps[startIdx + offset].id
+                    if (finalOutput.success) {
+                        emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.VERIFIED)))
+                        emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.COMPLETED)))
+                    } else {
+                        emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.FAILED, finalOutput.output.take(120))))
+                    }
                     usedTools.add(tool.name)
                     steps[startIdx + offset] = steps[startIdx + offset].copy(
                         status = if (finalOutput.success) StepStatus.DONE else StepStatus.FAILED,
@@ -322,7 +367,8 @@ class DefaultAgentCore(
                             emit(AgentEvent.Citation(cite))
                         }
                     }
-                    collectedObservations.append("[Tool ${tool.name} (${if (finalOutput.success) "OK" else "FAIL"})]:\n${finalOutput.output.take(2500)}\n\n")
+                    val isolatedOutput = isolateToolObservation(tool.name, finalOutput.output)
+                    collectedObservations.append("[Tool ${tool.name} (${if (finalOutput.success) "OK" else "FAIL"})]:\n$isolatedOutput\n\n")
                 }
                 continue
             }
@@ -340,10 +386,12 @@ class DefaultAgentCore(
                 )
             )
             emit(AgentEvent.PlanUpdated(steps.toList()))
+            emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, invocation.toolName, AgentActionLifecycleState.PROPOSED)))
             emit(AgentEvent.Status("Running tool: ${invocation.toolName}..."))
 
             val tool = toolRegistry.getTool(invocation.toolName)
             if (tool == null) {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, invocation.toolName, AgentActionLifecycleState.FAILED, "Unknown tool")))
                 steps[steps.lastIndex] = steps.last().copy(status = StepStatus.FAILED, note = "Unknown tool")
                 emit(AgentEvent.PlanUpdated(steps.toList()))
                 collectedObservations.append("Tool '${invocation.toolName}' unavailable.\n")
@@ -351,16 +399,35 @@ class DefaultAgentCore(
             }
 
             if (isLocalOnly && tool.isExternal) {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.CANCELLED, "Blocked by Local-Only mode")))
                 steps[steps.lastIndex] = steps.last().copy(status = StepStatus.SKIPPED, note = "Blocked by Local-Only mode")
                 emit(AgentEvent.PlanUpdated(steps.toList()))
                 collectedObservations.append("Tool '${tool.name}' blocked because Local-Only Privacy Mode is enabled.\n")
                 continue
             }
 
-            val finalOutput = executeSingleToolWithTimeout(tool, invocation.args)
+            val validation = ToolArgumentValidator.validate(tool, invocation.args)
+            if (!validation.valid) {
+                val errMsg = validation.reason ?: "Invalid arguments for ${tool.name}"
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.FAILED, errMsg)))
+                steps[steps.lastIndex] = steps.last().copy(status = StepStatus.FAILED, note = errMsg.take(120))
+                emit(AgentEvent.PlanUpdated(steps.toList()))
+                collectedObservations.append("[Tool ${tool.name} (VALIDATION_FAIL)]:\n$errMsg\n\n")
+                continue
+            }
+            emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.VALIDATED)))
+
+            emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.EXECUTING)))
+            val finalOutput = try {
+                executeSingleToolWithTimeout(tool, invocation.args)
+            } catch (e: CancellationException) {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.CANCELLED)))
+                throw e
+            }
 
             if (finalOutput.requiresConfirmationAction != null) {
                 // Never claim the action executed before explicit user confirmation
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.PROPOSED, "Waiting user confirmation")))
                 steps[steps.lastIndex] = steps.last().copy(
                     status = StepStatus.PENDING,
                     note = "Waiting user confirmation (${tool.name})"
@@ -369,6 +436,13 @@ class DefaultAgentCore(
                 emit(AgentEvent.Status("Waiting user confirmation for ${tool.name}..."))
                 emit(AgentEvent.ToolCallProposed(tool.name, invocation.args.toString(), finalOutput.requiresConfirmationAction))
                 return@flow
+            }
+
+            if (finalOutput.success) {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.VERIFIED)))
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.COMPLETED)))
+            } else {
+                emit(AgentEvent.ActionLifecycleChanged(AgentActionLifecycleRecord(stepId, tool.name, AgentActionLifecycleState.FAILED, finalOutput.output.take(120))))
             }
 
             usedTools.add(tool.name)
@@ -396,7 +470,8 @@ class DefaultAgentCore(
                 lastCraftPayload = finalOutput.craftPayload
             }
 
-            collectedObservations.append("[Tool ${tool.name} (${if (finalOutput.success) "OK" else "FAIL"})]:\n${finalOutput.output.take(2500)}\n\n")
+            val isolatedOutput = isolateToolObservation(tool.name, finalOutput.output)
+            collectedObservations.append("[Tool ${tool.name} (${if (finalOutput.success) "OK" else "FAIL"})]:\n$isolatedOutput\n\n")
         }
 
         // Verify & Synthesize final answer if not already produced with citations
@@ -420,8 +495,8 @@ class DefaultAgentCore(
 
         val synthPrompt = buildString {
             append("User goal: \"$cleanPrompt\"\n\n")
-            if (!request.documentText.isNullOrBlank()) {
-                append("Attached document (${request.documentName ?: "doc"}):\n${request.documentText.take(4000)}\n\n")
+            if (!safeDocumentContext.isNullOrBlank()) {
+                append("Attached document (${request.documentName ?: "doc"}):\n$safeDocumentContext\n\n")
             }
             if (collectedObservations.isNotBlank()) {
                 append("Verified Tool Results:\n${collectedObservations.toString().take(10000)}\n\n")
@@ -488,10 +563,25 @@ class DefaultAgentCore(
         }
     }.flowOn(Dispatchers.IO)
 
+    private fun isolateToolObservation(toolName: String, rawOutput: String): String {
+        val clipped = rawOutput.take(2500)
+        if (clipped.isBlank()) return ""
+        return if (clipped.contains("<untrusted_external_data")) {
+            clipped
+        } else {
+            AiToolSecurityGuard.inspectAndWrapUntrustedData(
+                context = context,
+                sourceLabel = "tool:$toolName",
+                rawContent = clipped
+            ).wrappedUntrustedContent
+        }
+    }
+
     private suspend fun executeSingleToolWithTimeout(
         tool: AgentTool,
         args: JSONObject
     ): AgentToolOutput {
+        val startedMs = System.currentTimeMillis()
         var output: AgentToolOutput? = null
         var retries = 0
         while (retries < MAX_STEP_RETRIES) {
@@ -511,7 +601,15 @@ class DefaultAgentCore(
             }
             retries++
         }
-        return output ?: AgentToolOutput(false, "Tool returned no result.")
+        val finalOut = output ?: AgentToolOutput(false, "Tool returned no result.")
+        AyraDiagnosticsEngine.record(
+            subsystem = "AgentTool",
+            operation = tool.name,
+            durationMs = (System.currentTimeMillis() - startedMs).coerceAtLeast(0L),
+            success = finalOut.success || finalOut.requiresConfirmationAction != null,
+            detail = finalOut.output.take(140)
+        )
+        return finalOut
     }
 
     private fun buildModelLabel(usedTools: List<String>): String {

@@ -40,6 +40,15 @@ interface VectorKnowledgeDao {
     @Query("SELECT * FROM vector_knowledge_chunks WHERE layer = :layer")
     suspend fun getChunksByLayerOnce(layer: String): List<VectorKnowledgeChunkEntity>
 
+    @Query("SELECT DISTINCT sourceId FROM vector_knowledge_chunks WHERE embeddingModelId != :expectedModelId OR embeddingFingerprint != :expectedFingerprint")
+    suspend fun getSourceIdsWithMismatchedEmbeddings(expectedModelId: String, expectedFingerprint: String): List<Long>
+
+    @Query("SELECT * FROM vector_knowledge_sources WHERE id IN (:sourceIds)")
+    suspend fun getSourcesByIds(sourceIds: List<Long>): List<VectorKnowledgeSourceEntity>
+
+    @Query("SELECT * FROM vector_knowledge_chunks WHERE sourceId = :sourceId ORDER BY chunkIndex ASC")
+    suspend fun getChunksForSourceOnce(sourceId: Long): List<VectorKnowledgeChunkEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSource(source: VectorKnowledgeSourceEntity): Long
 

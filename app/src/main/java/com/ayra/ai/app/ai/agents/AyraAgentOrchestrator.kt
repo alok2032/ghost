@@ -30,16 +30,159 @@ data class AgentExecutionPlan(
     val confirmationPrompt: String? = null
 )
 
+enum class VerificationVerdict {
+    VERIFIED,
+    PARTIALLY_VERIFIED,
+    UNVERIFIED,
+    FAILED
+}
+
+data class VerificationReport(
+    val verdict: VerificationVerdict,
+    val confidenceScore: Float?,
+    val confidenceLabel: String,
+    val evidenceCoverage: Float,
+    val sourceReliability: Float,
+    val citationValidity: Float,
+    val crossSourceAgreement: Float,
+    val toolExecutionSuccess: Float,
+    val outputCompleteness: Float,
+    val uncertaintyNotes: List<String> = emptyList()
+)
+
 data class AgentResult(
     val domain: AgentDomain,
     val finalResponse: String,
     val citations: List<String> = emptyList(),
     val confidenceScore: Float? = null,
     val confidenceLabel: String = "Unverified",
-    val executionSteps: List<String> = emptyList()
+    val executionSteps: List<String> = emptyList(),
+    val verificationReport: VerificationReport? = null
 )
 
 object AyraAgentOrchestrator {
+
+    private val HIGH_RELIABILITY_HOSTS = setOf(
+        "wikipedia.org", "en.wikipedia.org", "bn.wikipedia.org", "wikidata.org",
+        "arxiv.org", "openalex.org", "pubmed.ncbi.nlm.nih.gov", "crossref.org",
+        "nvd.nist.gov", "cve.circl.lu", "metrics.torproject.org", "github.com",
+        "developer.android.com", "firebase.google.com", "kotlinlang.org"
+    )
+
+    /**
+     * Multi-dimensional empirical verification report across citation validity, source reliability,
+     * cross-source agreement, tool execution reliability, and output completeness.
+     * Never fabricates a confidence percentage when no empirical grounding exists.
+     */
+    fun evaluateVerificationReport(
+        citationUrls: List<String>,
+        completedToolSteps: Int,
+        failedToolSteps: Int,
+        quorumProvidersCount: Int,
+        outputText: String = "",
+        staleSourceCount: Int = 0
+    ): VerificationReport {
+        val totalToolSteps = completedToolSteps + failedToolSteps
+        val validHttpsUrls = citationUrls.filter { url ->
+            val trimmed = url.trim().lowercase(Locale.US)
+            trimmed.startsWith("https://") && trimmed.length > 10 && !trimmed.contains("localhost") && !trimmed.contains("127.0.0.1")
+        }
+        val citationValidity = if (citationUrls.isEmpty()) 0f else validHttpsUrls.size.toFloat() / citationUrls.size.toFloat()
+
+        val hosts = validHttpsUrls.mapNotNull { url ->
+            runCatching { java.net.URI(url).host?.lowercase(Locale.US)?.removePrefix("www.") }.getOrNull()
+        }.distinct()
+        val reliableHostCount = hosts.count { host ->
+            HIGH_RELIABILITY_HOSTS.any { host == it || host.endsWith(".$it") }
+        }
+        val sourceReliability = if (validHttpsUrls.isEmpty()) 0f else {
+            val authoritativeRatio = reliableHostCount.toFloat() / hosts.size.coerceAtLeast(1)
+            (0.45f + 0.55f * authoritativeRatio).coerceIn(0f, 1f)
+        }
+
+        val toolExecutionSuccess = if (totalToolSteps > 0) {
+            completedToolSteps.toFloat() / totalToolSteps.toFloat()
+        } else 0f
+
+        val evidenceCoverage = ((validHttpsUrls.size.coerceAtMost(4) / 4f) * 0.65f +
+            (completedToolSteps.coerceAtMost(3) / 3f) * 0.35f).coerceIn(0f, 1f)
+
+        val crossSourceAgreement = when {
+            quorumProvidersCount >= 3 || hosts.size >= 3 -> 0.9f
+            quorumProvidersCount == 2 || hosts.size == 2 -> 0.72f
+            hosts.size == 1 && completedToolSteps > 0 -> 0.45f
+            else -> 0f
+        }
+
+        val outputCompleteness = when {
+            outputText.isBlank() && citationUrls.isEmpty() && totalToolSteps == 0 -> 0f
+            outputText.isBlank() -> 0.75f // Metric computed pre-synthesis or standalone
+            outputText.trim().length >= 160 -> 1.0f
+            outputText.trim().length >= 40 -> 0.75f
+            else -> 0.4f
+        }
+
+        val notes = mutableListOf<String>()
+        if (validHttpsUrls.isEmpty() && completedToolSteps <= 0 && quorumProvidersCount <= 1) {
+            notes += "No external citations, tool checks, or multi-provider quorum backing this output."
+            return VerificationReport(
+                verdict = VerificationVerdict.UNVERIFIED,
+                confidenceScore = null,
+                confidenceLabel = "Unverified (no external citations or tool checks)",
+                evidenceCoverage = 0f,
+                sourceReliability = 0f,
+                citationValidity = citationValidity,
+                crossSourceAgreement = 0f,
+                toolExecutionSuccess = 0f,
+                outputCompleteness = outputCompleteness,
+                uncertaintyNotes = notes
+            )
+        }
+
+        if (citationUrls.size > validHttpsUrls.size) {
+            notes += "${citationUrls.size - validHttpsUrls.size} citation(s) lacked verified HTTPS URLs."
+        }
+        if (hosts.size == 1 && quorumProvidersCount <= 1) {
+            notes += "Single-source evidence only; cross-source corroboration is limited."
+        }
+        if (failedToolSteps > 0) {
+            notes += "$failedToolSteps tool step(s) failed during verification."
+        }
+        if (staleSourceCount > 0) {
+            notes += "$staleSourceCount cached source(s) may be stale relative to live telemetry."
+        }
+
+        val citationBoost = (validHttpsUrls.size.coerceAtMost(4) * 0.08f)
+        val quorumBoost = (quorumProvidersCount.coerceAtLeast(1) - 1).coerceAtMost(3) * 0.08f
+        val stalenessPenalty = if (staleSourceCount > 0 && validHttpsUrls.isNotEmpty()) 0.04f else 0f
+        val rawScore = 0.45f + citationBoost + (toolExecutionSuccess * 0.25f) + quorumBoost - stalenessPenalty
+        val score = rawScore.coerceIn(0.10f, 0.96f)
+
+        val verdict = when {
+            totalToolSteps > 0 && completedToolSteps == 0 && validHttpsUrls.isEmpty() -> VerificationVerdict.FAILED
+            score >= 0.80f -> VerificationVerdict.VERIFIED
+            score >= 0.50f -> VerificationVerdict.PARTIALLY_VERIFIED
+            else -> VerificationVerdict.UNVERIFIED
+        }
+        val label = when {
+            score >= 0.80f -> "High (Evidence-Backed)"
+            score >= 0.60f -> "Moderate (Partial Evidence)"
+            else -> "Low (Limited Evidence)"
+        }
+
+        return VerificationReport(
+            verdict = verdict,
+            confidenceScore = score,
+            confidenceLabel = label,
+            evidenceCoverage = evidenceCoverage,
+            sourceReliability = sourceReliability,
+            citationValidity = citationValidity,
+            crossSourceAgreement = crossSourceAgreement,
+            toolExecutionSuccess = toolExecutionSuccess,
+            outputCompleteness = outputCompleteness,
+            uncertaintyNotes = notes
+        )
+    }
 
     /**
      * Computes an evidence-grounded confidence metric strictly from verified signals.
@@ -51,21 +194,16 @@ object AyraAgentOrchestrator {
         failedToolSteps: Int,
         quorumProvidersCount: Int
     ): Pair<Float?, String> {
-        if (verifiedCitationsCount <= 0 && completedToolSteps <= 0 && quorumProvidersCount <= 1) {
-            return null to "Unverified (no external citations or tool checks)"
+        val syntheticCitations = List(verifiedCitationsCount.coerceAtLeast(0)) { idx ->
+            "https://verified.example.org/source/$idx"
         }
-        val citationBoost = (verifiedCitationsCount.coerceAtMost(4) * 0.08f)
-        val toolSuccessRate = if (completedToolSteps + failedToolSteps > 0) {
-            completedToolSteps.toFloat() / (completedToolSteps + failedToolSteps)
-        } else 0f
-        val quorumBoost = (quorumProvidersCount.coerceAtLeast(1) - 1).coerceAtMost(3) * 0.08f
-        val score = (0.45f + citationBoost + (toolSuccessRate * 0.25f) + quorumBoost).coerceIn(0.10f, 0.96f)
-        val label = when {
-            score >= 0.80f -> "High (Evidence-Backed)"
-            score >= 0.60f -> "Moderate (Partial Evidence)"
-            else -> "Low (Limited Evidence)"
-        }
-        return score to label
+        val report = evaluateVerificationReport(
+            citationUrls = syntheticCitations,
+            completedToolSteps = completedToolSteps,
+            failedToolSteps = failedToolSteps,
+            quorumProvidersCount = quorumProvidersCount
+        )
+        return report.confidenceScore to report.confidenceLabel
     }
 
     /**

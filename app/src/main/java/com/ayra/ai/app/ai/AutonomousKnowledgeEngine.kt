@@ -17,8 +17,8 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.LinkedHashMap
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Real-time Multi-Layer Wiki & Encyclopedic Grounding Engine:
@@ -92,7 +92,12 @@ object AutonomousKnowledgeEngine {
     )
 
     private const val MAX_CACHE_ENTRIES = 250
-    private val knowledgeCache = ConcurrentHashMap<String, String>()
+    private val cacheLock = Any()
+    private val knowledgeCache = object : LinkedHashMap<String, String>(MAX_CACHE_ENTRIES + 1, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+            return size > MAX_CACHE_ENTRIES
+        }
+    }
     private val CVE_ID_REGEX = Regex("CVE-\\d{4}-\\d{4,7}", RegexOption.IGNORE_CASE)
 
     private val STOP_WORDS_EN_REGEX = Regex("(?i)^(why does|why is|why do|what is|what are|how does|how to|who is|where is|when did|explain|tell me about|meaning of|definition of)\\s+")
@@ -102,12 +107,25 @@ object AutonomousKnowledgeEngine {
     private val MATH_REGEX = Regex("^(\\d+(?:\\.\\d+)?)\\s*([+\\-*/xX×÷^%]|যোগ|বিয়োগ|গুণ|ভাগ)\\s*(\\d+(?:\\.\\d+)?)$")
     private val USER_AGENT = "AyraAiAssistant/3.2 (Linux; Android 14; Mobile; https://ayra-ai.app/assistant)"
 
-    private fun putCache(key: String, value: String) {
+    internal fun getCache(key: String): String? = synchronized(cacheLock) {
+        knowledgeCache[key]
+    }
+
+    internal fun putCache(key: String, value: String) {
         if (value.isBlank()) return
-        if (knowledgeCache.size >= MAX_CACHE_ENTRIES) {
+        synchronized(cacheLock) {
+            knowledgeCache[key] = value
+        }
+    }
+
+    internal fun cacheSizeForTests(): Int = synchronized(cacheLock) {
+        knowledgeCache.size
+    }
+
+    internal fun clearCacheForTests() {
+        synchronized(cacheLock) {
             knowledgeCache.clear()
         }
-        knowledgeCache[key] = value
     }
 
     /**
@@ -128,7 +146,7 @@ object AutonomousKnowledgeEngine {
 
         val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
         val cacheKey = "multi:${if (isBengali) "bn" else "en"}:${topic.lowercase(Locale.ROOT)}"
-        knowledgeCache[cacheKey]?.let { return@supervisorScope it }
+        getCache(cacheKey)?.let { return@supervisorScope it }
 
         val isDarkOrDeep = GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(cleanPrompt)
         val wantsDeepAcademic = isDarkOrDeep || isAcademicOrTechnicalQuery(cleanPrompt)
@@ -607,7 +625,7 @@ object AutonomousKnowledgeEngine {
         val cacheKey = "wiki:${if (isBengali) "bn" else "en"}:$queryTerm"
 
         if (baseUrlOverride == null) {
-            knowledgeCache[cacheKey]?.let { return it }
+            getCache(cacheKey)?.let { return it }
         }
 
         fun fetchWikiGeneratorSearch(lang: String, term: String): Pair<String, String>? {

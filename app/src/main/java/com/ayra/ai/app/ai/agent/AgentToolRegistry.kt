@@ -50,6 +50,113 @@ interface AgentToolRegistry {
     fun toOpenAiToolsJsonArray(localOnlyMode: Boolean = false): JSONArray
 }
 
+data class ToolArgumentValidationResult(
+    val valid: Boolean,
+    val reason: String? = null
+)
+
+/**
+ * Validates structured arguments against a tool's JSON Schema before execution or confirmation proposal.
+ */
+object ToolArgumentValidator {
+    private const val MAX_STRING_ARG_LENGTH = 32_768
+
+    private val integerBounds: Map<String, IntRange> = mapOf(
+        "hour" to 0..23,
+        "minute" to 0..59,
+        "max_results" to 1..20,
+        "offset_hours" to 0..8760
+    )
+
+    fun validate(tool: AgentTool, args: JSONObject): ToolArgumentValidationResult {
+        val schema = runCatching { JSONObject(tool.parametersSchemaJson) }.getOrNull()
+            ?: return ToolArgumentValidationResult(false, "Invalid tool schema definition for '${tool.name}'.")
+        val properties = schema.optJSONObject("properties") ?: JSONObject()
+        val required = schema.optJSONArray("required")
+
+        if (required != null) {
+            for (i in 0 until required.length()) {
+                val reqKey = required.optString(i, "")
+                if (reqKey.isBlank()) continue
+                if (!args.has(reqKey) || args.isNull(reqKey)) {
+                    return ToolArgumentValidationResult(false, "Missing required argument '$reqKey' for tool '${tool.name}'.")
+                }
+                val propType = properties.optJSONObject(reqKey)?.optString("type", "")
+                if (propType == "string" && args.opt(reqKey)?.toString()?.trim().isNullOrEmpty()) {
+                    return ToolArgumentValidationResult(false, "Required string argument '$reqKey' cannot be empty for tool '${tool.name}'.")
+                }
+            }
+        }
+
+        val allowAdditional = schema.optBoolean("additionalProperties", properties.length() == 0)
+        val keys = args.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (!properties.has(key)) {
+                if (!allowAdditional) {
+                    return ToolArgumentValidationResult(false, "Unknown argument '$key' is not declared in '${tool.name}' schema.")
+                }
+                continue
+            }
+            val propSpec = properties.optJSONObject(key) ?: continue
+            val expectedType = propSpec.optString("type", "")
+            val rawVal = args.opt(key)
+            if (rawVal == null || rawVal == JSONObject.NULL) {
+                return ToolArgumentValidationResult(false, "Argument '$key' cannot be null.")
+            }
+
+            when (expectedType) {
+                "string" -> {
+                    if (rawVal !is String) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' must be a string.")
+                    }
+                    val maxLen = propSpec.optInt("maxLength", MAX_STRING_ARG_LENGTH)
+                    if (rawVal.length > maxLen) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' exceeds maxLength ($maxLen).")
+                    }
+                }
+                "integer" -> {
+                    val intVal = when (rawVal) {
+                        is Int -> rawVal
+                        is Long -> rawVal.toInt().also { if (it.toLong() != rawVal) return ToolArgumentValidationResult(false, "Argument '$key' overflows 32-bit integer.") }
+                        is Number -> {
+                            val d = rawVal.toDouble()
+                            if (d % 1.0 != 0.0 || d > Int.MAX_VALUE || d < Int.MIN_VALUE) {
+                                return ToolArgumentValidationResult(false, "Argument '$key' must be an integer.")
+                            }
+                            d.toInt()
+                        }
+                        else -> return ToolArgumentValidationResult(false, "Argument '$key' must be an integer.")
+                    }
+                    val min = if (propSpec.has("minimum")) propSpec.optInt("minimum") else integerBounds[key]?.first
+                    val max = if (propSpec.has("maximum")) propSpec.optInt("maximum") else integerBounds[key]?.last
+                    if (min != null && intVal < min) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' ($intVal) is below minimum ($min).")
+                    }
+                    if (max != null && intVal > max) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' ($intVal) exceeds maximum ($max).")
+                    }
+                }
+                "number" -> {
+                    if (rawVal !is Number) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' must be numeric.")
+                    }
+                    val numVal = rawVal.toDouble()
+                    if (numVal.isNaN() || numVal.isInfinite()) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' must be a finite number.")
+                    }
+                }
+                "boolean" -> {
+                    if (rawVal !is Boolean) {
+                        return ToolArgumentValidationResult(false, "Argument '$key' must be a boolean.")
+                    }
+                }
+            }
+        }
+        return ToolArgumentValidationResult(true)
+    }
+}
+
 /**
  * Complete Registry of 21 real device, web, document, code, media, and memory tools for Ayra AgentCore.
  */

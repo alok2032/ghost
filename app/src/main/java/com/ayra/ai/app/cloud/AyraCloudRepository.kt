@@ -15,6 +15,7 @@ import com.ayra.ai.app.security.TrustedE2eeDevice
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -25,6 +26,27 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
+enum class CloudSyncMode {
+    E2EE_ENCRYPTED,
+    STANDARD_UNENCRYPTED
+}
+
+data class PayloadChunk(
+    val fieldName: String,
+    val chunkIndex: Int,
+    val totalChunks: Int,
+    val data: String,
+    val chunkSha256: String
+)
+
+data class AuthenticatedChunkManifest(
+    val markerValue: String,
+    val fullPayloadSha256: String,
+    val chunks: List<PayloadChunk>
+)
 
 data class CloudSessionInfo(
     val sessionId: String,
@@ -49,14 +71,17 @@ data class CloudBackupRecord(
  * Security Guarantees:
  * - Gated behind Firebase Authentication (`uid`).
  * - Honors Local-Only Privacy Mode (`AyraPreferences.isLocalOnlyAiModeEnabled`): refuses cloud writes when active.
- * - End-to-End Encrypts synced messages and creations via [AyraE2eeEngine] when `appContext != null`
- *   and `AyraPreferences.isCloudE2eeSyncEnabled(appContext)` is enabled, so Firestore stores ciphertext only.
- * - Manages `/devices`, `/sessions`, `/backups`, and `/securityEvents` with explicit ownership & revocation.
+ * - Explicitly distinguishes [CloudSyncMode.E2EE_ENCRYPTED] vs [CloudSyncMode.STANDARD_UNENCRYPTED];
+ *   when E2EE is active and [appContext] is null (or decryption fails), FAILS CLOSED rather than silently
+ *   falling back to plaintext storage.
+ * - Never truncates ciphertext envelopes (`take(...)` on ciphertexts is eliminated): oversized payloads
+ *   are stored via authenticated, ordered, SHA-256 verified subcollection chunks (`chunks/{chunkId}`).
  */
 class AyraCloudRepository(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
-    private val appContext: Context? = null
+    private val appContext: Context? = null,
+    private val syncMode: CloudSyncMode = CloudSyncMode.E2EE_ENCRYPTED
 ) {
 
     fun requireUserId(): String =
@@ -69,20 +94,57 @@ class AyraCloudRepository(
         return AyraPreferences.isLocalOnlyAiModeEnabled(ctx)
     }
 
-    private fun encryptFieldIfEnabled(uid: String, aadSuffix: String, value: String): String {
-        val ctx = appContext ?: return value
-        if (value.isBlank() || !AyraPreferences.isCloudE2eeSyncEnabled(ctx)) return value
-        return AyraE2eeEngine.encryptEnvelope(ctx, value, "$uid|$aadSuffix")
+    fun resolveEffectiveSyncMode(): CloudSyncMode {
+        if (syncMode == CloudSyncMode.STANDARD_UNENCRYPTED) {
+            return CloudSyncMode.STANDARD_UNENCRYPTED
+        }
+        val ctx = appContext
+            ?: throw SecurityException(
+                "E2EE cloud sync is enabled but Android Context is unavailable; refusing unencrypted cloud fallback."
+            )
+        return if (AyraPreferences.isCloudE2eeSyncEnabled(ctx)) {
+            CloudSyncMode.E2EE_ENCRYPTED
+        } else {
+            CloudSyncMode.STANDARD_UNENCRYPTED
+        }
     }
 
-    private fun decryptFieldIfEnvelope(uid: String, aadSuffix: String, storedValue: String): String {
-        if (!storedValue.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)) return storedValue
-        val ctx = appContext ?: return "[Encrypted E2EE Content — Unlock on Trusted Device]"
-        return runCatching {
-            AyraE2eeEngine.decryptEnvelope(ctx, storedValue, "$uid|$aadSuffix", enforceReplayProtection = false)
-        }.getOrElse {
-            "[E2EE Decryption Blocked: ${it.message ?: "Key or device verification failed"}]"
+    private fun encryptFieldForSync(uid: String, aadSuffix: String, value: String): String {
+        val mode = resolveEffectiveSyncMode()
+        if (mode == CloudSyncMode.STANDARD_UNENCRYPTED || value.isBlank()) {
+            return value
         }
+        val ctx = appContext
+            ?: throw SecurityException("Missing Context during E2EE encryption.")
+        val encrypted = AyraE2eeEngine.encryptEnvelope(ctx, value, "$uid|$aadSuffix")
+        if (!encrypted.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)) {
+            throw SecurityException("E2EE envelope invariant violated.")
+        }
+        return encrypted
+    }
+
+    private fun decryptFieldStrict(
+        uid: String,
+        aadSuffix: String,
+        storedValue: String,
+        expectE2ee: Boolean
+    ): String {
+        val isEnvelope = storedValue.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)
+        if (!isEnvelope) {
+            if (expectE2ee) {
+                throw SecurityException("Expected E2EE ciphertext envelope for $aadSuffix, found unencrypted payload.")
+            }
+            return storedValue
+        }
+        val ctx = appContext
+            ?: throw SecurityException("Cannot decrypt E2EE payload without device keystore Context.")
+        return AyraE2eeEngine.decryptEnvelope(
+            context = ctx,
+            envelopeString = storedValue,
+            aadContext = "$uid|$aadSuffix",
+            enforceReplayProtection = false,
+            requireEncrypted = true
+        )
     }
 
     suspend fun upsertUserProfile(
@@ -129,10 +191,6 @@ class AyraCloudRepository(
         }
     }
 
-    /**
-     * Registers current Android device E2EE public key bundle under `/users/{uid}/devices/{deviceId}`
-     * and records active login session under `/users/{uid}/sessions/{sessionId}`.
-     */
     suspend fun registerCurrentDeviceAndSession(uid: String? = currentUserIdOrNull()) {
         val resolvedUid = uid ?: return
         val ctx = appContext ?: return
@@ -211,51 +269,133 @@ class AyraCloudRepository(
     suspend fun syncMessageToCloud(message: ChatMessage, messageKey: String? = null) {
         if (isCloudSyncSuppressed()) return
         val uid = currentUserIdOrNull() ?: return
+        val effectiveMode = resolveEffectiveSyncMode()
         val docId = sanitizeDocId(messageKey ?: "msg_${message.timestamp}_${message.id}")
         val docRef = firestore.collection("users").document(uid)
             .collection("messages").document(docId)
         val normalizedRole = if (message.role == "user") "user" else "assistant"
 
-        val encryptedContent = encryptFieldIfEnabled(uid, "$docId|content", message.content)
-        val encryptedCraftPayload = if (!message.craftPayload.isNullOrBlank()) {
-            encryptFieldIfEnabled(uid, "$docId|craftPayload", message.craftPayload)
+        val encodedContent = encryptFieldForSync(uid, "$docId|content", message.content)
+        val encodedCraftPayload = if (!message.craftPayload.isNullOrBlank()) {
+            encryptFieldForSync(uid, "$docId|craftPayload", message.craftPayload)
         } else ""
-        val isE2ee = encryptedContent.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)
+        val isE2ee = effectiveMode == CloudSyncMode.E2EE_ENCRYPTED && encodedContent.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX)
+
+        if (encodedCraftPayload.length > MAX_INLINE_MESSAGE_CHARS) {
+            throw IllegalArgumentException(
+                "Encrypted craftPayload (${encodedCraftPayload.length} chars) exceeds maximum inline field limit; refusing silent truncation."
+            )
+        }
+
+        val chunkManifest = if (encodedContent.length > MAX_INLINE_MESSAGE_CHARS) {
+            splitPayloadIntoAuthenticatedChunks(fieldName = "content", payload = encodedContent)
+        } else {
+            null
+        }
+        val storedContentValue = chunkManifest?.markerValue ?: encodedContent
+        val contentSha = chunkManifest?.fullPayloadSha256 ?: sha256Hex(encodedContent)
+        val chunkCount = chunkManifest?.chunks?.size ?: 0
 
         try {
             val existingSnap = docRef.get().awaitResult()
+            val batch = firestore.batch()
             if (existingSnap.exists()) {
                 val updates = mapOf(
-                    "content" to encryptedContent.take(90_000),
+                    "content" to storedContentValue,
                     "modelUsed" to (message.actionCommand ?: "").take(120),
                     "craftType" to (message.craftType ?: "").take(40),
-                    "craftPayload" to encryptedCraftPayload.take(90_000),
+                    "craftPayload" to encodedCraftPayload,
                     "e2ee" to isE2ee,
+                    "chunkCount" to chunkCount,
+                    "contentSha256" to contentSha,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
-                docRef.update(updates).awaitResult()
+                batch.update(docRef, updates)
             } else {
                 val payload = mapOf(
                     "userId" to uid,
                     "localMessageId" to message.id.coerceAtLeast(0L),
                     "role" to normalizedRole,
-                    "content" to encryptedContent.take(90_000),
+                    "content" to storedContentValue,
                     "modelUsed" to (message.actionCommand ?: "").take(120),
                     "craftType" to (message.craftType ?: "").take(40),
-                    "craftPayload" to encryptedCraftPayload.take(90_000),
+                    "craftPayload" to encodedCraftPayload,
                     "e2ee" to isE2ee,
+                    "chunkCount" to chunkCount,
+                    "contentSha256" to contentSha,
                     "timestampMs" to message.timestamp.coerceAtLeast(0L),
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
-                docRef.set(payload).awaitResult()
+                batch.set(docRef, payload)
             }
+
+            if (chunkManifest != null) {
+                deleteCollectionDocuments(docRef.collection("chunks"))
+                enqueueChunksToBatch(batch, uid, docRef, chunkManifest.chunks)
+            }
+            batch.commit().awaitResult()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, "syncMessageToCloud")
             throw e
         }
+    }
+
+    private fun enqueueChunksToBatch(
+        batch: com.google.firebase.firestore.WriteBatch,
+        uid: String,
+        parentRef: DocumentReference,
+        chunks: List<PayloadChunk>
+    ) {
+        val runTag = System.currentTimeMillis()
+        for (chunk in chunks) {
+            val chunkDoc = parentRef.collection("chunks").document("c_${chunk.fieldName}_${chunk.chunkIndex}_$runTag")
+            batch.set(
+                chunkDoc,
+                mapOf(
+                    "userId" to uid,
+                    "fieldName" to chunk.fieldName,
+                    "chunkIndex" to chunk.chunkIndex,
+                    "totalChunks" to chunk.totalChunks,
+                    "data" to chunk.data,
+                    "chunkSha256" to chunk.chunkSha256,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+        }
+    }
+
+    private suspend fun resolveStoredFieldPayload(
+        parentRef: DocumentReference,
+        storedValue: String,
+        fieldName: String
+    ): String {
+        val marker = parseChunkMarker(storedValue) ?: return storedValue
+        val snap = parentRef.collection("chunks")
+            .whereEqualTo("fieldName", fieldName)
+            .get()
+            .awaitResult()
+        val chunks = snap.documents.mapNotNull { d ->
+            val index = d.getLong("chunkIndex")?.toInt() ?: return@mapNotNull null
+            val total = d.getLong("totalChunks")?.toInt() ?: return@mapNotNull null
+            val data = d.getString("data") ?: return@mapNotNull null
+            val sha = d.getString("chunkSha256") ?: return@mapNotNull null
+            PayloadChunk(
+                fieldName = fieldName,
+                chunkIndex = index,
+                totalChunks = total,
+                data = data,
+                chunkSha256 = sha
+            )
+        }
+        return reassembleAndVerifyChunks(
+            expectedFullSha256 = marker.expectedSha256,
+            expectedChunkCount = marker.expectedChunkCount,
+            chunks = chunks
+        )
     }
 
     fun observeCloudMessages(): Flow<List<ChatMessage>> {
@@ -268,12 +408,21 @@ class AyraCloudRepository(
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
                     val rawContent = doc.getString("content") ?: return@mapNotNull null
-                    val content = decryptFieldIfEnvelope(uid, "${doc.id}|content", rawContent)
+                    val expectE2ee = doc.getBoolean("e2ee") == true
+                    val content = runCatching {
+                        val assembled = resolveStoredFieldPayload(doc.reference, rawContent, "content")
+                        decryptFieldStrict(uid, "${doc.id}|content", assembled, expectE2ee)
+                    }.getOrElse { ex ->
+                        "[E2EE Decryption Blocked: ${ex.message ?: "Integrity or key verification failed"}]"
+                    }
                     val role = doc.getString("role") ?: "assistant"
                     val timestampMs = doc.getLong("timestampMs") ?: System.currentTimeMillis()
                     val craftType = doc.getString("craftType")?.takeIf { it.isNotBlank() }
                     val rawPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() }
-                    val craftPayload = rawPayload?.let { decryptFieldIfEnvelope(uid, "${doc.id}|craftPayload", it) }
+                    val craftPayload = rawPayload?.let { payload ->
+                        runCatching { decryptFieldStrict(uid, "${doc.id}|craftPayload", payload, expectE2ee) }
+                            .getOrElse { "[E2EE Payload Blocked]" }
+                    }
                     val modelUsed = doc.getString("modelUsed")?.takeIf { it.isNotBlank() }
                     ChatMessage(
                         role = role,
@@ -306,14 +455,24 @@ class AyraCloudRepository(
                 .awaitResult()
             snap.documents.mapNotNull { doc ->
                 val rawContent = doc.getString("content") ?: return@mapNotNull null
-                val content = decryptFieldIfEnvelope(uid, "${doc.id}|content", rawContent)
+                val expectE2ee = doc.getBoolean("e2ee") == true
+                val content = runCatching {
+                    val assembled = resolveStoredFieldPayload(doc.reference, rawContent, "content")
+                    decryptFieldStrict(uid, "${doc.id}|content", assembled, expectE2ee)
+                }.getOrElse { ex ->
+                    "[E2EE Decryption Blocked: ${ex.message ?: "Integrity or key verification failed"}]"
+                }
                 val rawPayload = doc.getString("craftPayload")?.takeIf { it.isNotBlank() }
+                val craftPayload = rawPayload?.let { payload ->
+                    runCatching { decryptFieldStrict(uid, "${doc.id}|craftPayload", payload, expectE2ee) }
+                        .getOrElse { "[E2EE Payload Blocked]" }
+                }
                 ChatMessage(
                     role = doc.getString("role") ?: "assistant",
                     content = content,
                     timestamp = doc.getLong("timestampMs") ?: System.currentTimeMillis(),
                     craftType = doc.getString("craftType")?.takeIf { it.isNotBlank() },
-                    craftPayload = rawPayload?.let { decryptFieldIfEnvelope(uid, "${doc.id}|craftPayload", it) },
+                    craftPayload = craftPayload,
                     actionCommand = doc.getString("modelUsed")?.takeIf { it.isNotBlank() }
                 )
             }
@@ -328,7 +487,12 @@ class AyraCloudRepository(
     suspend fun clearCloudMessages() {
         val uid = currentUserIdOrNull() ?: return
         try {
-            deleteCollectionDocuments(firestore.collection("users").document(uid).collection("messages"))
+            val messagesCol = firestore.collection("users").document(uid).collection("messages")
+            val snap = messagesCol.get().awaitResult()
+            for (doc in snap.documents) {
+                deleteCollectionDocuments(doc.reference.collection("chunks"))
+            }
+            deleteCollectionDocuments(messagesCol)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -456,20 +620,41 @@ class AyraCloudRepository(
     ) {
         if (isCloudSyncSuppressed()) return
         val uid = currentUserIdOrNull() ?: return
+        val effectiveMode = resolveEffectiveSyncMode()
         val safeType = if (creationType in ALLOWED_CREATION_TYPES) creationType else "IMAGE"
         val docRef = firestore.collection("users").document(uid)
             .collection("creations").document()
-        val encPrompt = encryptFieldIfEnabled(uid, "${docRef.id}|prompt", prompt)
-        val encSummary = encryptFieldIfEnabled(uid, "${docRef.id}|summary", summary)
+
+        val rawPrompt = prompt.ifBlank { "Creation prompt" }
+        val finalPrompt = if (effectiveMode == CloudSyncMode.E2EE_ENCRYPTED) {
+            val enc = encryptFieldForSync(uid, "${docRef.id}|prompt", rawPrompt)
+            if (enc.length > 20_000) {
+                throw IllegalArgumentException("Encrypted creation prompt (${enc.length} chars) exceeds limit; refusing truncation.")
+            }
+            enc
+        } else {
+            rawPrompt.take(20_000)
+        }
+
+        val finalSummary = if (effectiveMode == CloudSyncMode.E2EE_ENCRYPTED) {
+            val enc = encryptFieldForSync(uid, "${docRef.id}|summary", summary)
+            if (enc.length > 50_000) {
+                throw IllegalArgumentException("Encrypted creation summary (${enc.length} chars) exceeds limit; refusing truncation.")
+            }
+            enc
+        } else {
+            summary.take(50_000)
+        }
+
         try {
             val payload = mapOf(
                 "userId" to uid,
                 "creationType" to safeType,
                 "title" to title.ifBlank { "Ayra AI Creation" }.take(200),
-                "prompt" to encPrompt.ifBlank { "Creation prompt" }.take(20000),
-                "summary" to encSummary.take(50000),
+                "prompt" to finalPrompt,
+                "summary" to finalSummary,
                 "modelUsed" to modelUsed.take(120),
-                "e2ee" to encPrompt.startsWith(AyraE2eeEngine.ENVELOPE_PREFIX),
+                "e2ee" to (effectiveMode == CloudSyncMode.E2EE_ENCRYPTED),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -481,8 +666,6 @@ class AyraCloudRepository(
             throw e
         }
     }
-
-    // --- Cloud Trusted Devices, Active Sessions, Backups & Security Events (Phases 4, 8, 9, 10, 12) ---
 
     suspend fun fetchCloudDevices(): List<TrustedE2eeDevice> {
         val uid = currentUserIdOrNull() ?: return emptyList()
@@ -576,20 +759,41 @@ class AyraCloudRepository(
     ) {
         val uid = requireUserId()
         val safeId = sanitizeDocId(backupId)
-        val payload = mapOf(
-            "userId" to uid,
-            "backupId" to safeId,
-            "format" to format.take(60),
-            "encryptedPayloadJson" to encryptedJson.take(800_000),
-            "payloadSha256" to payloadSha256.take(128),
-            "createdAtMs" to createdAtMs,
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        firestore.collection("users").document(uid)
+        val computedSha = sha256Hex(encryptedJson)
+        if (!computedSha.equals(payloadSha256, ignoreCase = true)) {
+            throw SecurityException("Encrypted backup SHA-256 mismatch; refusing upload.")
+        }
+
+        val docRef = firestore.collection("users").document(uid)
             .collection("backups").document(safeId)
-            .set(payload)
-            .awaitResult()
+
+        val manifest = if (encryptedJson.length > MAX_INLINE_BACKUP_CHARS) {
+            splitPayloadIntoAuthenticatedChunks(fieldName = "encryptedPayloadJson", payload = encryptedJson)
+        } else {
+            null
+        }
+        val storedJsonField = manifest?.markerValue ?: encryptedJson
+        val chunkCount = manifest?.chunks?.size ?: 0
+
+        val batch = firestore.batch()
+        batch.set(
+            docRef,
+            mapOf(
+                "userId" to uid,
+                "backupId" to safeId,
+                "format" to format.take(60),
+                "encryptedPayloadJson" to storedJsonField,
+                "payloadSha256" to computedSha,
+                "chunkCount" to chunkCount,
+                "createdAtMs" to createdAtMs,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        )
+        if (manifest != null) {
+            enqueueChunksToBatch(batch, uid, docRef, manifest.chunks)
+        }
+        batch.commit().awaitResult()
     }
 
     suspend fun listCloudBackups(): List<CloudBackupRecord> {
@@ -599,11 +803,21 @@ class AyraCloudRepository(
                 .collection("backups").get().awaitResult()
             snap.documents.mapNotNull { d ->
                 val id = d.getString("backupId") ?: return@mapNotNull null
+                val rawPayload = d.getString("encryptedPayloadJson") ?: return@mapNotNull null
+                val expectedSha = d.getString("payloadSha256") ?: ""
+                val resolvedPayload = resolveStoredFieldPayload(
+                    parentRef = d.reference,
+                    storedValue = rawPayload,
+                    fieldName = "encryptedPayloadJson"
+                )
+                if (expectedSha.isNotBlank() && !sha256Hex(resolvedPayload).equals(expectedSha, ignoreCase = true)) {
+                    throw SecurityException("Backup '$id' SHA-256 integrity verification failed after reassembly.")
+                }
                 CloudBackupRecord(
                     backupId = id,
                     format = d.getString("format") ?: "",
-                    encryptedPayloadJson = d.getString("encryptedPayloadJson") ?: "",
-                    payloadSha256 = d.getString("payloadSha256") ?: "",
+                    encryptedPayloadJson = resolvedPayload,
+                    payloadSha256 = expectedSha,
                     createdAtMs = d.getLong("createdAtMs") ?: 0L
                 )
             }.sortedByDescending { it.createdAtMs }
@@ -617,10 +831,10 @@ class AyraCloudRepository(
 
     suspend fun deleteCloudBackup(backupId: String) {
         val uid = currentUserIdOrNull() ?: return
-        firestore.collection("users").document(uid)
+        val docRef = firestore.collection("users").document(uid)
             .collection("backups").document(sanitizeDocId(backupId))
-            .delete()
-            .awaitResult()
+        deleteCollectionDocuments(docRef.collection("chunks"))
+        docRef.delete().awaitResult()
     }
 
     suspend fun uploadSecurityEvent(
@@ -654,16 +868,16 @@ class AyraCloudRepository(
         }
     }
 
-    /**
-     * Permanently deletes ALL cloud Firestore documents owned by the user across
-     * messages, creations, plugins, devices, sessions, backups, securityEvents, and root profile.
-     */
     suspend fun purgeAllUserCloudData(): Int {
         val uid = currentUserIdOrNull() ?: return 0
         val userDoc = firestore.collection("users").document(uid)
         var totalDeleted = 0
+        clearCloudMessages()
+        val backupsSnap = userDoc.collection("backups").get().awaitResult()
+        for (bakDoc in backupsSnap.documents) {
+            totalDeleted += deleteCollectionDocuments(bakDoc.reference.collection("chunks"))
+        }
         val subCollections = listOf(
-            "messages",
             "creations",
             "plugins",
             "devices",
@@ -713,8 +927,16 @@ class AyraCloudRepository(
         }
     }
 
+    data class ChunkMarker(val expectedSha256: String, val expectedChunkCount: Int)
+
     companion object {
         private const val TAG = "AyraCloudRepository"
+        const val MAX_INLINE_MESSAGE_CHARS = 85_000
+        const val MAX_INLINE_BACKUP_CHARS = 700_000
+        const val DEFAULT_CHUNK_CHARS = 65_000
+        const val MAX_CHUNKS_PER_PAYLOAD = 50
+        const val CHUNK_MARKER_PREFIX = "__AYRA_CHUNKED_V1__:"
+
         private val ALLOWED_PLUGIN_TYPES = setOf("SKILL_PACK", "OPENAPI_PLUGIN", "MCP_SERVER", "WEB_TOOL", "CODE_PLUGIN")
         private val ALLOWED_CREATION_TYPES = setOf("IMAGE", "VIDEO", "SONG", "3D", "PDF")
 
@@ -722,8 +944,95 @@ class AyraCloudRepository(
             val appCtx = context.applicationContext
             val dbId = appCtx.getString(R.string.firestore_database_id)
             val firestore = FirebaseFirestore.getInstance(dbId)
-            return AyraCloudRepository(firestore = firestore, auth = Firebase.auth, appContext = appCtx)
+            return AyraCloudRepository(
+                firestore = firestore,
+                auth = Firebase.auth,
+                appContext = appCtx,
+                syncMode = if (AyraPreferences.isCloudE2eeSyncEnabled(appCtx)) {
+                    CloudSyncMode.E2EE_ENCRYPTED
+                } else {
+                    CloudSyncMode.STANDARD_UNENCRYPTED
+                }
+            )
         }
+
+        fun splitPayloadIntoAuthenticatedChunks(
+            fieldName: String,
+            payload: String,
+            chunkSize: Int = DEFAULT_CHUNK_CHARS
+        ): AuthenticatedChunkManifest {
+            require(chunkSize in 16..85_000) { "Chunk size must be between 16 and 85000 chars." }
+            require(payload.isNotEmpty()) { "Cannot chunk empty payload." }
+            val parts = payload.chunked(chunkSize)
+            if (parts.size > MAX_CHUNKS_PER_PAYLOAD) {
+                throw IllegalArgumentException("Payload requires ${parts.size} chunks exceeding limit $MAX_CHUNKS_PER_PAYLOAD.")
+            }
+            val fullSha = sha256Hex(payload)
+            val total = parts.size
+            val chunks = parts.mapIndexed { idx, data ->
+                PayloadChunk(
+                    fieldName = fieldName,
+                    chunkIndex = idx,
+                    totalChunks = total,
+                    data = data,
+                    chunkSha256 = sha256Hex(data)
+                )
+            }
+            return AuthenticatedChunkManifest(
+                markerValue = "$CHUNK_MARKER_PREFIX$fullSha:$total",
+                fullPayloadSha256 = fullSha,
+                chunks = chunks
+            )
+        }
+
+        fun parseChunkMarker(storedValue: String): ChunkMarker? {
+            if (!storedValue.startsWith(CHUNK_MARKER_PREFIX)) return null
+            val rest = storedValue.removePrefix(CHUNK_MARKER_PREFIX)
+            val parts = rest.split(":")
+            if (parts.size != 2) return null
+            val sha = parts[0]
+            val count = parts[1].toIntOrNull() ?: return null
+            if (!Regex("^[0-9a-fA-F]{64}$").matches(sha) || count !in 1..MAX_CHUNKS_PER_PAYLOAD) {
+                return null
+            }
+            return ChunkMarker(expectedSha256 = sha, expectedChunkCount = count)
+        }
+
+        fun reassembleAndVerifyChunks(
+            expectedFullSha256: String,
+            expectedChunkCount: Int,
+            chunks: List<PayloadChunk>
+        ): String {
+            if (chunks.size != expectedChunkCount) {
+                throw SecurityException(
+                    "Missing or extra payload chunks: expected $expectedChunkCount, got ${chunks.size}."
+                )
+            }
+            val ordered = chunks.sortedBy { it.chunkIndex }
+            val sb = StringBuilder()
+            for (expectedIdx in 0 until expectedChunkCount) {
+                val chunk = ordered[expectedIdx]
+                if (chunk.chunkIndex != expectedIdx || chunk.totalChunks != expectedChunkCount) {
+                    throw SecurityException(
+                        "Chunk ordering/total mismatch at index $expectedIdx (got idx=${chunk.chunkIndex}, total=${chunk.totalChunks})."
+                    )
+                }
+                if (!sha256Hex(chunk.data).equals(chunk.chunkSha256, ignoreCase = true)) {
+                    throw SecurityException("Chunk #$expectedIdx SHA-256 digest mismatch.")
+                }
+                sb.append(chunk.data)
+            }
+            val reassembled = sb.toString()
+            if (!sha256Hex(reassembled).equals(expectedFullSha256, ignoreCase = true)) {
+                throw SecurityException("Reassembled payload SHA-256 mismatch (chunk tampering detected).")
+            }
+            return reassembled
+        }
+
+        fun sha256Hex(input: String): String =
+            MessageDigest.getInstance("SHA-256")
+                .digest(input.toByteArray(StandardCharsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
 
         fun pluginDocId(repoFullName: String): String =
             sanitizeDocId(repoFullName.replace("/", "__"))

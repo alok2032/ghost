@@ -42,6 +42,11 @@ internal object ChatScreenMediaHelper {
             "Ayra AI only reads Contacts when you ask to call or message someone by name so it can look up their phone number before opening your dialer or SMS app.",
             "Allow Contacts"
         )
+        Manifest.permission.POST_NOTIFICATIONS -> Triple(
+            "Notification Alerts for Scheduled Reminders",
+            "Ayra AI uses notification permission only when you schedule a reminder or timed task so it can alert you at the scheduled time.",
+            "Allow Notifications"
+        )
         else -> Triple(
             "Permission Required",
             "Ayra AI requests this permission only for the specific feature you tapped.",

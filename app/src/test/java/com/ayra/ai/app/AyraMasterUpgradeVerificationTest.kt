@@ -188,7 +188,7 @@ class AyraMasterUpgradeVerificationTest {
             helper.close()
 
             val upgraded = Room.databaseBuilder(context, ChatDatabase::class.java, dbName)
-                .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9)
+                .addMigrations(ChatDatabase.MIGRATION_4_5, ChatDatabase.MIGRATION_5_6, ChatDatabase.MIGRATION_6_7, ChatDatabase.MIGRATION_7_8, ChatDatabase.MIGRATION_8_9, ChatDatabase.MIGRATION_9_10)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         db.execSQL("PRAGMA foreign_keys=ON;")

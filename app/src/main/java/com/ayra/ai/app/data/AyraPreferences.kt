@@ -925,7 +925,7 @@ object AyraPreferences {
     }
 
     fun isAllowLanEndpointsEnabled(context: Context): Boolean =
-        getSensitivePrefs(context).getBoolean(KEY_ALLOW_LAN_ENDPOINTS, true)
+        getSensitivePrefs(context).getBoolean(KEY_ALLOW_LAN_ENDPOINTS, false)
 
     fun setAllowLanEndpointsEnabled(context: Context, enabled: Boolean) {
         getSensitivePrefs(context).putBoolean(KEY_ALLOW_LAN_ENDPOINTS, enabled)
