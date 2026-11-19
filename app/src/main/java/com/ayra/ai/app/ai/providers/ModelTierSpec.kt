@@ -250,6 +250,57 @@ enum class ModelTier(
         }
     }
 
+    /**
+     * Automatically inspects the user's question in Adaptive/Ensemble modes and activates
+     * relevant specialist engines (ECC Cognitive Graph, Defensive Security Grounding,
+     * DeepSeek Step-by-Step Verification) with zero manual tier switching required.
+     */
+    suspend fun buildQuestionAwareAutoDirectives(
+        prompt: String,
+        domainName: String,
+        context: Context? = null
+    ): String? {
+        val clean = prompt.trim()
+        if (clean.length < 10) return null
+        val lower = clean.lowercase(Locale.ROOT)
+        val sections = mutableListOf<String>()
+
+        if (clean.length >= 18) {
+            val cognitive = runCatching { EnterpriseCognitiveEngine(context).extractCognitiveContext(clean) }.getOrNull()
+            if (cognitive != null) {
+                val entities = cognitive.detectedEntities.joinToString(", ").ifBlank { "General" }
+                sections.add("[ECC COGNITIVE ENGINE]: Domain=${cognitive.domain}, Key Entities=$entities. Disambiguate entities and answer thoroughly in the user's language.")
+            }
+        }
+
+        val isSecurityQuery = domainName == "CYBER_DEFENSE_AGENT" ||
+            Regex("\\b(cve-\\d+|owasp|vulnerability|pentest|firewall|encryption|tor|onion|xss|sqli|zero[- ]trust|malware)\\b")
+                .containsMatchIn(lower)
+        if (isSecurityQuery) {
+            val grounding = try {
+                SecurityResearchEngine(context).buildSecurityGrounding(clean)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ModelTier", "Security auto-grounding skipped: ${e.message}")
+                ""
+            }
+            sections.add(buildString {
+                append(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT)
+                if (grounding.isNotBlank()) append("\n").append(grounding)
+            })
+        }
+
+        val isMathOrProof = domainName == "MATHEMATICS_AGENT" ||
+            Regex("\\b(prove|theorem|integral|derivative|equation|complexity|algorithm|সমীকরণ|প্রমাণ)\\b")
+                .containsMatchIn(lower)
+        if (isMathOrProof) {
+            sections.add("[DEEPSEEK-R1 AUTO VERIFICATION]: Verify every intermediate calculation step and edge case before stating the final conclusion.")
+        }
+
+        return sections.joinToString("\n\n").ifBlank { null }
+    }
+
     companion object {
         val selectableIds: List<String> by lazy { entries.filter { it.isSelectableTier }.map { it.id } }
 

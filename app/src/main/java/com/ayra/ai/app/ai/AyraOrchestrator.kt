@@ -496,10 +496,15 @@ class AyraOrchestrator(private val context: Context) {
                 // Main CHAT & Coding execution through Unified Multi-AI ProviderPool
                 val poolMode = effectiveTierSpec.resolvePoolMode(wsCtx.effectiveThinkingMode)
                 val (prefProvider, prefModel) = effectiveTierSpec.resolvePreferredProviderAndModel(externalProviders)
+                val classifiedDomain = com.ayra.ai.app.ai.agents.AyraAgentOrchestrator.classifyIntent(trimmed)
                 val sysOverride = effectiveTierSpec.buildSpecialistSystemDirective(
                     prompt = trimmed,
                     context = context,
                     baseSystemPrompt = null
+                ) ?: effectiveTierSpec.buildQuestionAwareAutoDirectives(
+                    prompt = trimmed,
+                    domainName = classifiedDomain.name,
+                    context = context
                 )
 
                 // Resolve active installed GitHub plugins + live OpenAPI/file tool calls

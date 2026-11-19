@@ -281,9 +281,10 @@ class ProviderPool @JvmOverloads constructor(
             }
 
             // 5. Real Question in AUTO or BEST -> Quorum-Accelerated Multi-AI Parallel Ensemble!
-            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 5 else 3
+            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 5 else 4
             val ensembleChannels = selectDiverseEnsembleChannels(channels, maxCount = targetMax)
-            if (ensembleChannels.size >= 2) {
+            val totalEnsembleWorkers = ensembleChannels.size + if (isFirebaseAiReady) 1 else 0
+            if (totalEnsembleWorkers >= 2 && (ensembleChannels.isNotEmpty() || isFirebaseAiReady)) {
                 executeMultiAiEnsemble(effectiveRequest, ensembleChannels, channels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
             } else {
                 executeChannelFallback(effectiveRequest, channels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
@@ -301,7 +302,6 @@ class ProviderPool @JvmOverloads constructor(
         var pickedLocalOllama = false
 
         for (ch in channels) {
-            if (ch.provider == AiProviderType.POLLINATIONS_FREE && selected.size >= 3) continue
             if (ch.provider == AiProviderType.LOCAL_OLLAMA) {
                 if (pickedLocalOllama) continue
                 pickedLocalOllama = true
@@ -649,27 +649,35 @@ class ProviderPool @JvmOverloads constructor(
             return@supervisorScope
         }
 
-        // Grab whatever Multi-Layer Wiki evidence is already ready (max 400ms wait since it launched in parallel)
+        // Grab whatever Multi-Layer Wiki evidence is already ready (max 450ms wait since it launched in parallel)
         val wikiContext = if (wikiDeferred != null) {
             withTimeoutOrNull(450L) { wikiDeferred.await() } ?: ""
         } else ""
 
-        if (successfulDrafts.size == 1 && wikiContext.isBlank()) {
-            val single = successfulDrafts.first()
+        val rankedDrafts = BestAnswerSelector.rankDrafts(
+            prompt = safePrompt,
+            domain = domain,
+            drafts = successfulDrafts,
+            wikiContext = wikiContext
+        )
+
+        if (rankedDrafts.size == 1 && wikiContext.isBlank()) {
+            val single = rankedDrafts.first()
             val resp = ProviderResponse(
-                text = single.second,
-                modelUsed = "${single.first.displayName} ⚡",
-                provider = single.first.provider
+                text = single.text,
+                modelUsed = "${single.channel.displayName} (Best • ${single.score.toInt()}%) ⚡",
+                provider = single.channel.provider
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
             collector.emit(AyraStreamEvent.Complete(resp))
             return@supervisorScope
         }
 
-        // Prioritize Gemini or a healthy flagship model for live-streamed Consensus Synthesis
-        val synthesizer = successfulDrafts
-            .firstOrNull { it.first.provider == AiProviderType.GEMINI }?.first
-            ?: successfulDrafts.first().first
+        // Prioritize Gemini, then highest-scored non-free flagship, then highest-scored overall draft
+        val synthesizer = rankedDrafts
+            .firstOrNull { it.channel.provider == AiProviderType.GEMINI }?.channel
+            ?: rankedDrafts.firstOrNull { it.channel.provider != AiProviderType.POLLINATIONS_FREE }?.channel
+            ?: rankedDrafts.first().channel
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
         val isBanglish = AyraAgentOrchestrator.isBanglish(request.prompt)
@@ -680,7 +688,7 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthesisPrompt = buildString {
-            append("You are Ayra AI's Principal Consensus Synthesizer. ${successfulDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
+            append("You are Ayra AI's Principal Consensus Synthesizer. ${rankedDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
             append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")
@@ -692,18 +700,18 @@ class ProviderPool @JvmOverloads constructor(
                 append(wikiContext.take(2200))
                 append("\n\n")
             }
-            successfulDrafts.forEachIndexed { idx, (ch, draft) ->
-                append("--- SPECIALIST ${idx + 1}: ${ch.displayName} ---\n")
-                append(draft.take(4500))
+            rankedDrafts.forEachIndexed { idx, scored ->
+                append("--- SPECIALIST ${idx + 1}: ${scored.channel.displayName} [Quality Score ${scored.score.toInt()}/100] ---\n")
+                append(scored.text.take(4500))
                 append("\n\n")
             }
             append("Instructions:\n")
-            append("1. Merge the strongest verified facts, Multi-Layer Wiki details, active GitHub plugin capabilities/APIs (if relevant), complete runnable code, equations, and practical explanations into ONE cohesive, detailed, authoritative response in $langNote.\n")
-            append("2. Resolve any disagreements accurately and preserve complete markdown code blocks without truncation.\n")
-            append("3. Do NOT mention 'Specialist 1/2' or meta-commentary about combining drafts. Output ONLY the final polished response.")
+            append("1. Compare all specialist answers, verify against live Wiki/Plugin facts, select the most accurate solution, and synthesize ONE cohesive, detailed, authoritative response in $langNote.\n")
+            append("2. Resolve any disagreements accurately and preserve complete runnable code blocks without truncation.\n")
+            append("3. Do NOT mention 'Specialist 1/2', quality scores, or meta-commentary about combining drafts. Output ONLY the final polished response.")
         }
 
-        collector.emit(AyraStreamEvent.Thinking("Synthesizing with ${synthesizer.displayName}..."))
+        collector.emit(AyraStreamEvent.Thinking("Selecting & synthesizing best answer (${rankedDrafts.size} AIs) with ${synthesizer.displayName}..."))
 
         val streamedSynth = StringBuilder()
         var synthProviderUsed = synthesizer.provider
@@ -748,9 +756,10 @@ class ProviderPool @JvmOverloads constructor(
 
         var streamSucceeded = tryStreamSynthesizer(synthesizer)
         if (!streamSucceeded || ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString()).isBlank()) {
-            val backupSynth = successfulDrafts
-                .firstOrNull { it.first.id != synthesizer.id && it.first.provider != AiProviderType.POLLINATIONS_FREE }
-                ?.first
+            val backupSynth = rankedDrafts
+                .firstOrNull { it.channel.id != synthesizer.id && it.channel.provider != AiProviderType.POLLINATIONS_FREE }
+                ?.channel
+                ?: rankedDrafts.firstOrNull { it.channel.id != synthesizer.id }?.channel
             if (backupSynth != null) {
                 collector.emit(AyraStreamEvent.Thinking("Switching synthesizer to ${backupSynth.displayName}..."))
                 synthProviderUsed = backupSynth.provider
@@ -759,14 +768,14 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthText = ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString())
-        val participatingNames = successfulDrafts.joinToString(" + ") { it.first.displayName }
+        val participatingNames = rankedDrafts.joinToString(" + ") { it.channel.displayName }
 
         if (streamSucceeded && synthText.isNotBlank()) {
             val wikiSuffix = if (wikiContext.isNotBlank()) " + Multi-Wiki 🌐" else ""
             val pluginSuffix = if (request.activePluginNames.isNotEmpty()) " + Plugins(${request.activePluginNames.size}) 🔌" else ""
             val resp = ProviderResponse(
                 text = synthText,
-                modelUsed = "Multi-AI Ensemble ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
+                modelUsed = "Multi-AI Ensemble • Best of ${rankedDrafts.size} ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
                 provider = synthProviderUsed
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
@@ -774,12 +783,12 @@ class ProviderPool @JvmOverloads constructor(
             return@supervisorScope
         }
 
-        // Fallback: return the richest responding specialist draft directly
-        val bestDraft = successfulDrafts.maxByOrNull { it.second.length } ?: successfulDrafts.first()
+        // Fallback: return the objectively highest-scored specialist draft (never naive length)
+        val bestDraft = rankedDrafts.first()
         val resp = ProviderResponse(
-            text = bestDraft.second,
-            modelUsed = "${bestDraft.first.displayName} (Ensemble Best) ⚡",
-            provider = bestDraft.first.provider
+            text = bestDraft.text,
+            modelUsed = "${bestDraft.channel.displayName} (Best Answer • ${bestDraft.score.toInt()}%) ⚡",
+            provider = bestDraft.channel.provider
         )
         cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
         collector.emit(AyraStreamEvent.Complete(resp))

@@ -416,6 +416,41 @@ internal fun EmptyCosmicState(currentPersona: String) {
 
         Spacer(modifier = Modifier.height(14.dp))
 
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val readinessSummary = remember(currentPersona) {
+            val extCount = runCatching { com.ayra.ai.app.ai.providers.ExternalAiProviders(context).getActiveChannels().size }.getOrDefault(0)
+            val fbReady = runCatching { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }.getOrDefault(false)
+            val totalEngines = extCount + if (fbReady) 1 else 0
+            if (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
+                "Local-Only Privacy Active ($extCount local engines)"
+            } else if (totalEngines > 0) {
+                "$totalEngines AI Engines Active • Question-Aware Best-Answer Ensemble Ready"
+            } else {
+                "Offline Mode • Enable Free AI Pool or add an API key"
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurfaceDark.copy(alpha = 0.7f))
+                .border(1.dp, NeonGreen.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp, vertical = 7.dp)
+                .testTag("ai_readiness_badge")
+        ) {
+            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonGreen))
+            Text(
+                text = readinessSummary,
+                color = NeonGreen,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -427,7 +462,7 @@ internal fun EmptyCosmicState(currentPersona: String) {
         ) {
             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonCyan))
             Text(
-                text = "Tap Top or Bottom '+' for Cyber Lab, Studios, Research & Tools",
+                text = "Tap '+' for Cyber Lab, Studios, Wiki RAG & Tools",
                 color = NeonCyan,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold

@@ -158,7 +158,8 @@ internal fun ControlCenterModelsAndProvidersSection(
 
     val providersEngine = remember(isKeySectionExpanded) { ExternalAiProviders(context) }
     val activeChannels = remember(isKeySectionExpanded) { providersEngine.getActiveChannels() }
-    val activeCount = activeChannels.size
+    val fbReady = remember(isKeySectionExpanded) { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }
+    val activeCount = activeChannels.size + if (fbReady) 1 else 0
     val isMultiAiReady = activeCount > 0
 
     Box(
@@ -184,14 +185,14 @@ internal fun ControlCenterModelsAndProvidersSection(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isMultiAiReady) "🟢 Multi-AI Ensemble সক্রিয় ($activeCount চ্যানেল)" else "⚠️ কোনো AI চ্যানেল সক্রিয় নেই",
+                        text = if (isMultiAiReady) "🟢 Auto Best-Answer Ensemble সক্রিয় ($activeCount ইঞ্জিন)" else "⚠️ কোনো AI চ্যানেল সক্রিয় নেই",
                         color = if (isMultiAiReady) NeonGreen else NeonCyan,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.5.sp
                     )
                     Text(
                         text = if (isMultiAiReady) {
-                            "Gemini 3.8/4.0 + Groq + NVIDIA NIM + Hugging Face + GitHub Models + Free AI সক্রিয়"
+                            "প্রশ্ন বুঝে উপযুক্ত সব সক্রিয় AI একসাথে কাজ করবে ও সেরা উত্তর বেছে নেবে"
                         } else {
                             "উত্তর পেতে Settings -> API Keys থেকে কী যোগ করুন বা Free AI Pool অন করুন"
                         },

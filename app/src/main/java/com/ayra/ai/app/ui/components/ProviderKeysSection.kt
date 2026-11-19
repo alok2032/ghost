@@ -924,12 +924,12 @@ fun FreeAiPoolCard(context: Context) {
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = "Global Free AI Pool 🌐",
+                    text = "Global Free AI Pool (Auto-Active) 🌐",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Keyless cloud text & Flux image endpoints used automatically in the ensemble or as zero-key fallback.",
+                    text = "Always-on keyless specialists (GPT-Large, Qwen Coder, DeepSeek R1 & Flux) active by default with zero setup. Personal keys above add higher speed & priority.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

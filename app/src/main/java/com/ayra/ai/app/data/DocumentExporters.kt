@@ -547,7 +547,7 @@ object DocumentExporters {
             if (prefs.has("preferredLanguage")) AyraPreferences.setPreferredLanguage(context, prefs.optString("preferredLanguage", "Auto"))
             if (prefs.has("themeMode")) AyraPreferences.setThemeMode(context, prefs.optString("themeMode", "dark"))
             if (prefs.has("searchGroundingEnabled")) AyraPreferences.setSearchGroundingEnabled(context, prefs.optBoolean("searchGroundingEnabled", true))
-            if (prefs.has("freeAiPoolEnabled")) AyraPreferences.setFreeAiPoolEnabled(context, prefs.optBoolean("freeAiPoolEnabled", false))
+            if (prefs.has("freeAiPoolEnabled")) AyraPreferences.setFreeAiPoolEnabled(context, prefs.optBoolean("freeAiPoolEnabled", true))
             if (prefs.has("memoryEnabled")) AyraPreferences.setMemoryEnabled(context, prefs.optBoolean("memoryEnabled", true))
             if (prefs.has("customInstructions")) AyraPreferences.setUserCustomInstructions(context, prefs.optString("customInstructions", ""))
             val factsArr = prefs.optJSONArray("rememberedFacts")

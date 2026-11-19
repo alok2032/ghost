@@ -427,8 +427,8 @@ fun SecurityCenterScreen(
                         }
                     )
                     SecurityToggleItem(
-                        title = "Anonymous Public AI Pool Opt-In (Pollinations)",
-                        subtitle = "Disabled by default so unauthenticated pools never receive prompts unexpectedly",
+                        title = "Auto-Active Global Free AI Pool",
+                        subtitle = "Keyless cloud specialists stay active by default; toggle off anytime for strict personal-key mode",
                         checked = freePoolConsent,
                         tag = "toggle_free_pool_consent",
                         onCheckedChange = {

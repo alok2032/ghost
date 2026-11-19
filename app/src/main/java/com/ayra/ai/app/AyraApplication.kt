@@ -42,6 +42,7 @@ class AyraApplication : Application() {
         appScope.launch {
             ensureActiveAiKeysSeeded(this@AyraApplication)
             com.ayra.ai.app.ai.providers.ModelCatalog.loadCachedRemoteOverrides(this@AyraApplication)
+            com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(this@AyraApplication)
             val fbAudit = FirebaseConfigConsistencyValidator.validate(this@AyraApplication)
             if (!fbAudit.valid) {
                 SecurityAuditLogger.log(

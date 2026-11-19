@@ -625,11 +625,12 @@ object AyraPreferences {
     }
 
     /**
-     * Anonymous public fallback endpoints (Pollinations) now default to OFF (`false`)
-     * to prevent unintended third-party prompt leakage without explicit user opt-in.
+     * Built-in keyless cloud AI pool is active by default for zero-setup readiness,
+     * while automatically respecting Local-Only Privacy Mode and External AI Consent opt-outs.
      */
     fun isFreeAiPoolEnabled(context: Context): Boolean {
-        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, false)
+        if (isLocalOnlyAiModeEnabled(context) || !hasExternalAiConsent(context)) return false
+        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, true)
     }
 
     fun setFreeAiPoolEnabled(context: Context, enabled: Boolean) {
@@ -662,7 +663,7 @@ object AyraPreferences {
     }
 
     fun isOnboardingCompleted(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_ONBOARDING_DONE, false)
+        getPrefs(context).getBoolean(KEY_ONBOARDING_DONE, true)
 
     fun setOnboardingCompleted(context: Context, completed: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_ONBOARDING_DONE, completed).apply()
@@ -932,7 +933,9 @@ object AyraPreferences {
     }
 
     fun hasFreePoolConsent(context: Context): Boolean =
-        getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, false)
+        !isLocalOnlyAiModeEnabled(context) &&
+            hasExternalAiConsent(context) &&
+            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, true)
 
     fun isPromptInjectionGuardEnabled(context: Context): Boolean =
         getSensitivePrefs(context).getBoolean(KEY_PROMPT_INJECTION_GUARD, true)
