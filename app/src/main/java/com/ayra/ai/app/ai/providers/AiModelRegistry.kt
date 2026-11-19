@@ -372,8 +372,8 @@ object AiModelRegistry {
             RegistryModelEntry(
                 id = "anthropic_claude_3_7",
                 provider = AiProviderType.ANTHROPIC,
-                modelId = "claude-3-7-sonnet-20250219",
-                displayName = "Anthropic Claude 3.7 Sonnet",
+                modelId = "claude-sonnet-4-20250514",
+                displayName = "Anthropic Claude Sonnet 4",
                 category = ModelCategory.CODING,
                 endpoint = "https://api.anthropic.com/v1/messages",
                 authRequirement = "Anthropic API Key",
@@ -383,7 +383,7 @@ object AiModelRegistry {
                 supportsStreaming = true,
                 supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "3.7-sonnet",
+                modelVersion = "sonnet-4",
                 healthStatus = statusFor(AiProviderType.ANTHROPIC)
             ),
             RegistryModelEntry(

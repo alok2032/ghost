@@ -6,6 +6,7 @@ import android.os.Environment
 import android.os.StatFs
 import com.ayra.ai.app.ai.AutonomousKnowledgeEngine
 import com.ayra.ai.app.ai.UnifiedAiEngine
+import com.ayra.ai.app.ai.mcp.McpClientManager
 import com.ayra.ai.app.ai.memory.LongTermMemoryManager
 import com.ayra.ai.app.ai.memory.MemorySaveResult
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
@@ -185,6 +186,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
             add(deviceInfoTool())
             add(openAppTool())
             add(navigateMapTool())
+            add(mcpCallTool())
         }.associateBy { it.name }
     }
 
@@ -393,7 +395,7 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
 
     private fun fileCreateTool() = object : AgentTool {
         override val name = "file_create"
-        override val description = "Export a real file inside app storage (.pdf, .md, .doc, .txt)."
+        override val description = "Export a real file inside app storage (.pdf, .md, .docx, .doc, .csv, .txt)."
         override val parametersSchemaJson = """{"type":"object","properties":{"title":{"type":"string"},"content":{"type":"string"},"format":{"type":"string"}},"required":["title","content"]}"""
         override val isExternal = false
         override val requiresConfirmation = false
@@ -404,7 +406,9 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
             if (content.isBlank()) return AgentToolOutput(false, "Content cannot be empty.")
             val file: File? = when (format) {
                 "md", "markdown" -> StorageHelper.exportMarkdownDocument(context, title, content)
-                "doc", "docx" -> StorageHelper.exportWordDocDocument(context, title, content)
+                "docx" -> StorageHelper.exportRealDocxDocument(context, title, content)
+                "doc" -> StorageHelper.exportWordDocDocument(context, title, content)
+                "csv" -> StorageHelper.exportCsvSpreadsheet(context, title, content)
                 "txt" -> {
                     val f = File(File(context.filesDir, "exports").apply { mkdirs() }, "${StorageHelper.sanitizeFileName(title)}.txt")
                     f.writeText(content)
@@ -566,6 +570,47 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
             val dest = args.optString("destination", "").trim()
             if (dest.isBlank()) return AgentToolOutput(false, "Destination query required.")
             return AgentToolOutput(true, "Proposed Maps navigation to '$dest'.", requiresConfirmationAction = ProposedAction.NavigateMap(dest))
+        }
+    }
+
+    private fun mcpCallTool() = object : AgentTool {
+        override val name = "mcp_call"
+        override val description = "Call an enabled Model Context Protocol (MCP) server tool configured by the user."
+        override val parametersSchemaJson = """{"type":"object","properties":{"server_name":{"type":"string"},"tool_name":{"type":"string"},"arguments_json":{"type":"string"}},"required":["tool_name"]}"""
+        override val isExternal = true
+        override val requiresConfirmation = true
+        override suspend fun execute(args: JSONObject): AgentToolOutput {
+            val toolName = args.optString("tool_name", "").trim()
+            val serverHint = args.optString("server_name", "").trim()
+            val argString = args.optString("arguments_json", "{}").ifBlank { "{}" }
+            val parsedArgs = runCatching { JSONObject(argString) }.getOrNull()
+                ?: return AgentToolOutput(false, "Invalid JSON in arguments_json.")
+
+            val servers = McpClientManager.listServers(context).filter { it.enabled }
+            val matched = if (serverHint.isNotBlank()) {
+                servers.firstOrNull { it.name.equals(serverHint, true) || it.id == serverHint }
+            } else {
+                servers.firstOrNull { srv -> srv.tools.any { it.name == toolName } } ?: servers.firstOrNull()
+            } ?: return AgentToolOutput(false, "No enabled MCP server found for '$toolName'.")
+
+            if (matched.requireConfirmationPerTool) {
+                return AgentToolOutput(
+                    success = true,
+                    output = "Proposed MCP call '${matched.name}/$toolName' awaiting confirmation.",
+                    requiresConfirmationAction = ProposedAction.ExecuteExternalTool(
+                        toolName = toolName,
+                        summary = "Execute MCP tool '$toolName' on ${matched.name}",
+                        targetUrl = matched.endpointUrl,
+                        serverId = matched.id,
+                        argsJson = parsedArgs.toString()
+                    )
+                )
+            }
+            val result = McpClientManager.callTool(context, matched.id, toolName, parsedArgs)
+            return AgentToolOutput(
+                success = result.success,
+                output = if (result.success) result.wrappedOutput else (result.rawError ?: "MCP tool execution failed.")
+            )
         }
     }
 

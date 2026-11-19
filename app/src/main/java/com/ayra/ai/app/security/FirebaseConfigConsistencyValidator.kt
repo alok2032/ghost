@@ -13,14 +13,13 @@ data class FirebaseConfigAuditResult(
 
 /**
  * Validates runtime Firebase configuration single-source-of-truth consistency across
- * Google Services JSON ([FirebaseApp] / XML resources) and detects retired project IDs.
+ * Google Services JSON ([FirebaseApp] / XML resources) without relying on brittle ID blocklists.
  */
 object FirebaseConfigConsistencyValidator {
 
-    private val RETIRED_PROJECT_IDS = setOf(
-        "gen-lang-client-0595455617",
-        "gen-lang-client-0643978985"
-    )
+    @Volatile
+    var lastAuditResult: FirebaseConfigAuditResult? = null
+        private set
 
     fun validateValues(
         projectId: String,
@@ -36,11 +35,11 @@ object FirebaseConfigConsistencyValidator {
         val cleanWebClient = defaultWebClientId.trim()
         val cleanRecaptcha = recaptchaSiteKey.trim()
 
-        if (cleanProjectId.isEmpty() || cleanProjectId.contains("REPLACE_ME", ignoreCase = true)) {
+        if (cleanProjectId.isEmpty() ||
+            cleanProjectId.contains("REPLACE_ME", ignoreCase = true) ||
+            cleanProjectId.equals("remixed-project-id", ignoreCase = true)
+        ) {
             issues.add("Firebase project_id is missing or placeholder.")
-        }
-        if (cleanProjectId in RETIRED_PROJECT_IDS) {
-            issues.add("Retired Firebase project_id '$cleanProjectId' detected.")
         }
         if (cleanDbId.isEmpty() || !cleanDbId.startsWith("ai-studio-")) {
             issues.add("firestore_database_id '$cleanDbId' is missing or invalid.")
@@ -69,6 +68,8 @@ object FirebaseConfigConsistencyValidator {
             ?: runCatching { context.getString(R.string.gcm_defaultSenderId) }.getOrDefault("")
         val webClientId = runCatching { context.getString(R.string.default_web_client_id) }.getOrDefault("")
         val recaptcha = runCatching { context.getString(R.string.recaptcha_site_key) }.getOrDefault("")
-        return validateValues(projectId, dbId, senderId, webClientId, recaptcha)
+        return validateValues(projectId, dbId, senderId, webClientId, recaptcha).also {
+            lastAuditResult = it
+        }
     }
 }

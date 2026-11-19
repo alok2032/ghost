@@ -100,7 +100,9 @@ sealed class ProposedAction {
     data class ExecuteExternalTool(
         val toolName: String,
         val summary: String,
-        val targetUrl: String = ""
+        val targetUrl: String = "",
+        val serverId: String = "",
+        val argsJson: String = "{}"
     ) : ProposedAction() {
         override val title: String = "External Tool: $toolName"
         override val description: String = buildString {

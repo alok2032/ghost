@@ -120,9 +120,7 @@ class Phase1StabilityTest {
     @Test
     fun modelTierIsSingleSourceOfTruthAcrossEnginesAndLegacyAliases() {
         val aliasPairs = mapOf(
-            "godmode" to ModelTier.SECURITY_RESEARCH,
             "security_research" to ModelTier.SECURITY_RESEARCH,
-            "qwen_uncensored" to ModelTier.OPEN_WEIGHTS,
             "open_weights" to ModelTier.OPEN_WEIGHTS,
             "local" to ModelTier.OPEN_WEIGHTS,
             "balanced" to ModelTier.AUTO,
@@ -136,7 +134,12 @@ class Phase1StabilityTest {
             assertEquals("AiModelTier round-trip($raw)", expected, AiModelTier.fromModelTier(expected).toModelTier())
         }
 
-        assertEquals(AiRoutingMode.OPEN_WEIGHTS, AiRoutingMode.fromId("qwen_uncensored"))
+        // Legacy unsafe tier strings must be migrated in AyraPreferences cleanly
+        AyraPreferences.saveModelTier(context, "open_weights")
+        context.getSharedPreferences("ayra_ai_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putString("selected_model_tier", "godmode").commit()
+        assertEquals("security_research", AyraPreferences.getSavedModelTier(context))
+
         assertEquals(AiRoutingMode.OPEN_WEIGHTS, AiRoutingMode.fromId("open_weights"))
         assertEquals(AiRoutingMode.AUTO, AiRoutingMode.fromId("balanced"))
 

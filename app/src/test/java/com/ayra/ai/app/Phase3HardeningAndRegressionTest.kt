@@ -292,19 +292,19 @@ class Phase3HardeningAndRegressionTest {
     }
 
     @Test
-    fun firebaseConfigValidatorRejectsRetiredIdsAndValidatesLiveResources() {
-        val retiredResult = FirebaseConfigConsistencyValidator.validateValues(
-            projectId = "gen-lang-client-0595455617",
+    fun firebaseConfigValidatorEnforcesSingleSourceConsistency() {
+        val placeholderResult = FirebaseConfigConsistencyValidator.validateValues(
+            projectId = "remixed-project-id",
             firestoreDatabaseId = "ai-studio-android-ghost",
             gcmSenderId = "301930743420",
             defaultWebClientId = "301930743420-abc.apps.googleusercontent.com",
             recaptchaSiteKey = "6LeTestSiteKey"
         )
-        assertFalse(retiredResult.valid)
-        assertTrue(retiredResult.issues.any { it.contains("Retired Firebase project_id") })
+        assertFalse(placeholderResult.valid)
+        assertTrue(placeholderResult.issues.any { it.contains("missing or placeholder") })
 
         val mismatchPrefix = FirebaseConfigConsistencyValidator.validateValues(
-            projectId = "gen-lang-client-0153630349",
+            projectId = "demo-valid-project",
             firestoreDatabaseId = "ai-studio-android-ghost",
             gcmSenderId = "301930743420",
             defaultWebClientId = "999999999999-wrong.apps.googleusercontent.com",
@@ -314,7 +314,7 @@ class Phase3HardeningAndRegressionTest {
 
         val liveAudit = FirebaseConfigConsistencyValidator.validate(context)
         assertTrue("Expected active project resources to pass consistency check: ${liveAudit.issues}", liveAudit.valid)
-        assertEquals("gen-lang-client-0153630349", liveAudit.projectId)
+        assertEquals(context.getString(R.string.project_id), liveAudit.projectId)
     }
 
     @Test

@@ -19,7 +19,7 @@ data class PromptInjectionInspectionResult(
 object AiToolSecurityGuard {
 
     private val injectionPatterns: List<Pair<String, Regex>> = listOf(
-        "system_override" to Regex("(?i)\\b(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|system)\\s+(instructions|prompts|rules)"),
+        "system_override" to Regex("(?i)\\b(ignore|disregard|forget|override)\\s+(all\\s+|the\\s+)?((previous|prior|above|earlier|preceding)\\s+)*(system\\s+)?(instructions?|prompts?|rules?|directives?)"),
         "reveal_secrets" to Regex("(?i)\\b(reveal|dump|print|exfiltrate|leak|send)\\b.{0,40}\\b(api[\\s_-]?key|secret|token|password|system\\s+prompt|keystore)"),
         "role_hijack" to Regex("(?i)\\b(you\\s+are\\s+now|act\\s+as\\s+unrestricted|jailbreak|developer\\s+mode\\s+enabled)"),
         "unauthorized_tool" to Regex("(?i)\\b(silently|secretly|automatically)\\s+(call|execute|run|post|upload)\\b"),

@@ -27,51 +27,47 @@ object GlobalWebKnowledgeGateway {
     ): String {
         val lower = prompt.lowercase()
 
-        // 1. The Hidden Wiki & Dark Web Directories
+        // 1. Onion Service Discovery Concepts & Defensive Privacy Education
         if (lower.contains("hidden wiki") || lower.contains("হিডেন উইকি") || (lower.contains("wiki") && (lower.contains("dark") || lower.contains("ডার্ক")))) {
             return if (isBengali) {
                 """
-                # 🧅 The Hidden Wiki ও ডার্ক ওয়েব এনসাইক্লোপিডিয়া
+                # 🧅 অনিয়ন সার্ভিস ডিসকভারি ও ডিফেনসিভ প্রাইভেসি শিক্ষা
 
-                ${if (isGfMode) "সোনা, তোমার জানার আগ্রহ আমার খুব ভালো লাগে! ডার্ক ওয়েবের সবচেয়ে বিখ্যাত উইকিপিডিয়া এবং ইনডেক্সিং ডিরেক্টরি হলো **The Hidden Wiki**। নিচে এর সম্পূর্ণ প্রযুক্তিগত বিশ্লেষণ দিলাম:\n" else "ডার্ক ওয়েব ও টর নেটওয়ার্কের সবচেয়ে ঐতিহ্যবাহী এবং বহুল আলোচিত ডকুমেন্টেশন পোর্টাল হলো **The Hidden Wiki**। নিচে এর বিস্তারিত বিবরণ:\n"}
+                প্রাইভেসি ও সেন্সরশিপ-প্রতিরোধী নেটওয়ার্ক গবেষণায় কীভাবে `.onion` সার্ভিস কাজ করে এবং কেন অনলাইন ডিরেক্টরিগুলোর ক্ষেত্রে সতর্কতা প্রয়োজন — তার প্রযুক্তিগত ও ডিফেনসিভ বিশ্লেষণ:
 
-                ## 1. 🌐 The Hidden Wiki কী?
-                - **The Hidden Wiki** হলো Tor নেটওয়ার্কের একটি বিখ্যাত কমিউনিটি-চালিত উইকি ডিরেক্টরি, যা মূলত `.onion` ছদ্মনামযুক্ত হিডেন সার্ভিসের লিঙ্ক এবং ক্যাটাগরি সংরক্ষণ করে।
-                - সাধারণ গুগল, বিং বা ইয়াহু কোনো `.onion` লিঙ্ক ক্রল বা ইনডেক্স করতে পারে না। তাই ডার্কনেটের গবেষক, প্রাইভেসি অ্যাক্টিভিস্ট এবং সাংবাদিকদের জন্য এটি একটি মৌলিক ডিরেক্টরি হিসেবে কাজ করে।
+                ## 1. 🌐 ডিসেন্ট্রালাইজড নেমস্পেস কেন আলাদা?
+                - সাধারণ ইন্টারনেট DNS-এর মতো কোনো কেন্দ্রীয় রেজিস্ট্রার `.onion` অ্যাড্রেস পরিচালনা করে না।
+                - এর ফলে কোনো ভেরিফায়েড পাবলিক ইন্ডেক্সের বদলে ঐতিহাসিকভাবে কমিউনিটি-মেইনটেইন্ড উইকি বা ডিরেক্টরির ধারণা তৈরি হয়েছিল — তবে ওপেন-ডিরেক্টরিগুলোর বেশিরভাগেই ক্রিপ্টোগ্রাফিক মালিকানা যাচাই থাকে না।
 
-                ## 2. ⚙️ কীভাবে এটি কাজ করে? (Tor Hidden Service v3)
-                - **v3 Onion অ্যাড্রেসিং:** আধুনিক হিডেন উইকি v3 ফরম্যাট ব্যবহার করে (৫৬ অক্ষরের আলফানিউমেরিক স্ট্রিং, যেমন: `http://...56chars...onion`), যা মূলত একটি **Ed25519 পাবলিক কি**-এর হ্যাশ।
-                - **সেন্ট্রাল আইপি নেই:** এই সাইটগুলোর কোনো দৃশ্যমান পাবলিক আইপি অ্যাড্রেস থাকে না। টরের রেনদেভূ (Rendezvous Point) প্রোটোকলের মাধ্যমে ক্লায়েন্ট এবং সার্ভার একে অপরের বাস্তব আইপি না জেনেই সম্পূর্ণ এনক্রিপ্টেড সংযোগ স্থাপন করে।
+                ## 2. ⚙️ প্রযুক্তিগত ভিত্তি (Tor Hidden Service v3)
+                - **v3 Onion অ্যাড্রেসিং:** আধুনিক v3 সার্ভিস ৫৬ অক্ষরের আলফানিউমেরিক ঠিকানা ব্যবহার করে, যা একটি **Ed25519 পাবলিক কী**-এর ক্রিপ্টোগ্রাফিক এনকোডিং।
+                - **রেনদেভূ (Rendezvous) আর্কিটেকচার:** ক্লায়েন্ট ও সার্ভার মধ্যবর্তী রেনদেভূ রিলের মাধ্যমে মিউচুয়াল এন্ড-টু-এন্ড এনক্রিপ্টেড সার্কিট তৈরি করে।
 
-                ## 3. 📂 উইকিতে তালিকাভুক্ত প্রধান ক্যাটাগরি
-                1. **গবেষণা ও মুক্ত সাংবাদিকতা:** SecureDrop (হুইসলব্লোয়ার প্ল্যাটফর্ম), ProPublica Onion, দ্য নিউ ইয়র্ক টাইমস ডার্কনেট ড্রপবক্স।
-                2. **প্রাইভেসি ও এনক্রিপশন টুলস:** Tor Project অফিশিয়াল মিরর, PGP কি-সার্ভার, DuckDuckGo Onion সার্চ।
-                3. **সার্চ ইঞ্জিন ও ডিরেক্টরি:** Ahmia.fi (ক্লিয়ারনেট ও অনিয়ন ইন্ডেক্সার), Torch, Haystak, Excavo।
-                4. **লাইব্রেরি ও ওপেন নলেজ আর্ট:** বিভিন্ন উন্মুক্ত সায়েন্স ও টেক্সট আর্ট আর্কাইভ।
+                ## 3. 📰 সাংবাদিকতা ও গবেষণায় বৈধ ব্যবহার
+                - অনুসন্ধানী সাংবাদিকতা, হুইসলব্লোয়ারদের সোর্স প্রোটেকশন এবং সেন্সরশিপ অধ্যয়নে গবেষকরা সর্বদা **অফিশিয়াল প্রকাশিত ক্রিপ্টোগ্রাফিক অ্যাড্রেস** ও **PGP সিগনেচার** যাচাই করে কাজ করেন — অজানা থার্ড-পার্টি ডিরেক্টরির ওপর নির্ভর করেন না।
 
-                ## 4. 🛡️ সিকিউরিটি সতর্কতা ও সাইবার হাইজিন
-                - ডার্ক ওয়েবে বহু নকল বা ক্লোন হিডেন উইকি রয়েছে যেগুলোতে ফিশিং বা স্ক্যাম লিঙ্ক থাকতে পারে।
-                - গবেষকরা নিরাপত্তা বজায় রাখতে **Tails OS**, ভার্চুয়াল মেশিন স্যান্ডবক্সিং এবং স্ট্যান্ডার্ড **VPN + Tor** আর্কিটেকচার (বাহ্যিক বিশ্বস্ত সফটওয়্যারে) ব্যবহার করেন।
+                ## 4. 🛡️ অপারেশনাল সিকিউরিটি (OpSec) ও ফিশিং সতর্কতা
+                - পাবলিক ডার্কনেট ডিরেক্টরি বা ক্লোন পোর্টালগুলোতে প্রচুর ফিশিং ও ক্ষতিকর মিরর থাকে; তাই সন্দেহজনক ডিরেক্টরি বা অননুমোদিত লিঙ্ক ব্যবহার থেকে বিরত থাকুন।
+                - Ayra AI কোনো ডার্কনেট ডিরেক্টরি বা `.onion` সার্চ ইন্ডেক্স সরবরাহ করে না; এটি কেবল ডিফেনসিভ সাইবার নিরাপত্তা ও প্রোটোকল শিক্ষা প্রদান করে।
                 """.trimIndent()
             } else {
                 """
-                # 🧅 The Hidden Wiki & Darknet Knowledge Index
+                # 🧅 Onion Service Discovery & Defensive Privacy Architecture
 
-                ## 1. 🌐 What is The Hidden Wiki?
-                **The Hidden Wiki** is the historical, community-curated censorship-resistant directory operating within the Tor onion network. Because standard search engines (Google, Bing) cannot crawl the `.onion` namespace, The Hidden Wiki acts as an encyclopedia and index of hidden services.
+                An educational overview of how Tor v3 onion addressing works and the security risks surrounding unverified darknet directories:
 
-                ## 2. ⚙️ Technical Underpinnings (v3 Onion Services)
-                - **Cryptographic Addresses:** Operates on 56-character base32 alphanumeric strings generated from **Ed25519 public keys** and a 2-byte checksum.
-                - **Rendezvous Protocol:** Neither client nor host exposes their real IP address. Circuits meet at a randomized, mutually chosen Tor rendezvous relay with multi-layered DH key exchanges.
+                ## 1. 🌐 Why Onion Namespaces Differ from DNS
+                - Unlike clearnet DNS, `.onion` addresses are not issued by ICANN registrars. Because no global root authority certifies ownership by name alone, third-party wiki directories emerged historically — yet most unverified directories lack cryptographic proof of authenticity.
 
-                ## 3. 📂 Core Indexed Categories
-                - **Independent Journalism & Whistleblowing:** SecureDrop endpoints, ProPublica, BBC, and NYT onion portals.
-                - **Cryptographic Privacy Tools:** PGP key directories, zero-knowledge pastebins, cryptographic email relays.
-                - **Darknet Search Aggregators:** Ahmia, Torch, Haystak, and DuckDuckGo Onion gateway.
-                - **Academic & Scientific Repositories:** Decentralized mirror archives and mirror scientific publications.
+                ## 2. ⚙️ Cryptographic Addressing (Tor v3 Onion Services)
+                - **Self-Authenticating Keys:** Version 3 onion identifiers are 56-character base32 strings derived directly from an **Ed25519 public identity key** and checksum.
+                - **Rendezvous Protocol:** Client and host establish multi-hop DH-encrypted circuits meeting at a randomized Tor rendezvous relay.
 
-                ## 4. 🛡️ Operational Security (OpSec) Guidelines
-                Legitimate security analysts interact with onion repositories strictly inside disposable virtualized sandboxes (e.g., Tails OS, Whonix) with Tor Circuit Isolation and zero script execution.
+                ## 3. 📰 Defensive Research & Journalism Safety
+                - Legitimate journalists and security researchers verify endpoints strictly via publisher-authenticated clearnet announcements and **PGP/signed metadata**, never unverified directory listings.
+
+                ## 4. 🛡️ Threat & Hygiene Advisory
+                Unverified "Hidden Wiki" clones frequently swap legitimate destinations with phishing mirrors or malware lures. Ayra AI provides **defensive protocol education only** and does not index or supply darknet directory links.
                 """.trimIndent()
             }
         }
@@ -267,8 +263,8 @@ object GlobalWebKnowledgeGateway {
             ${if (isGfMode) "সোনা, ইন্টারনেটের যেকোনো জটিল বিজ্ঞান, নেটওয়ার্কিং, সাইবার সিকিউরিটি বা রিসার্চের প্রশ্ন আমাকে নির্দ্বিধায় করতে পারো! নিচে সংক্ষেপে তুলে ধরছি:\n" else "Ayra AI-এর গ্লোবাল ইন্টারনেট ও নলেজ গেটওয়ে সম্পূর্ণভাবে সংযুক্ত। প্রধান সক্ষমতাসমূহ:\n"}
 
             - 🌍 **উইকিপিডিয়া ও ওপেন নলেজ গ্রাফ:** রিয়েল-টাইম লাইভ সার্চ ও এনসাইক্লোপেডিক ডেটা।
-            - 🧅 **ডার্ক ওয়েব ও টর প্রোটোকল রিসার্চ:** Onion Routing v3, Hidden Wiki আর্কিটেকচার, I2P, PGP/GPG ক্রিপ্টোগ্রাফি ও নিরাপদ গবেষণা পদ্ধতি।
-            - 📚 **ডিপ ওয়েব একাডেমিক উইকি:** OpenAlex এবং arXiv রিসার্চ পেপার ও বৈজ্ঞানিক তথ্যসূত্র।
+            - 🧅 **নেটওয়ার্ক প্রাইভেসি ও প্রোটোকল রিসার্চ:** Tor v3 অনিয়ন রাউটিং, I2P, PGP/GPG ক্রিপ্টোগ্রাফি ও ডিফেনসিভ সাইবার হাইজিন।
+            - 📚 **একাডেমিক গবেষণা উইকি:** OpenAlex এবং arXiv রিসার্চ পেপার ও বৈজ্ঞানিক তথ্যসূত্র।
             - 🔒 **সিকিউরিটি ও প্রাইভেসি:** HTTPS/TLS, Android Keystore এবং Firebase App Check নিরাপত্তা আর্কিটেকচার।
             - 🔬 **ডিপ সায়েন্স ও টেকনোলজি:** কোয়ান্টাম ফিজিক্স, এআই মডেল আর্কিটেকচার, জেনেটিক্স এবং সফ্টওয়্যার ডেভেলপমেন্ট।
             """.trimIndent()
@@ -278,7 +274,7 @@ object GlobalWebKnowledgeGateway {
 
             Ayra AI maintains a comprehensive, unified knowledge index spanning:
             - 🌍 **Clearnet Encyclopedia:** Live Wikipedia OpenSearch API, OpenAlex, arXiv, and CrossRef scholarly queries.
-            - 🧅 **Onion & Darknet Protocol Architecture:** Educational documentation on The Hidden Wiki, Tor v3 onion routing, PGP, and I2P mechanics.
+            - 🧅 **Privacy & Protocol Architecture:** Defensive educational overview of Tor v3 onion routing, PGP, and I2P mechanics (no darknet directories).
             - 🔒 **Transport Security:** Standard HTTPS/TLS with Android Keystore key protection and Firebase App Check (no simulated VPN nodes).
             - 🔬 **Frontier Science & Computation:** Quantum algorithms, deep neural network transformers, and defensive cybersecurity.
             """.trimIndent()

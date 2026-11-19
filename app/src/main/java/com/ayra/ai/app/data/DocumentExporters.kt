@@ -336,6 +336,126 @@ object DocumentExporters {
         return file
     }
 
+    /**
+     * Generates a genuine OOXML ZIP `.docx` Word document (`[Content_Types].xml`, `_rels/.rels`, `word/document.xml`)
+     * and stores it in the AES-256-GCM encrypted vault.
+     */
+    fun exportRealDocxDocument(context: Context, title: String, content: String): File {
+        val safe = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ayra_doc" }
+
+        fun escapeXml(raw: String): String = raw
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+
+        val paragraphsXml = buildString {
+            append("""<w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t>${escapeXml(title.ifBlank { "Ayra AI Document" })}</w:t></w:r></w:p>""")
+            content.split("\n").forEach { line ->
+                val trimmed = line.trimEnd()
+                if (trimmed.startsWith("#")) {
+                    val headingText = escapeXml(trimmed.replace(Regex("^#+\\s*"), ""))
+                    append("""<w:p><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>$headingText</w:t></w:r></w:p>""")
+                } else {
+                    append("""<w:p><w:r><w:t xml:space="preserve">${escapeXml(trimmed)}</w:t></w:r></w:p>""")
+                }
+            }
+        }
+
+        val contentTypesXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            </Types>
+        """.trimIndent()
+
+        val relsXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+            </Relationships>
+        """.trimIndent()
+
+        val documentXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                $paragraphsXml
+                <w:sectPr/>
+              </w:body>
+            </w:document>
+        """.trimIndent()
+
+        val baos = ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(baos).use { zos ->
+            fun putEntry(name: String, xml: String) {
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(xml.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+            }
+            putEntry("[Content_Types].xml", contentTypesXml)
+            putEntry("_rels/.rels", relsXml)
+            putEntry("word/document.xml", documentXml)
+        }
+
+        val bytes = baos.toByteArray()
+        val file = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "generated_docs",
+            originalName = "${safe}_${System.currentTimeMillis()}.docx",
+            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            plaintextBytes = bytes
+        )
+        bytes.fill(0)
+        return file
+    }
+
+    /**
+     * Exports structured tables or lines as an RFC-4180 CSV spreadsheet with formula-injection neutralization.
+     */
+    fun exportCsvSpreadsheet(context: Context, title: String, content: String): File {
+        val safe = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "ayra_table" }
+
+        fun sanitizeCsvCell(raw: String): String {
+            var trimmed = raw.trim()
+            if (trimmed.isNotEmpty() && trimmed[0] in charArrayOf('=', '+', '-', '@', '\t', '\r')) {
+                trimmed = "'$trimmed"
+            }
+            val escaped = trimmed.replace("\"", "\"\"")
+            return "\"$escaped\""
+        }
+
+        val csvBody = buildString {
+            val lines = content.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+            val mdTableRows = lines.filter { it.startsWith("|") && it.endsWith("|") && !it.replace("|", "").replace("-", "").replace(":", "").isBlank() }
+            if (mdTableRows.isNotEmpty()) {
+                mdTableRows.forEach { row ->
+                    val cells = row.trim('|').split("|").map { sanitizeCsvCell(it) }
+                    append(cells.joinToString(",")).append("\n")
+                }
+            } else {
+                append("\"Line\",\"Content\"\n")
+                lines.forEachIndexed { idx, line ->
+                    append("${idx + 1},${sanitizeCsvCell(line)}\n")
+                }
+            }
+        }
+
+        val bytes = csvBody.toByteArray(Charsets.UTF_8)
+        val file = EncryptedVaultStorage.storeEncryptedBytes(
+            context = context,
+            folder = "generated_docs",
+            originalName = "${safe}_${System.currentTimeMillis()}.csv",
+            mimeType = "text/csv",
+            plaintextBytes = bytes
+        )
+        bytes.fill(0)
+        return file
+    }
+
     fun exportSafeWorkspaceBackupJson(
         context: Context,
         sessions: List<ChatSession>,

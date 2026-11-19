@@ -16,7 +16,7 @@ export interface RequestWithAuth extends Request {
 
 export interface TokenVerifiers {
   verifyIdToken: (idToken: string) => Promise<{ uid: string; email?: string; role?: unknown }>;
-  verifyAppCheckToken: (appCheckToken: string) => Promise<void>;
+  verifyAppCheckToken: (appCheckToken: string, options?: { consume?: boolean }) => Promise<void>;
 }
 
 function ensureFirebaseAdminInitialized(projectId: string): void {
@@ -37,9 +37,9 @@ export function createFirebaseTokenVerifiers(projectId: string): TokenVerifiers 
         role: decoded.role,
       };
     },
-    verifyAppCheckToken: async (appCheckToken: string) => {
+    verifyAppCheckToken: async (appCheckToken: string, options?: { consume?: boolean }) => {
       ensureFirebaseAdminInitialized(projectId);
-      await admin.appCheck().verifyToken(appCheckToken);
+      await admin.appCheck().verifyToken(appCheckToken, options?.consume ? { consume: true } : undefined);
     },
   };
 }
@@ -51,7 +51,8 @@ export async function revokeUserRefreshTokens(projectId: string, uid: string): P
 
 export function requireZeroTrustAuth(
   config: BackendConfig,
-  verifiers: TokenVerifiers
+  verifiers: TokenVerifiers,
+  options?: { consumeAppCheck?: boolean }
 ) {
   return async (req: RequestWithAuth, res: Response, next: NextFunction): Promise<void> => {
     const authHeader = req.header("authorization") ?? "";
@@ -98,7 +99,9 @@ export function requireZeroTrustAuth(
         return;
       }
       try {
-        await verifiers.verifyAppCheckToken(appCheckHeader);
+        await verifiers.verifyAppCheckToken(appCheckHeader, {
+          consume: Boolean(options?.consumeAppCheck),
+        });
         appCheckVerified = true;
       } catch {
         logSecurityEvent({

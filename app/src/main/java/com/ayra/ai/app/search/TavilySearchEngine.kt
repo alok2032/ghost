@@ -20,29 +20,33 @@ import java.util.concurrent.TimeUnit
  */
 class TavilySearchEngine(private val context: Context) {
 
-    private val httpClient = com.ayra.ai.app.security.NetworkSecurityHelper.newClient(
-        connectTimeoutSec = 15L,
-        readTimeoutSec = 20L,
-        callTimeoutSec = 35L
-    )
+    private val httpClient = com.ayra.ai.app.security.NetworkSecurityHelper.hardenedPooledClient
+        .newBuilder()
+        .connectTimeout(15L, TimeUnit.SECONDS)
+        .readTimeout(20L, TimeUnit.SECONDS)
+        .callTimeout(35L, TimeUnit.SECONDS)
+        .build()
 
     data class SearchResult(
         val title: String,
         val url: String,
         val content: String,
-        val score: Double = 0.0
+        val score: Double = 0.0,
+        val publishedDate: String? = null,
+        val domain: String = ""
     )
 
     data class SearchResponse(
         val query: String,
         val results: List<SearchResult>,
         val formattedSummary: String,
-        val latencyMs: Long
+        val latencyMs: Long,
+        val hasConflictingClaims: Boolean = false
     )
 
     /**
      * Executes real web search query via Tavily API.
-     * Returns structured results and formatted citation block.
+     * Returns structured results, domain/date provenance, and formatted citation block.
      */
     suspend fun search(
         query: String,
@@ -90,16 +94,22 @@ class TavilySearchEngine(private val context: Context) {
 
             for (i in 0 until resultsArray.length()) {
                 val item = resultsArray.getJSONObject(i)
+                val urlStr = item.optString("url", "")
+                val hostDomain = runCatching { java.net.URI(urlStr).host.orEmpty().removePrefix("www.") }.getOrDefault("")
+                val pubDate = item.optString("published_date", "").ifBlank { null }
                 searchResults.add(
                     SearchResult(
                         title = item.optString("title", "Untitled Source"),
-                        url = item.optString("url", ""),
+                        url = urlStr,
                         content = item.optString("content", "").take(600),
-                        score = item.optDouble("score", 0.0)
+                        score = item.optDouble("score", 0.0),
+                        publishedDate = pubDate,
+                        domain = hostDomain
                     )
                 )
             }
 
+            val hasConflict = detectCrossSourceConflict(searchResults)
             val directAnswer = json.optString("answer", "")
             val sb = StringBuilder()
             if (directAnswer.isNotBlank()) {
@@ -108,20 +118,44 @@ class TavilySearchEngine(private val context: Context) {
             }
 
             if (searchResults.isNotEmpty()) {
+                if (hasConflict) {
+                    sb.append("> ⚠️ *Source Note: Retrieved sources show differing years or conflicting quantitative claims. Verify primary citations below.*\n\n")
+                }
                 sb.append("### 📚 Grounded Web Sources & Citations\n")
                 searchResults.forEachIndexed { index, res ->
-                    sb.append("**[${index + 1}] [${res.title}](${res.url})**\n")
+                    val metaParts = buildList {
+                        if (res.domain.isNotBlank()) add(res.domain)
+                        if (!res.publishedDate.isNullOrBlank()) add(res.publishedDate)
+                    }
+                    val metaSuffix = if (metaParts.isNotEmpty()) " *(${metaParts.joinToString(" • ")})*" else ""
+                    sb.append("**[${index + 1}] [${res.title}](${res.url})**$metaSuffix\n")
                     sb.append("> ${res.content.trim()}\n\n")
                 }
+            } else if (directAnswer.isBlank()) {
+                sb.append("No verified web sources found for \"$query\".")
             }
 
             SearchResponse(
                 query = query,
                 results = searchResults,
                 formattedSummary = sb.toString(),
-                latencyMs = System.currentTimeMillis() - start
+                latencyMs = System.currentTimeMillis() - start,
+                hasConflictingClaims = hasConflict
             )
         }
+    }
+
+    private fun detectCrossSourceConflict(results: List<SearchResult>): Boolean {
+        if (results.size < 2) return false
+        val yearsPerSource = results.map { res ->
+            Regex("\\b(19|20)\\d{2}\\b").findAll("${res.title} ${res.content}").map { it.value }.toSet()
+        }.filter { it.isNotEmpty() }
+        val distinctYears = yearsPerSource.flatten().toSet()
+        val hasDisputedCue = results.any { r ->
+            val l = r.content.lowercase()
+            l.contains("disputed") || l.contains("contradict") || l.contains("corrected") || l.contains("however,")
+        }
+        return (distinctYears.size >= 3 && yearsPerSource.size >= 2) || hasDisputedCue
     }
 
     /**

@@ -250,8 +250,8 @@ internal object DefaultAiChannelRegistry {
         AiModelChannel(
             id = "anthropic_claude_3_7",
             provider = AiProviderType.ANTHROPIC,
-            modelId = "claude-3-7-sonnet-20250219",
-            displayName = "Claude 3.7 Sonnet",
+            modelId = "claude-sonnet-4-20250514",
+            displayName = "Claude Sonnet 4",
             specialties = setOf("coding", "cyber", "reasoning", "document", "research", "vision"),
             supportsVision = true,
             isReasoning = true,

@@ -62,6 +62,7 @@ import com.ayra.ai.app.ui.components.VoiceCommandOverlay
 import com.ayra.ai.app.ui.components.chat.AssistantGeneratingIndicator
 import com.ayra.ai.app.ui.components.chat.ChatAttachmentPreviewBanners
 import com.ayra.ai.app.ui.components.chat.ChatOverlaysHost
+import com.ayra.ai.app.ui.components.chat.ChatPendingActionHost
 import com.ayra.ai.app.ui.components.chat.ChatScreenMediaHelper
 import com.ayra.ai.app.ui.components.chat.EmptyCosmicState
 import com.ayra.ai.app.ui.components.chat.GlassHeaderBar
@@ -382,7 +383,8 @@ fun ChatScreen(
                 if (rawTrimmed.isNotBlank()) "📄 [$docName]\n$rawTrimmed" else "📄 [$docName]\nPlease analyze this document."
             } else trimmed
 
-            val crisis = CrisisDetector.evaluate(trimmed)
+            val crisisRegion = CrisisDetector.CrisisRegion.fromCode(AyraPreferences.getCrisisRegion(context))
+            val crisis = CrisisDetector.evaluate(trimmed, crisisRegion)
             if (crisis.isCrisis && crisis.supportiveMessage != null) {
                 viewModel.persistMessage(ChatMessage(role = "user", content = userContent, attachedImagePath = attachedUriStr))
                 viewModel.persistMessage(ChatMessage(role = "assistant", content = crisis.supportiveMessage))
@@ -582,28 +584,15 @@ fun ChatScreen(
                 onCancelAudioRecording = { audioCaptureManager.cancelRecording() }
             )
 
-            pendingAction?.let { action ->
-                ActionConfirmationCard(
-                    action = action,
-                    onConfirm = {
-                        scope.launch {
-                            val result = automationController.executeConfirmedAction(action)
-                            viewModel.persistMessage(
-                                ChatMessage(role = "assistant", content = result.feedbackMessage, craftType = result.actionType, craftPayload = result.extraData)
-                            )
-                            voiceManager.speak(result.feedbackMessage)
-                            viewModel.setPendingAction(null)
-                        }
-                    },
-                    onDismiss = {
-                        scope.launch {
-                            viewModel.persistMessage(ChatMessage(role = "assistant", content = "Action cancelled by user / কাজটি বাতিল করা হয়েছে।"))
-                            viewModel.setPendingAction(null)
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
+            ChatPendingActionHost(
+                context = context,
+                scope = scope,
+                pendingAction = pendingAction,
+                voiceManager = voiceManager,
+                isFallbackVoiceMode = isFallbackVoiceMode,
+                automationController = automationController,
+                viewModel = viewModel
+            )
 
             val showVoiceOverlay = isFallbackVoiceMode ||
                 voiceState is VoiceUiState.Connecting ||

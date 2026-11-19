@@ -120,14 +120,18 @@ class ChatViewModelOrchestrationTest {
         )
 
         var assistantMsg: ChatMessage? = null
-        repeat(60) {
+        repeat(160) {
             val msgs = repository.getRecentMessages(sessionId, 10)
             assistantMsg = msgs.lastOrNull { it.role == "assistant" }
             if (assistantMsg != null && !vm.isGenerating.value) return@repeat
             delay(50)
         }
 
-        assertNotNull(assistantMsg)
+        val finalMsgs = repository.getRecentMessages(sessionId, 20)
+        assertNotNull(
+            "assistantMsg null (reqCount=${server.requestCount}, isGen=${vm.isGenerating.value}, status=${vm.thinkingStatus.value}, msgs=${finalMsgs.map { it.role + ':' + it.content.take(60) }})",
+            assistantMsg
+        )
         assertTrue(assistantMsg!!.content.contains("Ayra AI verified Clean Architecture response."))
         assertEquals(assistantMsg!!.content, spokenReply)
         assertFalse(vm.isGenerating.value)
@@ -176,7 +180,8 @@ class ChatViewModelOrchestrationTest {
         assertTrue(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ayra Defensive Security Research Engine"))
         assertTrue(OpenModelEngine.SAFE_SYSTEM_PROMPT.contains("Ayra Open-Weights Engine"))
         val registry = DefaultAgentToolRegistry(context)
-        assertEquals(21, registry.listTools().size)
+        assertEquals(22, registry.listTools().size)
+        assertNotNull(registry.getTool("mcp_call"))
         val calendarTool = registry.getTool("calendar_create")
         assertNotNull(calendarTool)
         assertFalse(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Ghost"))

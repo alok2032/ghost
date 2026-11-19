@@ -37,7 +37,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +61,7 @@ import com.ayra.ai.app.ui.theme.NeonGreen
 import com.ayra.ai.app.ui.theme.NeonRose
 import com.ayra.ai.app.ui.theme.TextPrimary
 import com.ayra.ai.app.ui.theme.TextSecondary
+import com.ayra.ai.app.voice.CrisisDetector
 import com.ayra.ai.app.voice.UserSentiment
 import java.util.Locale
 
@@ -602,16 +606,54 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
         }
     )
 
+    var showWakeWordConsentDialog by remember { mutableStateOf(false) }
+
     SettingToggleRow(
         icon = Icons.Default.Mic,
         title = "Always-On Voice Trigger",
         subtitle = "গুগল বা সিরি-র মত 'Ayra' ডাকলে স্বয়ংক্রিয় সক্রিয়",
         checked = wakeWordEnabled,
-        onCheckedChange = {
-            onWakeWordToggle(it)
-            onQuickFeedback(if (it) "Voice Trigger Enabled 🎙️" else "Voice Trigger Disabled")
+        onCheckedChange = { enable ->
+            if (enable) {
+                showWakeWordConsentDialog = true
+            } else {
+                onWakeWordToggle(false)
+                onQuickFeedback("Voice Trigger Disabled")
+            }
         }
     )
+
+    if (showWakeWordConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showWakeWordConsentDialog = false },
+            title = { Text("Enable Always-On Voice Trigger?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Continuous wake-word listening keeps Android speech recognition active while the app is open, increasing battery consumption and microphone usage.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showWakeWordConsentDialog = false
+                        onWakeWordToggle(true)
+                        onQuickFeedback("Voice Trigger Enabled 🎙️")
+                    },
+                    modifier = Modifier.testTag("confirm_wake_word_button")
+                ) {
+                    Text("Confirm & Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWakeWordConsentDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF131B2E)
+        )
+    }
 
     Text(
         text = "🗣️ Voice Language / কথা বলার ভাষা",
@@ -643,6 +685,49 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
                     color = if (isSelected) NeonCyan else TextSecondary,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                     fontSize = 12.sp
+                )
+            }
+        }
+    }
+
+    var selectedRegionCode by remember { mutableStateOf(AyraPreferences.getCrisisRegion(context)) }
+    Text(
+        text = "🆘 Crisis Helpline Region / জরুরি হেল্পলাইন অঞ্চল",
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = NeonCyan,
+        fontSize = 13.sp
+    )
+
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(
+            CrisisDetector.CrisisRegion.AUTO,
+            CrisisDetector.CrisisRegion.INDIA,
+            CrisisDetector.CrisisRegion.BANGLADESH,
+            CrisisDetector.CrisisRegion.US_CA,
+            CrisisDetector.CrisisRegion.UK
+        ).forEach { region ->
+            val isSelected = selectedRegionCode.equals(region.code, ignoreCase = true)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSelected) NeonCyan.copy(alpha = 0.25f) else Color(0xFF131B2E))
+                    .border(1.dp, if (isSelected) NeonCyan else Color(0x2200FFFF), RoundedCornerShape(10.dp))
+                    .clickable {
+                        selectedRegionCode = region.code
+                        AyraPreferences.setCrisisRegion(context, region.code)
+                        onQuickFeedback("Crisis helpline region: ${region.label}")
+                    }
+                    .testTag("crisis_region_${region.code.lowercase(Locale.ROOT)}"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = region.code,
+                    color = if (isSelected) NeonCyan else TextSecondary,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 11.sp
                 )
             }
         }

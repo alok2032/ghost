@@ -4,6 +4,12 @@ import { createPinnedFetch, validateOutboundHttpsUrl } from "../security/ssrf.js
 import type { CodeRunRequest } from "../validation/schemas.js";
 import { redactSensitiveText } from "./auditLogger.js";
 
+const MAX_STDOUT_CHARS = 16_384;
+const MAX_SANDBOX_RESPONSE_BYTES = 128 * 1024;
+const SANDBOX_MEMORY_MB = 128;
+const SANDBOX_CPU_QUOTA = 0.5;
+const SANDBOX_PIDS_LIMIT = 16;
+
 export interface SandboxIsolationProfile {
   nonRoot: true;
   readOnlyRootFs: true;
@@ -37,20 +43,9 @@ export interface SandboxExecutionResult {
   stdout: string;
   durationMs: number;
   truncated: boolean;
-  errorCode?:
-    | "SANDBOX_DISABLED"
-    | "SANDBOX_MISCONFIGURED"
-    | "INVALID_INPUT"
-    | "ATTESTATION_FAILED"
-    | "EXECUTION_FAILED";
+  errorCode?: "SANDBOX_DISABLED" | "SANDBOX_MISCONFIGURED" | "INVALID_INPUT" | "ATTESTATION_FAILED" | "EXECUTION_FAILED";
   error?: string;
 }
-
-const MAX_STDOUT_CHARS = 16_384;
-const MAX_SANDBOX_RESPONSE_BYTES = 128 * 1024;
-const SANDBOX_MEMORY_MB = 128;
-const SANDBOX_CPU_QUOTA = 0.5;
-const SANDBOX_PIDS_LIMIT = 16;
 
 export function buildSandboxIsolationProfile(timeoutMs: number): SandboxIsolationProfile {
   return {
@@ -147,7 +142,6 @@ export function verifySandboxAttestation(params: {
   ) {
     return { valid: false, reason: "Malformed sandbox attestation fields." };
   }
-
   if (executionId !== expectedExecutionId || nonce !== expectedNonce) {
     return { valid: false, reason: "Sandbox attestation executionId or nonce mismatch." };
   }
@@ -190,7 +184,6 @@ async function readBoundedText(response: Response, maxBytes: number): Promise<st
     }
     return text;
   }
-
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -265,8 +258,7 @@ export async function executeIsolatedSandbox(
       durationMs: Date.now() - started,
       truncated: false,
       errorCode: "SANDBOX_DISABLED",
-      error:
-        "Isolated remote code sandbox is not configured. In-process VM execution is disabled.",
+      error: "Isolated remote code sandbox is not configured. In-process VM execution is disabled.",
     };
   }
 
@@ -374,8 +366,8 @@ export async function executeIsolatedSandbox(
     const isOk = body.ok === true;
     const boundedResult = rawResult.slice(0, MAX_STDOUT_CHARS);
     const boundedStdout = rawStdout.slice(0, MAX_STDOUT_CHARS);
-
     const expectedPayloadSha = hashSandboxPayload(isOk, rawResult, rawStdout);
+
     const attCheck = verifySandboxAttestation({
       secret: config.sandboxAttestationSecret,
       receipt: body.attestation,

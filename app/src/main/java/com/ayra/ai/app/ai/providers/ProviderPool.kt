@@ -235,7 +235,8 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
-        val shouldGroundWiki = externalProviders.allowExternalWikiGrounding &&
+        val shouldGroundWiki = !isLocalOnlyMode &&
+            externalProviders.allowExternalWikiGrounding &&
             request.imageBase64 == null &&
             request.documentText == null &&
             !isTrivialGreeting(request.prompt) &&
@@ -297,9 +298,14 @@ class ProviderPool @JvmOverloads constructor(
     private fun selectDiverseEnsembleChannels(channels: List<AiModelChannel>, maxCount: Int): List<AiModelChannel> {
         val selected = mutableListOf<AiModelChannel>()
         val seenModelFamilies = mutableSetOf<String>()
+        var pickedLocalOllama = false
 
         for (ch in channels) {
             if (ch.provider == AiProviderType.POLLINATIONS_FREE && selected.size >= 3) continue
+            if (ch.provider == AiProviderType.LOCAL_OLLAMA) {
+                if (pickedLocalOllama) continue
+                pickedLocalOllama = true
+            }
             val familyKey = ch.modelId.lowercase()
             if (seenModelFamilies.add(familyKey)) {
                 selected.add(ch)

@@ -24,7 +24,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LongTermMemoryEntity::class
     ],
     version = 10,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
@@ -35,6 +35,14 @@ abstract class ChatDatabase : RoomDatabase() {
     abstract fun ayraWorkspaceDao(): AyraWorkspaceDao
     abstract fun vectorKnowledgeDao(): VectorKnowledgeDao
     abstract fun longTermMemoryDao(): LongTermMemoryDao
+
+    sealed class VaultOpenResult {
+        data class Ready(val database: ChatDatabase) : VaultOpenResult()
+        data class NeedsRecovery(
+            val vaultState: com.ayra.ai.app.security.VaultState,
+            val reason: String
+        ) : VaultOpenResult()
+    }
 
     companion object {
         @Volatile
@@ -321,6 +329,22 @@ abstract class ChatDatabase : RoomDatabase() {
                 WHERE NOT EXISTS (SELECT 1 FROM `chat_sessions`)
                 """.trimIndent()
             )
+        }
+
+        fun tryGetDatabase(context: Context): VaultOpenResult {
+            return try {
+                VaultOpenResult.Ready(getDatabase(context))
+            } catch (e: com.ayra.ai.app.security.VaultKeyRecoveryException) {
+                VaultOpenResult.NeedsRecovery(
+                    vaultState = e.vaultState,
+                    reason = e.message ?: "Encrypted vault key could not be unwrapped."
+                )
+            } catch (e: Exception) {
+                VaultOpenResult.NeedsRecovery(
+                    vaultState = com.ayra.ai.app.security.VaultState.CORRUPT,
+                    reason = e.message ?: "Encrypted vault database failed integrity verification."
+                )
+            }
         }
 
         fun getDatabase(context: Context): ChatDatabase {

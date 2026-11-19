@@ -1,0 +1,77 @@
+
+== 1. Firebase Single Source of Truth (app/google-services.json) ==
+  ok    active project_id resolved from app/google-services.json
+  ok    package_name == applicationId (com.ayra.ai.app)
+  FAIL  hardcoded Firebase project IDs found outside google-services.json (SSOT violation):
+        ./app/src/main/java/com/ayra/ai/app/security/FirebaseConfigConsistencyValidator.kt:21:        "gen-lang-client-0595455617",
+        ./app/src/main/java/com/ayra/ai/app/security/FirebaseConfigConsistencyValidator.kt:22:        "gen-lang-client-0643978985"
+        ./backend/src/config.ts:6:  "gen-lang-client-0595455617",
+        ./backend/src/config.ts:7:  "gen-lang-client-0643978985",
+        ./.github/workflows/security-ci.yml:38:          if grep -rnE "gen-lang-client-0595455617|gen-lang-client-0643978985" \
+        ./SECURITY_AUDIT_REPORT.md:107:| **P3-04** | **HIGH** | `README.md`, `RELEASE_SIGNING.md`, `DEPLOYMENT_AND_RISK_REPORT.md`, `AyraApplication.kt`: Retired project 
+        ./AUDIT.md:149:  - **P3-04 (Firebase Project Consistency & CI Drift Gate — `FirebaseConfigConsistencyValidator.kt`, `AyraApplication.kt`, `.github/workflows/sec
+        ./README.md:34:- `app/google-services.json` and `app/src/main/res/values/firebase_applet_config.xml` are aligned to `package_name = "com.ayra.ai.app"` (active Fir
+        ./DEPLOYMENT_AND_RISK_REPORT.md:8:| **Android R8 Release Packaging & Signing Gate** | `gradle :app:assembleRelease :app:verifyReleaseSigningCertificate --console=
+        ./DEPLOYMENT_AND_RISK_REPORT.md:28:   - `/backend` (`projectId` default `gen-lang-client-0153630349`) is verified locally over HTTP loopback during unit testing. 
+        ./DEPLOYMENT_AND_RISK_REPORT.md:30:   - Verify `recaptcha_site_key` in release resources (`firebase_applet_config.xml`) and enable Firebase App Check enforcement 
+        ./RELEASE_SIGNING.md:49:4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise 
+
+== 2. Build & Signing Hygiene ==
+  ok    gradlew has executable permission
+  WARN  AI Studio container signingConfigs retains debug.keystore; CI/Play builds MUST supply keystore.properties + -PayraRequireProductionSigning=true
+  WARN  AI Studio container signingConfigs contains debug password (guarded by validateProductionReleaseSigning when -PayraRequireProductionSigning=true)
+  WARN  versionCode is 1 (override via CI_RUN_NUMBER / release bump before Play upload)
+
+== 3. Secrets & .gitignore Coverage ==
+  ok    no secrets detected outside google-services.json
+  ok    .gitignore covers .env, *.jks, keystore.properties, debug.keystore
+
+== 4. Dead Models & Legacy Unsafe Aliases ==
+  FAIL  dead/retiring model IDs hardcoded in app/src/main:
+        app/src/main/java/com/ayra/ai/app/ai/providers/AiModelRegistry.kt:375:                modelId = "claude-3-7-sonnet-20250219",
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:117:                    "gemini-3.8-flash", "gemini-2.5-flash", "gemini_flash", "g
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:118:                    "gemini-2.0-flash", "gemini-flash-2.0", "gemini-flash-late
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:121:                    "gemini-4-argon", "gemini-2.5-pro", "gemini_pro", "gemini-
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:122:                    "gemini-1.5-pro", "gemini-pro-1.5", "gemini-pro-latest"
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:125:                    "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini_
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:126:                    "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini_1_5_f
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:162:            AiModelInfo("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet 🎭"
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:163:            AiModelInfo("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet 👑"
+        app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt:768:        AiProviderType.ANTHROPIC -> "claude-3-7-sonnet-20250219"
+        app/src/main/java/com/ayra/ai/app/ai/providers/ModelCatalog.kt:274:            id = "claude-3-7-sonnet-20250219",
+        app/src/main/java/com/ayra/ai/app/ai/providers/ModelCatalog.kt:281:            fallbackModelId = "claude-3-5-sonnet-20241022"
+        app/src/main/java/com/ayra/ai/app/ai/providers/ModelCatalog.kt:284:            id = "claude-3-5-sonnet-20241022",
+        app/src/main/java/com/ayra/ai/app/ai/providers/AiProviderModels.kt:253:            modelId = "claude-3-7-sonnet-20250219",
+        app/src/main/java/com/ayra/ai/app/ai/providers/ProviderAnthropicAndFreeTransport.kt:270:            configured.contains(AiProviderType.ANTHROPIC) -> Pai
+        app/src/main/java/com/ayra/ai/app/ai/providers/ProviderAnthropicAndFreeTransport.kt:290:            configured.contains(AiProviderType.ANTHROPIC) -> Pai
+  FAIL  legacy unsafe aliases still referenced outside AyraPreferences migration:
+        app/src/main/java/com/ayra/ai/app/ai/providers/ModelTierSpec.kt:114:        aliases = setOf("qwen_uncensored", "local")
+        app/src/main/java/com/ayra/ai/app/ai/providers/ModelTierSpec.kt:126:        aliases = setOf("godmode")
+
+== 5. Credential Transport (No API Keys in URLs) ==
+  FAIL  API key placed in URL query parameter:
+        app/src/main/java/com/ayra/ai/app/ai/providers/ProviderGeminiTransport.kt:41:            "${base}models/$model:$action${sep}key=$encodedKey"
+
+== 6. Swallowed-Exception Ratchet ==
+  ok    swallowed catch(_) count = 123 (baseline <= 123)
+
+== 7. Database Safety & Vault Recovery ==
+  FAIL  ChatDatabase exportSchema is false
+  FAIL  VaultState key-loss recovery missing in VaultDatabaseKeyManager.kt
+
+== 8. Documentation Drift & Generated Facts ==
+  ok    docs/FACTS.md matches codebase
+  FAIL  docs claim Room v9 while ChatDatabase is higher:
+        SECURITY_ARCHITECTURE.md:33:- **Room Database Encryption**: `VaultDatabaseKeyManager` generates a 256-bit random passphrase, wraps it under `ALIAS_DB_KE
+
+== 9. Manifest & Bundled Asset Hygiene ==
+  ok    AndroidManifest enforces allowBackup=false and usesCleartextTraffic=false
+  FAIL  unexpected executable/node/shell scripts in app/src/main/assets:
+        app/src/main/assets/superpowers/systematic-debugging/condition-based-waiting-example.ts
+        app/src/main/assets/superpowers/systematic-debugging/find-polluter.sh
+        app/src/main/assets/superpowers/brainstorming/scripts/start-server.sh
+        app/src/main/assets/superpowers/brainstorming/scripts/helper.js
+        app/src/main/assets/superpowers/brainstorming/scripts/server.cjs
+        app/src/main/assets/superpowers/brainstorming/scripts/stop-server.sh
+
+PREFLIGHT: 8 FAIL(s), 3 WARN(s).

@@ -617,6 +617,9 @@ object AyraPreferences {
     private const val KEY_FREE_AI_POOL_ENABLED = "free_ai_pool_enabled"
     private const val KEY_LOCK_SCREEN_WAKE = "lock_screen_wake_enabled"
     private const val KEY_PREFERRED_LANGUAGE = "preferred_language_code"
+    private const val KEY_CRISIS_REGION = "safety_crisis_helpline_region"
+    private const val KEY_ONBOARDING_DONE = "ui_onboarding_completed_v1"
+    private const val KEY_RAG_EXTERNAL_CONSENT = "sec_rag_external_ai_consent"
 
     fun getRoutingMode(context: Context): String {
         val raw = getPrefs(context).getString(KEY_ROUTING_MODE, "auto") ?: "auto"
@@ -656,6 +659,27 @@ object AyraPreferences {
 
     fun setPreferredLanguage(context: Context, langCode: String) {
         getPrefs(context).edit().putString(KEY_PREFERRED_LANGUAGE, langCode).apply()
+    }
+
+    fun getCrisisRegion(context: Context): String =
+        getPrefs(context).getString(KEY_CRISIS_REGION, "AUTO") ?: "AUTO"
+
+    fun setCrisisRegion(context: Context, regionCode: String) {
+        getPrefs(context).edit().putString(KEY_CRISIS_REGION, regionCode.uppercase()).apply()
+    }
+
+    fun isOnboardingCompleted(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_ONBOARDING_DONE, false)
+
+    fun setOnboardingCompleted(context: Context, completed: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_ONBOARDING_DONE, completed).apply()
+    }
+
+    fun hasRagExternalSendConsent(context: Context): Boolean =
+        getSensitivePrefs(context).getBoolean(KEY_RAG_EXTERNAL_CONSENT, false)
+
+    fun setRagExternalSendConsent(context: Context, consented: Boolean) {
+        getSensitivePrefs(context).putBoolean(KEY_RAG_EXTERNAL_CONSENT, consented)
     }
 
     // --- Encrypted AI Memory & Personalization Settings ---

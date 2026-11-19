@@ -48,6 +48,13 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.ayra.ai.app.ai.memory.MemoryCandidate
 import com.ayra.ai.app.data.StorageHelper
+import androidx.compose.runtime.LaunchedEffect
+import com.ayra.ai.app.ai.mcp.McpClientManager
+import com.ayra.ai.app.automation.AutomationResult
+import com.ayra.ai.app.automation.DeviceAutomationController
+import com.ayra.ai.app.automation.ProposedAction
+import com.ayra.ai.app.data.ChatMessage
+import com.ayra.ai.app.ui.components.ActionConfirmationCard
 import com.ayra.ai.app.ui.components.ProviderKeysSection
 import com.ayra.ai.app.ui.theme.GlassSurfaceDark
 import com.ayra.ai.app.ui.theme.NeonCyan
@@ -55,6 +62,13 @@ import com.ayra.ai.app.ui.theme.NeonPurple
 import com.ayra.ai.app.ui.theme.NeonRose
 import com.ayra.ai.app.ui.theme.TextPrimary
 import com.ayra.ai.app.ui.theme.TextSecondary
+import com.ayra.ai.app.ui.viewmodel.ChatViewModel
+import com.ayra.ai.app.voice.VoiceAssistantManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 @Composable
 internal fun ChatAttachmentPreviewBanners(
@@ -366,5 +380,70 @@ internal fun ChatKeyOnboardingModal(
             ProviderKeysSection(context = context)
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+internal fun ChatPendingActionHost(
+    context: Context,
+    scope: CoroutineScope,
+    pendingAction: ProposedAction?,
+    voiceManager: VoiceAssistantManager,
+    isFallbackVoiceMode: Boolean,
+    automationController: DeviceAutomationController,
+    viewModel: ChatViewModel
+) {
+    pendingAction?.let { action ->
+        LaunchedEffect(action) {
+            if (voiceManager.isAlwaysOnWakeWordEnabled || isFallbackVoiceMode) {
+                val isBn = action.description.any { it in '\u0980'..'\u09FF' }
+                voiceManager.speak(VoiceAssistantManager.buildSpokenActionSummary(action, isBn))
+            }
+        }
+        ActionConfirmationCard(
+            action = action,
+            onConfirm = {
+                scope.launch {
+                    val result = if (action is ProposedAction.ExecuteExternalTool && action.serverId.isNotBlank()) {
+                        val args = runCatching { JSONObject(action.argsJson) }.getOrElse { JSONObject() }
+                        val mcpRes = withContext(Dispatchers.IO) {
+                            McpClientManager.callTool(
+                                context = context,
+                                serverId = action.serverId,
+                                toolName = action.toolName,
+                                arguments = args
+                            )
+                        }
+                        if (mcpRes.success) {
+                            AutomationResult(
+                                executed = true,
+                                actionType = "MCP_TOOL",
+                                feedbackMessage = "✅ MCP tool **${action.toolName}** completed (${mcpRes.latencyMs}ms):\n\n${mcpRes.wrappedOutput}"
+                            )
+                        } else {
+                            AutomationResult(
+                                executed = false,
+                                actionType = "MCP_TOOL",
+                                feedbackMessage = "⚠️ MCP tool **${action.toolName}** failed: ${mcpRes.rawError ?: "Unknown error"}"
+                            )
+                        }
+                    } else {
+                        automationController.executeConfirmedAction(action)
+                    }
+                    viewModel.persistMessage(
+                        ChatMessage(role = "assistant", content = result.feedbackMessage, craftType = result.actionType, craftPayload = result.extraData)
+                    )
+                    voiceManager.speak(result.feedbackMessage)
+                    viewModel.setPendingAction(null)
+                }
+            },
+            onDismiss = {
+                scope.launch {
+                    viewModel.persistMessage(ChatMessage(role = "assistant", content = "Action cancelled by user / কাজটি বাতিল করা হয়েছে।"))
+                    viewModel.setPendingAction(null)
+                }
+            },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }

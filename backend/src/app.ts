@@ -98,6 +98,9 @@ export function createZeroTrustApp(deps: AppDependencies) {
   });
 
   const authMiddleware = requireZeroTrustAuth(config, verifiers);
+  const replayProtectedAuthMiddleware = requireZeroTrustAuth(config, verifiers, {
+    consumeAppCheck: true,
+  });
   const limiter = quotaCoordinator.createUserWindowLimiter();
   const concurrencyGuard = quotaCoordinator.createConcurrencyGuard();
   const sandboxQuotaLimiter = quotaCoordinator.createToolQuotaLimiter(
@@ -118,7 +121,9 @@ export function createZeroTrustApp(deps: AppDependencies) {
         uid: req.principal?.uid,
         role: req.principal?.role ?? "user",
         environment: config.nodeEnv,
-        firebaseProjectId: config.firebaseProjectId,
+        ...(req.principal?.role === "admin"
+          ? { firebaseProjectId: config.firebaseProjectId }
+          : {}),
         rateLimitStore: quotaCoordinator.store.kind,
         appCheckVerified: req.principal?.appCheckVerified ?? false,
         requireAppCheck: config.requireAppCheck,
@@ -256,7 +261,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
 
   app.post(
     "/api/v1/devices/revoke",
-    authMiddleware,
+    replayProtectedAuthMiddleware,
     limiter,
     async (req: RequestWithAuth, res: Response, next: NextFunction) => {
       const parsed = RevokeDeviceRequestSchema.safeParse(req.body);

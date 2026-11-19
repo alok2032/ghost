@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
@@ -66,6 +67,7 @@ import com.ayra.ai.app.data.StorageHelper.WorkspaceArtifact
 import com.ayra.ai.app.ui.components.AyraDiagnosticsSection
 import com.ayra.ai.app.ui.components.CyberTerminalCard
 import com.ayra.ai.app.ui.components.GitHubPluginHubSection
+import com.ayra.ai.app.ui.components.McpServersSection
 import com.ayra.ai.app.ui.components.ProviderKeysSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -77,7 +79,8 @@ private enum class ToolsSubTab(val label: String) {
     KEYS("API Keys Vault"),
     WORKSPACE("Files & Backup"),
     TERMINAL("Cyber Terminal"),
-    PLUGINS("GitHub Plugins")
+    PLUGINS("GitHub Plugins"),
+    MCP("MCP Servers")
 }
 
 @Composable
@@ -165,6 +168,13 @@ fun DiagnosticsToolsScreen(
                 label = { Text("Plugins", fontSize = 12.sp) },
                 modifier = Modifier.testTag("tools_subtab_plugins")
             )
+            FilterChip(
+                selected = activeTab == ToolsSubTab.MCP,
+                onClick = { activeTab = ToolsSubTab.MCP },
+                leadingIcon = { Icon(Icons.Default.Hub, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                label = { Text("MCP", fontSize = 12.sp) },
+                modifier = Modifier.testTag("tools_subtab_mcp")
+            )
         }
 
         when (activeTab) {
@@ -219,6 +229,15 @@ fun DiagnosticsToolsScreen(
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+            ToolsSubTab.MCP -> {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    McpServersSection(context = context)
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }

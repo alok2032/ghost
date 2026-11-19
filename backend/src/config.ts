@@ -2,11 +2,6 @@ import "dotenv/config";
 
 export type NodeEnvProfile = "development" | "staging" | "test" | "production";
 
-const STALE_FIREBASE_PROJECT_IDS = new Set([
-  "gen-lang-client-0595455617",
-  "gen-lang-client-0643978985",
-]);
-
 export interface BackendConfig {
   port: number;
   nodeEnv: NodeEnvProfile;
@@ -99,15 +94,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
 }
 
 export function assertProductionConfig(config: BackendConfig): void {
-  if (!config.firebaseProjectId) {
+  if (!config.firebaseProjectId || config.firebaseProjectId === "remixed-project-id") {
     throw new Error(
       "FIREBASE_PROJECT_ID must be configured explicitly (failing closed rather than falling back to a hardcoded ID)."
     );
   }
-  if (STALE_FIREBASE_PROJECT_IDS.has(config.firebaseProjectId)) {
-    throw new Error(
-      `FIREBASE_PROJECT_ID='${config.firebaseProjectId}' is a retired/stale project ID. Configure the active Firebase project ID.`
-    );
+  if (config.nodeEnv !== "test") {
+    console.info(`[ayra-backend] Initialized FIREBASE_PROJECT_ID=${config.firebaseProjectId} env=${config.nodeEnv}`);
   }
   if (config.nodeEnv === "production") {
     const hasRedis = config.redisRestUrl.length > 0 && config.redisRestToken.length > 0;

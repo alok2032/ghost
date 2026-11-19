@@ -293,6 +293,45 @@ fun DeepResearchPanel(context: Context) {
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val docx = withContext(Dispatchers.IO) {
+                                StorageHelper.exportRealDocxDocument(context, query.trim().ifBlank { "Research" }, reportText)
+                            }
+                            shareFile(
+                                docx,
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "Share Word (.docx)"
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f).testTag("export_docx_button")
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(".DOCX", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val csv = withContext(Dispatchers.IO) {
+                                StorageHelper.exportCsvSpreadsheet(context, query.trim().ifBlank { "Research" }, reportText)
+                            }
+                            shareFile(csv, "text/csv", "Share Table (.csv)")
+                        }
+                    },
+                    modifier = Modifier.weight(1f).testTag("export_csv_button")
+                ) {
+                    Text(".CSV", fontSize = 12.sp)
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

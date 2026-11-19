@@ -480,7 +480,7 @@ class ChatViewModel(
     }
 
     companion object {
-        fun factory(repository: ChatRepository): ViewModelProvider.Factory =
+        fun factory(repository: ChatRepository? = null): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -113,20 +113,18 @@ class ExternalAiProviders @JvmOverloads constructor(
         fun resolveGeminiModel(model: String): String {
             val clean = model.trim().lowercase().removePrefix("models/")
             return when {
-                clean in listOf(
-                    "gemini-3.8-flash", "gemini-2.5-flash", "gemini_flash", "gemini-flash",
-                    "gemini-2.0-flash", "gemini-flash-2.0", "gemini-flash-latest"
-                ) -> GEMINI_FLASH_MODEL
-                clean in listOf(
-                    "gemini-4-argon", "gemini-2.5-pro", "gemini_pro", "gemini-pro",
-                    "gemini-1.5-pro", "gemini-pro-1.5", "gemini-pro-latest"
-                ) -> GEMINI_PRO_MODEL
-                clean in listOf(
-                    "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini_flash_lite", "gemini-flash-lite",
-                    "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini_1_5_flash"
-                ) -> GEMINI_FLASH_LITE_MODEL
-                clean.isNotBlank() -> clean
-                else -> GEMINI_FLASH_MODEL
+                clean.isBlank() -> GEMINI_FLASH_MODEL
+                clean == GEMINI_FLASH_MODEL || clean == "gemini_flash" || clean == "gemini-flash" ||
+                    clean == "gemini-flash-2.0" || clean == "gemini-flash-latest" ||
+                    clean.matches(Regex("^gemini-(2\\.5|2\\.0)-flash$")) -> GEMINI_FLASH_MODEL
+                clean == GEMINI_PRO_MODEL || clean == "gemini_pro" || clean == "gemini-pro" ||
+                    clean == "gemini-pro-1.5" || clean == "gemini-pro-latest" ||
+                    clean.matches(Regex("^gemini-(2\\.5|1\\.5)-pro$")) -> GEMINI_PRO_MODEL
+                clean == GEMINI_FLASH_LITE_MODEL || clean == "gemini_flash_lite" || clean == "gemini-flash-lite" ||
+                    clean == "gemini_1_5_flash" ||
+                    clean.matches(Regex("^gemini-(2\\.5|2\\.0)-flash-lite$")) ||
+                    clean.matches(Regex("^gemini-1\\.5-flash$")) -> GEMINI_FLASH_LITE_MODEL
+                else -> clean
             }
         }
 
@@ -159,8 +157,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiModelInfo("gpt-4o", "GPT-4o Omni 🧠", AiProviderType.OPENAI, "OpenAI flagship multimodal intelligence", "128k tokens", true, false, false),
             AiModelInfo("gpt-4o-mini", "GPT-4o Mini ⚡", AiProviderType.OPENAI, "Fast daily conversational model", "128k tokens", true, false, false),
             AiModelInfo("o3-mini", "o3-mini Reasoning 🔬", AiProviderType.OPENAI, "STEM, math & coding chain-of-thought", "200k tokens", false, true, false),
-            AiModelInfo("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet 🎭", AiProviderType.ANTHROPIC, "Hybrid reasoning & software architecture benchmark", "200k tokens", true, true, false),
-            AiModelInfo("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet 👑", AiProviderType.ANTHROPIC, "Clean refactoring & production coding", "200k tokens", true, false, false),
+            AiModelInfo("claude-sonnet-4-20250514", "Claude Sonnet 4 🎭", AiProviderType.ANTHROPIC, "Hybrid reasoning & software architecture benchmark", "200k tokens", true, true, false),
+            AiModelInfo("claude-haiku-4-5-20251001", "Claude Haiku 4.5 ⚡", AiProviderType.ANTHROPIC, "Fast coding, analysis & concise synthesis", "200k tokens", true, false, false),
             AiModelInfo("deepseek-chat", "DeepSeek V3 🚀", AiProviderType.DEEPSEEK, "MoE general conversational & coding intelligence", "64k tokens", false, false, false),
             AiModelInfo("deepseek-reasoner", "DeepSeek R1 CoT 🔬", AiProviderType.DEEPSEEK, "Open mathematical proof & step-by-step CoT", "64k tokens", false, true, false),
             AiModelInfo("grok-2-latest", "Grok 2 Latest 🤖", AiProviderType.XAI, "Frontier reasoning by xAI", "128k tokens", true, false, false),
@@ -765,7 +763,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         AiProviderType.HUGGINGFACE -> HF_QWEN_MODEL
         AiProviderType.GITHUB_MODELS -> GITHUB_GPT4O_MODEL
         AiProviderType.OPENAI -> "gpt-4o"
-        AiProviderType.ANTHROPIC -> "claude-3-7-sonnet-20250219"
+        AiProviderType.ANTHROPIC -> "claude-sonnet-4-20250514"
         AiProviderType.DEEPSEEK -> "deepseek-chat"
         AiProviderType.XAI -> "grok-2-latest"
         AiProviderType.MISTRAL -> "mistral-large-latest"

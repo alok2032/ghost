@@ -267,7 +267,7 @@ internal object ProviderAnthropicAndFreeTransport {
         }
         AiRoutingMode.BEST_QUALITY -> when {
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
-            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
+            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-sonnet-4-20250514")
             configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o")
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
@@ -287,7 +287,7 @@ internal object ProviderAnthropicAndFreeTransport {
             else -> Pair(AiProviderType.OPENROUTER, "deepseek/deepseek-r1:free")
         }
         AiRoutingMode.CODING -> when {
-            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-3-7-sonnet-20250219")
+            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-sonnet-4-20250514")
             configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, "codestral-latest")
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)

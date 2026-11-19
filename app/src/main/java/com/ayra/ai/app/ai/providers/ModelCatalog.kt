@@ -271,19 +271,19 @@ object ModelCatalog {
             fallbackModelId = "gpt-4o"
         ),
         ModelCatalogEntry(
-            id = "claude-3-7-sonnet-20250219",
+            id = "claude-sonnet-4-20250514",
             provider = AiProviderType.ANTHROPIC,
-            displayName = "Claude 3.7 Sonnet",
+            displayName = "Claude Sonnet 4",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 200_000,
             costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "claude-3-5-sonnet-20241022"
+            fallbackModelId = "claude-haiku-4-5-20251001"
         ),
         ModelCatalogEntry(
-            id = "claude-3-5-sonnet-20241022",
+            id = "claude-haiku-4-5-20251001",
             provider = AiProviderType.ANTHROPIC,
-            displayName = "Claude 3.5 Sonnet",
+            displayName = "Claude Haiku 4.5",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 200_000,
             costTier = ModelCostTier.MEDIUM,

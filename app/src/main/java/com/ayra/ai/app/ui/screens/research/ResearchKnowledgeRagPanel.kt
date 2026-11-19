@@ -20,12 +20,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +47,7 @@ import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.ai.rag.DocumentRagEngine
 import com.ayra.ai.app.ai.rag.RagSearchHit
+import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.StorageHelper
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +68,35 @@ fun KnowledgeRagPanel(context: Context) {
     var searchHits by remember { mutableStateOf<List<RagSearchHit>>(emptyList()) }
     var ragAnswer by remember { mutableStateOf<String?>(null) }
     var isWorking by remember { mutableStateOf(false) }
+    var showExternalConsentDialog by remember { mutableStateOf(false) }
+
+    fun executeRagQuery(allowCloudSynthesis: Boolean) {
+        val q = searchQuery.trim()
+        if (q.isBlank() || isWorking) return
+        isWorking = true
+        scope.launch {
+            val (ctxText, hits) = ragEngine.buildCitedContext(q, topK = 4)
+            searchHits = hits
+            ragAnswer = if (hits.isNotEmpty() && allowCloudSynthesis && !AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        pool.executeSync(
+                            ChatRequest(
+                                prompt = q,
+                                persona = "PROFESSIONAL",
+                                mode = ProviderPoolMode.BEST,
+                                documentText = ctxText,
+                                systemPromptOverride = "Answer ONLY from the provided knowledge base chunks and preserve [Doc: ...] citation tags accurately."
+                            )
+                        ).text
+                    }.getOrNull()
+                }
+            } else if (hits.isNotEmpty()) {
+                "Local citation search found ${hits.size} excerpt(s) without sending document text to external cloud models."
+            } else null
+            isWorking = false
+        }
+    }
 
     val docPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -189,34 +221,39 @@ fun KnowledgeRagPanel(context: Context) {
 
             Button(
                 onClick = {
-                    val q = searchQuery.trim()
-                    if (q.isBlank() || isWorking) return@Button
-                    isWorking = true
-                    scope.launch {
-                        val (ctxText, hits) = ragEngine.buildCitedContext(q, topK = 4)
-                        searchHits = hits
-                        ragAnswer = if (hits.isNotEmpty()) {
-                            withContext(Dispatchers.IO) {
-                                runCatching {
-                                    pool.executeSync(
-                                        ChatRequest(
-                                            prompt = q,
-                                            persona = "PROFESSIONAL",
-                                            mode = ProviderPoolMode.BEST,
-                                            documentText = ctxText,
-                                            systemPromptOverride = "Answer ONLY from the provided knowledge base chunks and preserve [Doc: ...] citation tags accurately."
-                                        )
-                                    ).text
-                                }.getOrNull()
-                            }
-                        } else null
-                        isWorking = false
+                    if (AyraPreferences.isLocalOnlyAiModeEnabled(context) || AyraPreferences.hasRagExternalSendConsent(context)) {
+                        executeRagQuery(allowCloudSynthesis = !AyraPreferences.isLocalOnlyAiModeEnabled(context))
+                    } else {
+                        showExternalConsentDialog = true
                     }
                 },
                 enabled = searchQuery.isNotBlank() && !isWorking,
                 modifier = Modifier.fillMaxWidth().testTag("rag_search_button")
             ) {
                 Text(if (isWorking) "Searching..." else "Retrieve Citations & Answer")
+            }
+
+            if (showExternalConsentDialog) {
+                AlertDialog(
+                    onDismissRequest = { showExternalConsentDialog = false },
+                    title = { Text("Send Document Excerpts to AI?", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text("To synthesize an AI answer, matching excerpts from your indexed documents are sent to your configured AI provider. You can also run Local Search Only without any cloud upload.")
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            AyraPreferences.setRagExternalSendConsent(context, true)
+                            showExternalConsentDialog = false
+                            executeRagQuery(allowCloudSynthesis = true)
+                        }) { Text("Allow AI Synthesis") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showExternalConsentDialog = false
+                            executeRagQuery(allowCloudSynthesis = false)
+                        }) { Text("Local Search Only") }
+                    }
+                )
             }
 
             ragAnswer?.let { ans ->

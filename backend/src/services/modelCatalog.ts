@@ -35,7 +35,10 @@ export interface ModelCatalogPayload {
 
 export function buildCuratedModelCatalog(
   config: BackendConfig,
-  providerProbeStatus?: Record<string, { status: CatalogVerificationStatus; lastSuccessMs?: number; failureReason?: string }>
+  providerProbeStatus?: Record<
+    string,
+    { status: CatalogVerificationStatus; lastSuccessMs?: number; failureReason?: string }
+  >
 ): ModelCatalogPayload {
   const hasKey: Record<string, boolean> = {
     gemini: config.geminiApiKey.length > 0,
@@ -45,7 +48,20 @@ export function buildCuratedModelCatalog(
   };
 
   const now = Date.now();
-  const baseEntries: Array<Omit<CatalogModelEntry, "availableViaGateway" | "verificationStatus" | "verifiedAtMs" | "verifiedByProvider" | "verificationMethod" | "lastSuccessMs" | "expiresAtMs" | "failureReason" | "pricingVerified">> = [
+  const baseEntries: Array<
+    Omit<
+      CatalogModelEntry,
+      | "availableViaGateway"
+      | "verificationStatus"
+      | "verifiedAtMs"
+      | "verifiedByProvider"
+      | "verificationMethod"
+      | "lastSuccessMs"
+      | "expiresAtMs"
+      | "failureReason"
+      | "pricingVerified"
+    >
+  > = [
     {
       id: "gemini-3.8-flash",
       provider: "gemini",
@@ -146,15 +162,14 @@ export function buildCuratedModelCatalog(
       const verificationStatus: CatalogVerificationStatus = !configured
         ? "UNAVAILABLE"
         : probe?.status ?? "STATIC_DEFAULT";
-
       return {
         ...entry,
-        availableViaGateway: configured && verificationStatus !== "RETIRED" && verificationStatus !== "UNAVAILABLE",
+        availableViaGateway:
+          configured && verificationStatus !== "RETIRED" && verificationStatus !== "UNAVAILABLE",
         verificationStatus,
         verifiedAtMs: now,
         verifiedByProvider: verificationStatus === "LIVE_VERIFIED",
-        verificationMethod:
-          verificationStatus === "LIVE_VERIFIED" ? "GATEWAY_PROBE" : "STATIC_BASELINE",
+        verificationMethod: verificationStatus === "LIVE_VERIFIED" ? "GATEWAY_PROBE" : "STATIC_BASELINE",
         lastSuccessMs: probe?.lastSuccessMs ?? null,
         expiresAtMs: verificationStatus === "LIVE_VERIFIED" ? now + 3_600_000 : null,
         failureReason: !configured

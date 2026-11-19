@@ -6,13 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AddComment
@@ -35,6 +37,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +46,9 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -67,23 +74,29 @@ import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDao
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.ui.components.OnboardingOverlay
 import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 import com.ayra.ai.app.ui.viewmodel.ChatViewModel
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
-enum class AyraDestination(val title: String, val subtitle: String, val icon: ImageVector) {
-    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat),
-    RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public),
-    PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune),
-    PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial),
-    MEMORY("Long-Term Memory", "Opt-In Encrypted Recall & Facts", Icons.Default.Psychology),
-    STUDIOS("Creative & Code Studios", "8K Image, Video, Music, 3D & Code", Icons.Default.AutoAwesome),
-    DATA_ANALYSIS("Data & CSV Analysis Lab", "Stats Profiler, Charts & AI Insights", Icons.Default.BarChart),
-    MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub),
-    TOOLS_HUB("Tools, Keys & Plugins", "API Keys, Terminal, Files & GitHub", Icons.Default.Build),
-    SETTINGS_APPEARANCE("Appearance & Personalization", "Themes, Memory, Thinking & Health", Icons.Default.Palette),
-    SECURITY_CENTER("Zero-Trust Security Vault", "Biometrics, E2EE, Audit & Wipe", Icons.Default.Security)
+enum class AyraDestination(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val shortLabel: String
+) {
+    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat, "Chat"),
+    RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public, "Wiki"),
+    PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune, "Prompts"),
+    PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial, "Projects"),
+    MEMORY("Long-Term Memory", "Opt-In Encrypted Recall & Facts", Icons.Default.Psychology, "Memory"),
+    STUDIOS("Creative & Code Studios", "8K Image, Video, Music, 3D & Code", Icons.Default.AutoAwesome, "Studios"),
+    DATA_ANALYSIS("Data & CSV Analysis Lab", "Stats Profiler, Charts & AI Insights", Icons.Default.BarChart, "Data"),
+    MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub, "Arena"),
+    TOOLS_HUB("Tools, Keys & Plugins", "API Keys, Terminal, Files & GitHub", Icons.Default.Build, "Tools"),
+    SETTINGS_APPEARANCE("Appearance & Personalization", "Themes, Memory, Thinking & Health", Icons.Default.Palette, "Theme"),
+    SECURITY_CENTER("Zero-Trust Security Vault", "Biometrics, E2EE, Audit & Wipe", Icons.Default.Security, "Security")
 }
 
 @Composable
@@ -100,6 +113,7 @@ fun AyraWorkspaceHost(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var currentDest by rememberSaveable { mutableStateOf(AyraDestination.CHAT) }
     var drawerSearch by remember { mutableStateOf("") }
+    var showOnboarding by rememberSaveable { mutableStateOf(!AyraPreferences.isOnboardingCompleted(context)) }
 
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()
@@ -289,87 +303,157 @@ fun AyraWorkspaceHost(
             }
         }
     ) {
-        Box(modifier = modifier.fillMaxSize()) {
-            when (currentDest) {
-                AyraDestination.CHAT -> ChatScreen(
-                    chatDao = chatDao,
-                    viewModel = viewModel,
-                    currentUser = currentUser,
-                    onSignOut = onSignOut,
-                    onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                    embeddedInWorkspace = false,
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.RESEARCH_WIKI -> ResearchDocsScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.PROMPT_CENTER -> PromptEngineeringScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    onUsePromptInChat = { prompt ->
-                        viewModel.updateInputText(prompt)
-                        currentDest = AyraDestination.CHAT
-                        Toast.makeText(context, "Prompt loaded in chat editor", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.PROJECTS_ASSISTANTS -> ProjectsAndAssistantsScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    onOpenProjectChat = { _, _ ->
-                        viewModel.createNewSession("Workspace Chat")
-                        currentDest = AyraDestination.CHAT
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.MEMORY -> MemoryScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.STUDIOS -> StudiosScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.DATA_ANALYSIS -> DataAnalysisWorkspaceScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    onSendInsightPromptToChat = { prompt ->
-                        viewModel.updateInputText(prompt)
-                        currentDest = AyraDestination.CHAT
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.MODELS_ARENA -> ModelsArenaScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.TOOLS_HUB -> DiagnosticsToolsScreen(
-                    onRunPromptInChat = { prompt ->
-                        viewModel.updateInputText(prompt)
-                        currentDest = AyraDestination.CHAT
-                    },
-                    onVaultWiped = {
-                        currentDest = AyraDestination.CHAT
-                        onSignOut()
-                    },
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.SETTINGS_APPEARANCE -> SettingsAppearanceScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    onOpenModels = { currentDest = AyraDestination.MODELS_ARENA },
-                    onOpenTools = { currentDest = AyraDestination.TOOLS_HUB },
-                    onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
-                    onOpenMemory = { currentDest = AyraDestination.MEMORY },
-                    onPersonaChanged = { style -> viewModel.setPersona(style) },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AyraDestination.SECURITY_CENTER -> SecurityCenterScreen(
-                    onBack = { currentDest = AyraDestination.CHAT },
-                    onVaultWiped = {
-                        currentDest = AyraDestination.CHAT
-                        onSignOut()
-                    },
-                    modifier = Modifier.fillMaxSize()
+        BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+            val isWideScreen = maxWidth >= 840.dp
+            Row(modifier = Modifier.fillMaxSize()) {
+                if (isWideScreen) {
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .testTag("workspace_navigation_rail")
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .statusBarsPadding()
+                                .navigationBarsPadding()
+                                .verticalScroll(rememberScrollState())
+                                .padding(vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            FloatingActionButton(
+                                onClick = {
+                                    viewModel.createNewSession()
+                                    navigateTo(AyraDestination.CHAT)
+                                },
+                                containerColor = uiConfig.accentColor.copy(alpha = 0.18f),
+                                contentColor = uiConfig.accentColor,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("rail_new_chat_button")
+                            ) {
+                                Icon(Icons.Default.AddComment, contentDescription = "New Chat")
+                            }
+                            HorizontalDivider(modifier = Modifier.width(40.dp).padding(vertical = 6.dp))
+                            AyraDestination.entries.forEach { dest ->
+                                NavigationRailItem(
+                                    selected = currentDest == dest,
+                                    onClick = { navigateTo(dest) },
+                                    icon = { Icon(dest.icon, contentDescription = dest.title) },
+                                    label = {
+                                        Text(
+                                            text = dest.shortLabel,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    colors = NavigationRailItemDefaults.colors(
+                                        selectedIconColor = uiConfig.accentColor,
+                                        selectedTextColor = uiConfig.accentColor,
+                                        indicatorColor = uiConfig.accentColor.copy(alpha = 0.16f)
+                                    ),
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .testTag("rail_nav_${dest.name.lowercase()}")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (currentDest) {
+                        AyraDestination.CHAT -> ChatScreen(
+                            chatDao = chatDao,
+                            viewModel = viewModel,
+                            currentUser = currentUser,
+                            onSignOut = onSignOut,
+                            onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
+                            onOpenDrawer = { scope.launch { drawerState.open() } },
+                            embeddedInWorkspace = false,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.RESEARCH_WIKI -> ResearchDocsScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.PROMPT_CENTER -> PromptEngineeringScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            onUsePromptInChat = { prompt ->
+                                viewModel.updateInputText(prompt)
+                                currentDest = AyraDestination.CHAT
+                                Toast.makeText(context, "Prompt loaded in chat editor", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.PROJECTS_ASSISTANTS -> ProjectsAndAssistantsScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            onOpenProjectChat = { _, _ ->
+                                viewModel.createNewSession("Workspace Chat")
+                                currentDest = AyraDestination.CHAT
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.MEMORY -> MemoryScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.STUDIOS -> StudiosScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.DATA_ANALYSIS -> DataAnalysisWorkspaceScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            onSendInsightPromptToChat = { prompt ->
+                                viewModel.updateInputText(prompt)
+                                currentDest = AyraDestination.CHAT
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.MODELS_ARENA -> ModelsArenaScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.TOOLS_HUB -> DiagnosticsToolsScreen(
+                            onRunPromptInChat = { prompt ->
+                                viewModel.updateInputText(prompt)
+                                currentDest = AyraDestination.CHAT
+                            },
+                            onVaultWiped = {
+                                currentDest = AyraDestination.CHAT
+                                onSignOut()
+                            },
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.SETTINGS_APPEARANCE -> SettingsAppearanceScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            onOpenModels = { currentDest = AyraDestination.MODELS_ARENA },
+                            onOpenTools = { currentDest = AyraDestination.TOOLS_HUB },
+                            onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
+                            onOpenMemory = { currentDest = AyraDestination.MEMORY },
+                            onPersonaChanged = { style -> viewModel.setPersona(style) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.SECURITY_CENTER -> SecurityCenterScreen(
+                            onBack = { currentDest = AyraDestination.CHAT },
+                            onVaultWiped = {
+                                currentDest = AyraDestination.CHAT
+                                onSignOut()
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+
+            if (showOnboarding) {
+                OnboardingOverlay(
+                    onDismissed = { showOnboarding = false }
                 )
             }
         }

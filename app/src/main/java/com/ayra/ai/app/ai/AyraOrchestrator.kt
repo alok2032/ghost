@@ -58,7 +58,8 @@ class AyraOrchestrator(private val context: Context) {
         if (trimmed.isEmpty()) return@flow
 
         // 1. Safety & Crisis Pre-checks (Blocking, deterministic, immediate)
-        val crisisResult = CrisisDetector.evaluate(trimmed)
+        val crisisRegion = CrisisDetector.CrisisRegion.fromCode(AyraPreferences.getCrisisRegion(context))
+        val crisisResult = CrisisDetector.evaluate(trimmed, crisisRegion)
         if (crisisResult.isCrisis && crisisResult.supportiveMessage != null) {
             emit(AyraEvent.Complete(AiResponse(text = crisisResult.supportiveMessage, modelUsed = "Ayra AI Safety Guardian 🛡️")))
             return@flow
@@ -248,24 +249,84 @@ class AyraOrchestrator(private val context: Context) {
 
                 var liveGrounding = ""
                 var citationsBlock = ""
+                val collectedCitations = mutableListOf<com.ayra.ai.app.ai.agent.AgentCitation>()
                 runCatching {
-                    if (com.ayra.ai.app.data.AyraPreferences.getTavilySearchKey(context).isNotBlank()) {
-                        val searchRes = com.ayra.ai.app.search.TavilySearchEngine(context).search(topic, maxResults = 3)
-                        if (searchRes.formattedSummary.isNotBlank()) {
-                            liveGrounding = searchRes.formattedSummary
-                            citationsBlock = searchRes.formattedSummary.substringAfter("### 📚 Grounded Web Sources", "")
+                    if (AyraPreferences.getTavilySearchKey(context).isNotBlank()) {
+                        val tavily = com.ayra.ai.app.search.TavilySearchEngine(context)
+                        val wordCount = topic.split(Regex("\\s+")).count { it.isNotBlank() }
+                        val subQueries = if (wordCount >= 2) {
+                            listOf(topic, "$topic benchmarks evidence statistics")
+                        } else {
+                            listOf(topic)
+                        }
+                        val mergedResults = linkedMapOf<String, com.ayra.ai.app.search.TavilySearchEngine.SearchResult>()
+                        val overviewParts = mutableListOf<String>()
+                        var conflictDetected = false
+
+                        for (subQ in subQueries) {
+                            emit(AyraEvent.Status("Searching live sources: $subQ..."))
+                            val res = runCatching { tavily.search(subQ, maxResults = 3, searchDepth = "advanced") }.getOrNull() ?: continue
+                            if (res.hasConflictingClaims) conflictDetected = true
+                            val overview = res.formattedSummary.substringBefore("### 📚 Grounded Web Sources").trim()
+                            if (overview.isNotBlank()) overviewParts.add(overview)
+                            res.results.forEach { r ->
+                                val key = r.url.trim().ifBlank { r.title }
+                                if (!mergedResults.containsKey(key)) {
+                                    mergedResults[key] = r
+                                    val cit = com.ayra.ai.app.ai.agent.AgentCitation(
+                                        title = r.title,
+                                        url = r.url,
+                                        snippet = r.content.take(220),
+                                        publishedAt = r.publishedDate,
+                                        domain = r.domain
+                                    )
+                                    collectedCitations.add(cit)
+                                    emit(AyraEvent.CitationAdded(cit))
+                                }
+                            }
+                        }
+
+                        if (mergedResults.isNotEmpty() || overviewParts.isNotEmpty()) {
+                            val citSb = StringBuilder()
+                            if (conflictDetected) {
+                                citSb.append("> ⚠️ *Source Note: Retrieved sources contain differing years or quantitative claims. Cross-check primary citations below.*\n\n")
+                            }
+                            citSb.append("### 📚 Grounded Web Sources & Citations\n")
+                            mergedResults.values.forEachIndexed { idx, r ->
+                                val meta = listOfNotNull(r.domain.takeIf { it.isNotBlank() }, r.publishedDate).joinToString(" • ")
+                                val metaSuffix = if (meta.isNotBlank()) " *($meta)*" else ""
+                                citSb.append("**[${idx + 1}] [${r.title}](${r.url})**$metaSuffix\n> ${r.content.trim()}\n\n")
+                            }
+                            citationsBlock = citSb.toString().removePrefix("### 📚 Grounded Web Sources")
+                            liveGrounding = (overviewParts.joinToString("\n\n") + "\n\n" + citSb.toString()).trim()
                         }
                     }
                 }
                 if (liveGrounding.isBlank()) {
-                    liveGrounding = runCatching {
+                    val wikiLookup = runCatching {
                         AutonomousKnowledgeEngine.queryMultiLayerWikiWithVectorCache(
                             context = context,
                             prompt = topic,
                             isBengali = isBengali,
                             forceAllLayers = true
-                        ).wikiResult.toFormattedMarkdown()
-                    }.getOrDefault("")
+                        )
+                    }.getOrNull()
+                    if (wikiLookup != null) {
+                        liveGrounding = wikiLookup.wikiResult.toFormattedMarkdown()
+                        wikiLookup.wikiResult.citations.distinctBy { it.url }.take(6).forEach { wCit ->
+                            val domain = runCatching { java.net.URI(wCit.url).host.orEmpty().removePrefix("www.") }.getOrDefault("")
+                            emit(
+                                AyraEvent.CitationAdded(
+                                    com.ayra.ai.app.ai.agent.AgentCitation(
+                                        title = wCit.title,
+                                        url = wCit.url,
+                                        snippet = "${wCit.layer} verified source",
+                                        domain = domain
+                                    )
+                                )
+                            )
+                        }
+                    }
                 }
 
                 val researchSysPrompt = """

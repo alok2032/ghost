@@ -13,4 +13,8 @@
     <string name="security_erasure_button">Erase All Vault &amp; Cloud Data</string>
     <string name="security_erasure_confirm_title">Confirm Cryptographic Erasure</string>
     <string name="security_erasure_confirm_hint">Type ERASE to permanently destroy all Keystore keys, encrypted database, vault files, secrets, and cloud data.</string>
+    <string name="vault_recovery_title_key_lost">Vault Key Unavailable</string>
+    <string name="vault_recovery_title_corrupt">Encrypted Vault Needs Recovery</string>
+    <string name="vault_recovery_restore_backup">Restore from .ayrabak Backup</string>
+    <string name="vault_recovery_reset_vault">Reset Vault &amp; Start Fresh</string>
 </resources>

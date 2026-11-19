@@ -21,11 +21,12 @@ import {
 let server;
 let baseUrl;
 let revokedUids = [];
+const consumeFlags = [];
 
 const testConfig = {
   port: 0,
   nodeEnv: "production",
-  firebaseProjectId: "gen-lang-client-0153630349",
+  firebaseProjectId: "ayra-zero-trust-test",
   requireAppCheck: true,
   corsAllowedOrigins: ["https://ayra.ai.app"],
   rateLimitWindowMs: 60_000,
@@ -70,7 +71,8 @@ const fakeVerifiers = {
     }
     throw new Error("Invalid or revoked token");
   },
-  verifyAppCheckToken: async (token) => {
+  verifyAppCheckToken: async (token, options) => {
+    consumeFlags.push(Boolean(options?.consume));
     if (token !== "valid_app_check_token_xyz") {
       throw new Error("Invalid App Check token");
     }
@@ -123,26 +125,26 @@ test("Security headers and minimal health endpoint", async () => {
   assert.ok(res.headers.get("strict-transport-security")?.includes("max-age=31536000"));
 });
 
-test("Firebase config refuses stale hardcoded project IDs and fails closed in production", () => {
+test("Firebase config refuses placeholder project IDs and fails closed in production", () => {
   const unconfiguredProd = loadConfig({ NODE_ENV: "production" });
   assert.equal(unconfiguredProd.firebaseProjectId, "");
   assert.throws(() => assertProductionConfig(unconfiguredProd), /FIREBASE_PROJECT_ID/);
 
-  const staleProd = loadConfig({
+  const placeholderProd = loadConfig({
     NODE_ENV: "production",
-    FIREBASE_PROJECT_ID: "gen-lang-client-0595455617",
+    FIREBASE_PROJECT_ID: "remixed-project-id",
     ALLOW_IN_MEMORY_RATE_LIMIT: "true",
   });
-  assert.throws(() => assertProductionConfig(staleProd), /retired\/stale/);
+  assert.throws(() => assertProductionConfig(placeholderProd), /FIREBASE_PROJECT_ID/);
 
   const validProdNoRedis = loadConfig({
     NODE_ENV: "production",
-    FIREBASE_PROJECT_ID: "gen-lang-client-0153630349",
+    FIREBASE_PROJECT_ID: "ayra-zero-trust-test",
   });
   assert.throws(() => resolveRateLimitStore(validProdNoRedis), /REDIS_REST_URL/);
 });
 
-test("Rejects unauthenticated, invalid Bearer, and missing/invalid App Check requests", async () => {
+test("Rejects unauthenticated, invalid Bearer, missing App Check, and hides project ID from non-admin posture", async () => {
   const noAuth = await fetch(`${baseUrl}/api/v1/security/posture`);
   assert.equal(noAuth.status, 401);
 
@@ -168,8 +170,18 @@ test("Rejects unauthenticated, invalid Bearer, and missing/invalid App Check req
   assert.equal(body.appCheckVerified, true);
   assert.equal(body.sandboxConfigured, false);
   assert.equal(body.environment, "production");
-  assert.equal(body.firebaseProjectId, "gen-lang-client-0153630349");
+  assert.equal(body.firebaseProjectId, undefined);
   assert.equal(JSON.stringify(body).includes("AIzaFakeServerKey"), false);
+
+  const adminPosture = await fetch(`${baseUrl}/api/v1/security/posture`, {
+    headers: {
+      Authorization: "Bearer valid_admin_id_token_12345",
+      "X-Firebase-AppCheck": "valid_app_check_token_xyz",
+    },
+  });
+  assert.equal(adminPosture.status, 200);
+  const adminBody = await adminPosture.json();
+  assert.equal(adminBody.firebaseProjectId, "ayra-zero-trust-test");
 });
 
 test("RBAC rejects non-admin caller and permits admin caller", async () => {
@@ -286,7 +298,8 @@ test("Audit logger redacts API keys, Bearer tokens, and passphrases", () => {
   assert.equal(clean.includes("myStrongSecret"), false);
 });
 
-test("Device revocation calls Firebase token revocation, rate limit sets Retry-After 429, and quota status returns usage", async () => {
+test("Device revocation consumes App Check token, calls Firebase token revocation, rate limit sets Retry-After 429, and quota status returns usage", async () => {
+  const beforeLen = consumeFlags.length;
   const revRes = await fetch(`${baseUrl}/api/v1/devices/revoke`, {
     method: "POST",
     headers: {
@@ -298,6 +311,7 @@ test("Device revocation calls Firebase token revocation, rate limit sets Retry-A
   });
   assert.equal(revRes.status, 200);
   assert.ok(revokedUids.includes("uid_ratelimit"));
+  assert.equal(consumeFlags.slice(beforeLen).includes(true), true);
 
   let saw429 = false;
   let retryAfterHeader = null;

@@ -263,7 +263,8 @@ fun SecurityCenterScreen(
                     Text(
                         text = stringResource(R.string.security_center_title),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.testTag("security_center_title")
                     )
                     Text(
                         text = stringResource(R.string.security_center_subtitle),

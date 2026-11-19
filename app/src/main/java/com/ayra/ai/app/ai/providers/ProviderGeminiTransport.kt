@@ -7,9 +7,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import android.util.Log
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
@@ -28,20 +28,14 @@ internal object ProviderGeminiTransport {
     fun buildGeminiUrl(
         baseUrlOverride: String?,
         model: String,
-        apiKey: String,
+        @Suppress("UNUSED_PARAMETER") apiKey: String = "",
         stream: Boolean
     ): String {
         val base = baseUrlOverride?.let {
             if (it.endsWith("/")) it else "$it/"
         } ?: "https://generativelanguage.googleapis.com/v1beta/"
         val action = if (stream) "streamGenerateContent?alt=sse" else "generateContent"
-        val encodedKey = if (apiKey.isNotBlank()) URLEncoder.encode(apiKey, "UTF-8") else ""
-        return if (encodedKey.isNotBlank()) {
-            val sep = if (action.contains("?")) "&" else "?"
-            "${base}models/$model:$action${sep}key=$encodedKey"
-        } else {
-            "${base}models/$model:$action"
-        }
+        return "${base}models/$model:$action"
     }
 
     private fun buildRequestJson(
@@ -210,7 +204,9 @@ internal object ProviderGeminiTransport {
                                     }
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            Log.w("ProviderGeminiTransport", "Malformed SSE JSON chunk skipped: ${e.javaClass.simpleName}")
+                        }
                     }
                 } else if (!emittedAnySse && l.isNotEmpty()) {
                     rawFallbackBuffer.append(rawLine).append('\n')
@@ -235,7 +231,9 @@ internal object ProviderGeminiTransport {
                             if (cleaned.isNotEmpty()) collector.emit(cleaned)
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w("ProviderGeminiTransport", "Non-SSE fallback body parse skipped: ${e.javaClass.simpleName}")
+                }
             }
         }
     }

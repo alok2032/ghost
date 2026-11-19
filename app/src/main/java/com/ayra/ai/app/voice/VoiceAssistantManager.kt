@@ -16,6 +16,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.ayra.ai.app.automation.ProposedAction
 import com.ayra.ai.app.data.AyraPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -404,14 +405,11 @@ class VoiceAssistantManager(
             return
         }
 
-        val isBengali = cleaned.any { it in '\u0980'..'\u09FF' }
-        val isHindi = cleaned.any { it in '\u0900'..'\u097F' }
-
-        val locale = when {
-            isBengali -> Locale.forLanguageTag("bn-IN")
-            isHindi -> Locale.forLanguageTag("hi-IN")
-            else -> Locale.US
-        }
+        val resolvedTag = detectSpokenLanguageTag(
+            text = cleaned,
+            preferredLang = runCatching { AyraPreferences.getPreferredLanguage(context) }.getOrDefault("auto")
+        )
+        val locale = Locale.forLanguageTag(resolvedTag)
 
         setupVoiceModulation(locale, targetSentiment)
 
@@ -469,7 +467,10 @@ class VoiceAssistantManager(
     }
 
     fun startListening() {
-        if (isDestroyed || _isSpeaking.value) return
+        if (isDestroyed) return
+        if (_isSpeaking.value) {
+            stopSpeaking()
+        }
         if (speechRecognizer == null) initRecognizer()
 
         val recognizer = speechRecognizer
@@ -485,8 +486,18 @@ class VoiceAssistantManager(
             return
         }
 
-        val effectiveLanguage = when (val selected = _selectedLanguageTag.value) {
-            "auto", "" -> Locale.getDefault().toLanguageTag()
+        val prefLang = runCatching { AyraPreferences.getPreferredLanguage(context) }.getOrDefault("auto")
+        val selected = _selectedLanguageTag.value.ifBlank { prefLang }
+        val effectiveLanguage = when (selected.lowercase(Locale.ROOT)) {
+            "auto", "" -> when (prefLang.lowercase(Locale.ROOT)) {
+                "bn", "bn-bd", "bn-in" -> "bn-BD"
+                "hi", "hi-in" -> "hi-IN"
+                "en", "en-us" -> "en-US"
+                else -> Locale.getDefault().toLanguageTag()
+            }
+            "bn" -> "bn-BD"
+            "hi" -> "hi-IN"
+            "en" -> "en-US"
             else -> selected
         }
 
@@ -777,6 +788,75 @@ class VoiceAssistantManager(
             SpeechRecognizer.ERROR_SERVER -> "Speech recognition server error."
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected. Tap Retry when ready to speak."
             else -> "Voice recognition stopped (code $error)."
+        }
+
+        private val banglishCueRegex = Regex(
+            "(?i)\\b(korbo|koro|tumi|amar|amake|bhalo|valo|kemon|bolun|bolo|kothay|ekhon|hobe|na|ache)\\b"
+        )
+
+        fun detectSpokenLanguageTag(text: String, preferredLang: String = "auto"): String {
+            if (text.any { it in '\u0980'..'\u09FF' }) return "bn-IN"
+            if (text.any { it in '\u0900'..'\u097F' }) return "hi-IN"
+            if (banglishCueRegex.containsMatchIn(text)) return "bn-IN"
+            return when (preferredLang.lowercase(Locale.ROOT)) {
+                "bn", "bn-bd", "bn-in" -> "bn-IN"
+                "hi", "hi-in" -> "hi-IN"
+                "en", "en-us" -> "en-US"
+                else -> "en-US"
+            }
+        }
+
+        fun buildSpokenActionSummary(action: ProposedAction, isBengali: Boolean = false): String = when (action) {
+            is ProposedAction.DirectCall -> if (isBengali) {
+                "${action.displayName}-কে কল করতে অনুমোদন দিন।"
+            } else {
+                "Please confirm calling ${action.displayName}."
+            }
+            is ProposedAction.SendSms -> if (isBengali) {
+                "${action.recipient}-কে এসএমএস পাঠাতে অনুমোদন দিন।"
+            } else {
+                "Please confirm sending SMS to ${action.recipient}."
+            }
+            is ProposedAction.SetAlarm -> if (isBengali) {
+                "${action.formattedTime} সময়ে অ্যালার্ম সেট করতে অনুমোদন দিন।"
+            } else {
+                "Please confirm setting an alarm for ${action.formattedTime}."
+            }
+            is ProposedAction.OpenApp -> if (isBengali) {
+                "${action.appName} অ্যাপ খুলতে অনুমোদন দিন।"
+            } else {
+                "Please confirm opening ${action.appName}."
+            }
+            is ProposedAction.ToggleTorch -> if (isBengali) {
+                if (action.enable) "ফ্ল্যাশলাইট চালু করতে অনুমোদন দিন।" else "ফ্ল্যাশলাইট বন্ধ করতে অনুমোদন দিন।"
+            } else {
+                if (action.enable) "Please confirm turning the flashlight on." else "Please confirm turning the flashlight off."
+            }
+            is ProposedAction.AdjustVolume -> if (isBengali) {
+                "ভলিউম পরিবর্তন করতে অনুমোদন দিন।"
+            } else {
+                "Please confirm adjusting the volume to ${action.level}."
+            }
+            is ProposedAction.CalendarCreate -> if (isBengali) {
+                "${action.eventTitle} ক্যালেন্ডার ইভেন্ট তৈরি করতে অনুমোদন দিন।"
+            } else {
+                "Please confirm creating calendar event ${action.eventTitle}."
+            }
+            is ProposedAction.ComposeEmail -> if (isBengali) {
+                "${action.toAddress}-কে ইমেইল পাঠাতে অনুমোদন দিন।"
+            } else {
+                "Please confirm composing an email to ${action.toAddress.ifBlank { "recipient" }}."
+            }
+            is ProposedAction.NavigateMap -> if (isBengali) {
+                "${action.destinationQuery} এর দিকে ম্যাপ নেভিগেশন চালু করতে অনুমোদন দিন।"
+            } else {
+                "Please confirm opening map navigation to ${action.destinationQuery}."
+            }
+            is ProposedAction.ExecuteExternalTool -> if (isBengali) {
+                "${action.toolName} এক্সটার্নাল টুল চালানোর জন্য অনুমোদন দিন।"
+            } else {
+                "Please confirm running external tool ${action.toolName}."
+            }
         }
     }
 }

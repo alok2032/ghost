@@ -18,6 +18,18 @@ enum class DatabaseEncryptionState(val label: String) {
     ERROR("Database Encryption Error")
 }
 
+enum class VaultState {
+    OK,
+    KEY_LOST,
+    CORRUPT
+}
+
+class VaultKeyRecoveryException(
+    val vaultState: VaultState,
+    message: String,
+    cause: Throwable? = null
+) : IllegalStateException(message, cause)
+
 /**
  * Manages the cryptographically random 256-bit SQLCipher database passphrase wrapped under
  * [AyraKeyManager.ALIAS_DB_KEK] and handles automatic plaintext SQLite -> SQLCipher migration.
@@ -37,6 +49,10 @@ object VaultDatabaseKeyManager {
 
     @Volatile
     var currentEncryptionState: DatabaseEncryptionState = DatabaseEncryptionState.UNINITIALIZED
+        private set
+
+    @Volatile
+    var currentVaultState: VaultState = VaultState.OK
         private set
 
     fun isRobolectricEnvironment(): Boolean {
@@ -90,10 +106,21 @@ object VaultDatabaseKeyManager {
                     prefs.edit().putString(KEY_WRAPPED_DB_PASSPHRASE, rewrapped).commit()
                 }
                 cachedPassphrase = passBytes.copyOf()
+                currentVaultState = VaultState.OK
                 passBytes
             } catch (e: Exception) {
                 currentEncryptionState = DatabaseEncryptionState.ERROR
-                throw IllegalStateException("Failed to unwrap SQLCipher database key", e)
+                val classified = classifyRecoveryFailure(e, wrapped)
+                currentVaultState = classified
+                throw VaultKeyRecoveryException(
+                    vaultState = classified,
+                    message = if (classified == VaultState.KEY_LOST) {
+                        "Android Keystore database key is missing or permanently invalidated."
+                    } else {
+                        "Wrapped SQLCipher database key envelope is corrupted."
+                    },
+                    cause = e
+                )
             }
         }
 
@@ -113,6 +140,7 @@ object VaultDatabaseKeyManager {
 
         val result = hexKey.toByteArray(StandardCharsets.UTF_8)
         cachedPassphrase = result.copyOf()
+        currentVaultState = VaultState.OK
         SecurityAuditLogger.log(
             context = context,
             category = SecurityAuditCategory.DATABASE,
@@ -120,6 +148,27 @@ object VaultDatabaseKeyManager {
             message = "Generated and Keystore-wrapped fresh 256-bit SQLCipher database key."
         )
         return result
+    }
+
+    private fun classifyRecoveryFailure(error: Throwable, wrappedEnvelope: String): VaultState {
+        val chain = generateSequence(error) { it.cause }.take(6).toList()
+        val hasJsonEnvelope = runCatching {
+            val json = JSONObject(wrappedEnvelope)
+            json.has("iv") && json.has("ct")
+        }.getOrDefault(false)
+        val keyStoreMissing = chain.any { t ->
+            val name = t.javaClass.simpleName
+            val msg = (t.message ?: "").lowercase()
+            name.contains("KeyPermanentlyInvalidated", ignoreCase = true) ||
+                name.contains("InvalidKey", ignoreCase = true) ||
+                name.contains("KeyStore", ignoreCase = true) ||
+                name.contains("UnrecoverableKey", ignoreCase = true) ||
+                name.contains("AEADBadTag", ignoreCase = true) ||
+                msg.contains("keystore") ||
+                msg.contains("key permanently invalidated") ||
+                msg.contains("alias")
+        }
+        return if (keyStoreMissing || hasJsonEnvelope) VaultState.KEY_LOST else VaultState.CORRUPT
     }
 
     /**
@@ -205,7 +254,7 @@ object VaultDatabaseKeyManager {
                 severity = SecurityAuditSeverity.CRITICAL,
                 message = "Plaintext->SQLCipher migration error: ${e.javaClass.simpleName}"
             )
-            throw IllegalStateException("Plaintext database migration failed", e)
+            throw VaultKeyRecoveryException(VaultState.CORRUPT, "Plaintext database migration failed", e)
         } finally {
             passphraseBytes.fill(0)
         }
@@ -223,15 +272,21 @@ object VaultDatabaseKeyManager {
                 // Still initialize/verify Keystore KEK DB key wrapping on JVM tests
                 getOrCreateDatabasePassphrase(context).fill(0)
                 currentEncryptionState = DatabaseEncryptionState.ROBOLECTRIC_JVM_FALLBACK
+                currentVaultState = VaultState.OK
                 return null
             }
             currentEncryptionState = DatabaseEncryptionState.ERROR
-            throw IllegalStateException("SQLCipher native library failed to load; refusing unencrypted database open.")
+            currentVaultState = VaultState.CORRUPT
+            throw VaultKeyRecoveryException(
+                VaultState.CORRUPT,
+                "SQLCipher native library failed to load; refusing unencrypted database open."
+            )
         }
 
         migrateLegacyPlaintextDatabaseIfNeeded(context, dbName)
         val passphrase = getOrCreateDatabasePassphrase(context)
         currentEncryptionState = DatabaseEncryptionState.SQLCIPHER_AES256
+        currentVaultState = VaultState.OK
         return SupportOpenHelperFactory(passphrase)
     }
 
@@ -243,8 +298,33 @@ object VaultDatabaseKeyManager {
         cachedPassphrase?.fill(0)
         cachedPassphrase = null
         currentEncryptionState = DatabaseEncryptionState.UNINITIALIZED
+        currentVaultState = VaultState.KEY_LOST
         runCatching {
             context.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE).edit().clear().commit()
         }
+    }
+
+    /**
+     * Explicit user-confirmed recovery reset: wipes wrapped DB key metadata, DB file, WAL, and SHM
+     * so a fresh encrypted vault can be initialized cleanly. Never called automatically.
+     */
+    @Synchronized
+    fun resetCorruptedVaultAndDatabase(context: Context, dbName: String = "ayra_chat_database") {
+        com.ayra.ai.app.data.ChatDatabase.closeDatabaseForMaintenance()
+        destroyDatabaseKeyMetadata(context)
+        val dbFile = context.getDatabasePath(dbName)
+        listOf(
+            dbFile,
+            File("${dbFile.absolutePath}-wal"),
+            File("${dbFile.absolutePath}-shm"),
+            File("${dbFile.absolutePath}-journal")
+        ).forEach { AndroidHardeningHelper.secureWipeFile(it) }
+        currentVaultState = VaultState.OK
+        SecurityAuditLogger.log(
+            context = context,
+            category = SecurityAuditCategory.DATABASE,
+            severity = SecurityAuditSeverity.WARN,
+            message = "User explicitly confirmed vault reset for '$dbName' after key/envelope recovery prompt."
+        )
     }
 }

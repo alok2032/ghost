@@ -217,6 +217,12 @@ object StorageHelper {
     fun exportWordDocDocument(context: Context, title: String, content: String): File =
         DocumentExporters.exportWordDocDocument(context, title, content)
 
+    fun exportRealDocxDocument(context: Context, title: String, content: String): File =
+        DocumentExporters.exportRealDocxDocument(context, title, content)
+
+    fun exportCsvSpreadsheet(context: Context, title: String, content: String): File =
+        DocumentExporters.exportCsvSpreadsheet(context, title, content)
+
     fun exportSafeWorkspaceBackupJson(
         context: Context,
         sessions: List<ChatSession>,

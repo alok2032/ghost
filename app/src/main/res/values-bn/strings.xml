@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Ayra AI</string>
+    <string name="action_send">পাঠান</string>
+    <string name="action_clear">মুছুন</string>
+    <string name="action_speak">ভয়েস ইনপুট</string>
+    <string name="action_copy">কপি করুন</string>
+    <string name="vault_locked_title">Ayra AI ভল্ট লক করা আছে</string>
+    <string name="vault_unlock_button">বায়োমেট্রিক / পিন দিয়ে আনলক করুন</string>
+    <string name="vault_reset_biometric_key">বাতিল হওয়া বায়োমেট্রিক কী রিসেট করুন</string>
+    <string name="security_center_title">এন্টারপ্রাইজ সিকিউরিটি সেন্টার</string>
+    <string name="security_center_subtitle">জিরো-ট্রাস্ট কিস্টোর, SQLCipher DB, E2EE ও হাইব্রিড AI নিয়ন্ত্রণ</string>
+    <string name="security_posture_heading">সামগ্রিক ভল্ট নিরাপত্তা অবস্থা</string>
+    <string name="security_erasure_button">সব ভল্ট ও ক্লাউড ডেটা মুছুন</string>
+    <string name="security_erasure_confirm_title">ক্রিপ্টোগ্রাফিক ডেটা মোছা নিশ্চিত করুন</string>
+    <string name="security_erasure_confirm_hint">সব কিস্টোর কী, এনক্রিপ্টেড ডেটাবেস, ভল্ট ফাইল, সিক্রেট এবং ক্লাউড ডেটা স্থায়ীভাবে মুছে ফেলতে ERASE টাইপ করুন।</string>
+    <string name="vault_recovery_title_key_lost">ভল্ট কী পাওয়া যাচ্ছে না</string>
+    <string name="vault_recovery_title_corrupt">এনক্রিপ্টেড ভল্ট পুনরুদ্ধার প্রয়োজন</string>
+    <string name="vault_recovery_restore_backup">.ayrabak ব্যাকআপ থেকে পুনরুদ্ধার করুন</string>
+    <string name="vault_recovery_reset_vault">ভল্ট রিসেট করে নতুনভাবে শুরু করুন</string>
+</resources>

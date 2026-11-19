@@ -1,0 +1,14 @@
+# Verified retired or sunsetting AI model IDs — one regex per line.
+# Checked against ModelCatalog & codebase by scripts/preflight.sh and CI.
+# Keep historical migrations/tests explicit; disallow active usage outside ModelCatalog legacy migration maps.
+^gemini-1\.0-
+^gemini-1\.5-
+^gemini-2\.0-flash
+^gemini-2\.0-pro
+^gemini-2\.5-flash
+^gemini-2\.5-pro
+^claude-3-5-sonnet-20241022$
+^claude-3-7-sonnet-20250219$
+^claude-3-opus-20240229$
+^text-davinci-
+^gpt-3\.5-turbo-0301$

@@ -7,14 +7,25 @@ on:
     branches: ["main", "master"]
 
 jobs:
+  preflight:
+    name: Preflight & Single Source of Truth Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run preflight guard
+        run: bash scripts/preflight.sh
+      - name: Verify generated FACTS.md is up to date
+        run: bash scripts/gen-facts.sh --check
+
   secret-scan:
     name: Secret & Hardcoded Credential Scan
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Scan source tree for leaked API keys or private keys
         run: |
-          if grep -rnEI "(AIza[0-9A-Za-z\-_]{28,}|sk-proj-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{25,}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)" \
+          if grep -rnEI "(AIza[0-9A-Za-z\-_]{28,}|sk-(proj|ant)-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{25,}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----)" \
             --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle --exclude-dir=.build-outputs \
             --exclude="*Test.kt" --exclude="*.test.mjs" --exclude="*.example" --exclude="google-services.json" --exclude="*.apk" .; then
             echo "ERROR: Potential secret detected in repository!"
@@ -23,6 +34,7 @@ jobs:
 
   android-security-tests:
     name: Android Build & Security Regression Suite
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,17 +43,8 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Ensure Gradle wrapper is executable
-        run: chmod +x gradlew
-      - name: Reject retired Firebase project IDs in app resources and backend config
-        run: |
-          if grep -rnE "gen-lang-client-0595455617|gen-lang-client-0643978985" \
-            README.md RELEASE_SIGNING.md DEPLOYMENT_AND_RISK_REPORT.md \
-            app/google-services.json app/src/main/res/ \
-            backend/src/server.ts backend/src/app.ts .env.example; then
-            echo "ERROR: Retired Firebase project ID detected in active config or docs!"
-            exit 1
-          fi
+      - name: Verify Gradle wrapper executable mode without mutating permissions
+        run: test -x gradlew
       - name: Run Android Debug Unit & Security Regression Tests
         run: ./gradlew :app:testDebugUnitTest --max-workers=2 --console=plain
       - name: Verify fail-closed production signing gate
@@ -55,6 +58,7 @@ jobs:
 
   backend-zero-trust-tests:
     name: Zero-Trust Node/TS Backend Build & Tests
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +76,7 @@ jobs:
 
   firestore-rules-tests:
     name: Firestore Security Rules Emulator Tests
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -111,7 +111,7 @@ enum class ModelTier(
         description = "ওপেন-ওয়েটস লোকাল ও ক্লাউড মডেল — নির্ভরযোগ্য, বস্তুনিষ্ঠ ও নিরাপদ প্রযুক্তিগত বিশ্লেষণ",
         accentColorHex = 0xFFFF5722,
         defaultPoolMode = ProviderPoolMode.BEST,
-        aliases = setOf("qwen_uncensored", "local")
+        aliases = setOf("local")
     ),
     SECURITY_RESEARCH(
         id = "security_research",
@@ -122,8 +122,7 @@ enum class ModelTier(
         description = "ডিফেনসিভ সাইবার সিকিউরিটি, OWASP অডিট, CVE মিটিগেশন ও নিরাপদ সিস্টেম আর্কিটেকচার",
         accentColorHex = 0xFF00E5FF,
         defaultPoolMode = ProviderPoolMode.BEST,
-        usesOmniRouteFastPath = true,
-        aliases = setOf("godmode")
+        usesOmniRouteFastPath = true
     ),
     ECC_COGNITIVE(
         id = "ecc",

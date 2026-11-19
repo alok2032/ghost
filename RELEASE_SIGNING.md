@@ -46,7 +46,7 @@ Before publishing to Play Console / internal testing:
    - Your **Upload Key** SHA-1 and SHA-256.
    - Your **Play App Signing** key SHA-1 and SHA-256 (from Play Console -> Release -> Setup -> App signing).
 3. Download the updated `app/google-services.json` and commit the public client config (never private keystores).
-4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key (already populated for active project `gen-lang-client-0153630349`) so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE` (or `MISSING_RELEASE_CONFIG` if blank/removed).
+4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key for the active project in `app/google-services.json`, so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE` (or `MISSING_RELEASE_CONFIG` if blank/removed).
 
 ---
 
