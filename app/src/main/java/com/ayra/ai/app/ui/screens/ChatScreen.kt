@@ -367,6 +367,21 @@ fun ChatScreen(
         }
         if (trimmed.isBlank() && selectedImageUri == null && selectedDocumentUri == null) return
 
+        val hasCloudSensitiveAttachment = selectedImageUri != null || selectedDocumentUri != null
+        if (hasCloudSensitiveAttachment &&
+            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
+            !AyraPreferences.hasExternalAiConsent(context)
+        ) {
+            rationaleTitle = "Cloud AI Consent Required for Attachments"
+            rationaleBody = "You attached a photo or document while External Cloud AI consent is disabled. Allow External Cloud AI to analyze it, or enable Local-Only mode in Security Center."
+            rationaleActionLabel = "Allow Cloud AI"
+            rationaleOnConfirm = {
+                AyraPreferences.setExternalAiConsent(context, true)
+                dispatchPrompt(query)
+            }
+            return
+        }
+
         val attachedUriStr = selectedImageUri?.toString()
         val docText = selectedDocumentText
         val docName = selectedDocumentName
@@ -545,13 +560,7 @@ fun ChatScreen(
                 (showExactAlarmWarningBanner || hasPendingScheduledTasks)
 
             val showContactsInlineBanner = remember(pendingAction, context) {
-                val action = pendingAction
-                val unresolved = when (action) {
-                    is ProposedAction.DirectCall -> action.phoneNumber.none { it.isDigit() }
-                    is ProposedAction.SendSms -> action.phoneNumber.none { it.isDigit() }
-                    else -> false
-                }
-                unresolved && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED
+                ChatScreenMediaHelper.shouldShowContactsBanner(context, pendingAction)
             }
 
             ChatAttachmentPreviewBanners(
@@ -727,18 +736,7 @@ fun ChatScreen(
                 }
             },
             onPickGallery = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            onPickDocument = {
-                documentLauncher.launch(
-                    arrayOf(
-                        "application/pdf", "text/*", "application/msword",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        "application/vnd.ms-excel",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                        "application/json"
-                    )
-                )
-            },
+            onPickDocument = { documentLauncher.launch(ChatScreenMediaHelper.SUPPORTED_DOCUMENT_MIME_TYPES) },
             onOpenControlCenter = { showControlCenterSheet = true },
             onShareGpsLocation = {
                 val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED

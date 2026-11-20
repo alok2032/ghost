@@ -34,6 +34,7 @@ object AyraPreferences {
     private const val KEY_SCREEN_CAPTURE_BLOCKED = "sec_screen_capture_blocked"
     private const val KEY_LOCAL_ONLY_AI_MODE = "sec_local_only_ai_mode"
     private const val KEY_PRIVACY_MODE = "sec_privacy_mode"
+    private const val KEY_CLOUD_SYNC_ENABLED = "sec_cloud_sync_enabled"
     private const val KEY_CLOUD_E2EE_SYNC_ENABLED = "sec_cloud_e2ee_sync_enabled"
     private const val KEY_EXTERNAL_AI_CONSENT = "sec_external_ai_consent"
     private const val KEY_FREE_POOL_CONSENT = "sec_free_pool_consent"
@@ -44,6 +45,8 @@ object AyraPreferences {
     private const val KEY_DEVICE_ID = "sec_device_uuid"
     private const val KEY_REMOTE_MODEL_CATALOG_JSON = "remote_model_catalog_json"
     private const val KEY_COMPANION_AGE_VERIFIED = "sec_companion_age_verified_18_plus"
+    private const val KEY_BACKEND_GATEWAY_URL = "sec_backend_gateway_url"
+    private const val KEY_PREFER_BYOK_DIRECT = "sec_prefer_byok_direct"
 
     private const val KEY_ACCENT_PRESET = "ui_accent_preset"
     private const val KEY_CUSTOM_ACCENT_HEX = "ui_custom_accent_hex"
@@ -307,7 +310,7 @@ object AyraPreferences {
         secureKeyName: String,
         legacyEncPrefKey: String,
         value: String,
-        markExternalConsent: Boolean = true
+        markExternalConsent: Boolean = false
     ) {
         SecureKeyStore.putSecret(context, secureKeyName, value)
         EncryptedPreferences(context).remove(legacyEncPrefKey)
@@ -384,7 +387,6 @@ object AyraPreferences {
 
     fun setOpenAiKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_OPENAI, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getAnthropicKey(context: Context): String =
@@ -392,7 +394,6 @@ object AyraPreferences {
 
     fun setAnthropicKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_ANTHROPIC, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getDeepSeekKey(context: Context): String =
@@ -400,7 +401,6 @@ object AyraPreferences {
 
     fun setDeepSeekKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_DEEPSEEK, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getXAiKey(context: Context): String =
@@ -408,7 +408,6 @@ object AyraPreferences {
 
     fun setXAiKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_XAI, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getMistralKey(context: Context): String =
@@ -416,7 +415,6 @@ object AyraPreferences {
 
     fun setMistralKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_MISTRAL, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getPerplexityKey(context: Context): String =
@@ -424,7 +422,6 @@ object AyraPreferences {
 
     fun setPerplexityKey(context: Context, key: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_PERPLEXITY, key)
-        if (key.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getCustomEndpointUrl(context: Context): String =
@@ -432,7 +429,6 @@ object AyraPreferences {
 
     fun setCustomEndpointUrl(context: Context, url: String) {
         SecureKeyStore.putSecret(context, SecureKeyStore.KEY_CUSTOM_ENDPOINT_URL, url)
-        if (url.isNotBlank()) setExternalAiConsent(context, true)
     }
 
     fun getCustomEndpointKey(context: Context): String =
@@ -625,12 +621,13 @@ object AyraPreferences {
     }
 
     /**
-     * Built-in keyless cloud AI pool is active by default for zero-setup readiness,
-     * while automatically respecting Local-Only Privacy Mode and External AI Consent opt-outs.
+     * Built-in keyless cloud AI pool is fail-closed (disabled) by default and requires
+     * explicit opt-in consent alongside active external AI consent and non-local-only mode.
      */
     fun isFreeAiPoolEnabled(context: Context): Boolean {
         if (isLocalOnlyAiModeEnabled(context) || !hasExternalAiConsent(context)) return false
-        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, true)
+        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, false) &&
+            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, false)
     }
 
     fun setFreeAiPoolEnabled(context: Context, enabled: Boolean) {
@@ -663,7 +660,7 @@ object AyraPreferences {
     }
 
     fun isOnboardingCompleted(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_ONBOARDING_DONE, true)
+        getPrefs(context).getBoolean(KEY_ONBOARDING_DONE, false)
 
     fun setOnboardingCompleted(context: Context, completed: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_ONBOARDING_DONE, completed).apply()
@@ -918,6 +915,14 @@ object AyraPreferences {
         getSensitivePrefs(context).putBoolean(KEY_PRIVACY_MODE, enabled)
     }
 
+    fun isCloudSyncEnabled(context: Context): Boolean =
+        !isLocalOnlyAiModeEnabled(context) &&
+            getSensitivePrefs(context).getBoolean(KEY_CLOUD_SYNC_ENABLED, false)
+
+    fun setCloudSyncEnabled(context: Context, enabled: Boolean) {
+        getSensitivePrefs(context).putBoolean(KEY_CLOUD_SYNC_ENABLED, enabled)
+    }
+
     fun isCloudE2eeSyncEnabled(context: Context): Boolean =
         getSensitivePrefs(context).getBoolean(KEY_CLOUD_E2EE_SYNC_ENABLED, true)
 
@@ -926,7 +931,7 @@ object AyraPreferences {
     }
 
     fun hasExternalAiConsent(context: Context): Boolean =
-        getSensitivePrefs(context).getBoolean(KEY_EXTERNAL_AI_CONSENT, true)
+        getSensitivePrefs(context).getBoolean(KEY_EXTERNAL_AI_CONSENT, false)
 
     fun setExternalAiConsent(context: Context, consented: Boolean) {
         getSensitivePrefs(context).putBoolean(KEY_EXTERNAL_AI_CONSENT, consented)
@@ -935,7 +940,21 @@ object AyraPreferences {
     fun hasFreePoolConsent(context: Context): Boolean =
         !isLocalOnlyAiModeEnabled(context) &&
             hasExternalAiConsent(context) &&
-            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, true)
+            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, false)
+
+    fun getBackendGatewayUrl(context: Context): String =
+        getSensitivePrefs(context).getString(KEY_BACKEND_GATEWAY_URL, "").trim()
+
+    fun setBackendGatewayUrl(context: Context, url: String) {
+        getSensitivePrefs(context).putString(KEY_BACKEND_GATEWAY_URL, url.trim())
+    }
+
+    fun isByokPreferred(context: Context): Boolean =
+        getSensitivePrefs(context).getBoolean(KEY_PREFER_BYOK_DIRECT, false)
+
+    fun setByokPreferred(context: Context, preferred: Boolean) {
+        getSensitivePrefs(context).putBoolean(KEY_PREFER_BYOK_DIRECT, preferred)
+    }
 
     fun isPromptInjectionGuardEnabled(context: Context): Boolean =
         getSensitivePrefs(context).getBoolean(KEY_PROMPT_INJECTION_GUARD, true)

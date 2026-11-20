@@ -108,7 +108,9 @@ fun SecurityCenterScreen(
     var privacyRedaction by remember { mutableStateOf(AyraPreferences.isPrivacyModeEnabled(context)) }
     var externalAiConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
     var freePoolConsent by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
+    var cloudSyncEnabled by remember { mutableStateOf(AyraPreferences.isCloudSyncEnabled(context)) }
     var cloudE2eeSync by remember { mutableStateOf(AyraPreferences.isCloudE2eeSyncEnabled(context)) }
+    var preferByokDirect by remember { mutableStateOf(AyraPreferences.isByokPreferred(context)) }
     var promptInjectionGuard by remember { mutableStateOf(AyraPreferences.isPromptInjectionGuardEnabled(context)) }
     var allowLanEndpoints by remember { mutableStateOf(AyraPreferences.isAllowLanEndpointsEnabled(context)) }
 
@@ -427,13 +429,23 @@ fun SecurityCenterScreen(
                         }
                     )
                     SecurityToggleItem(
-                        title = "Auto-Active Global Free AI Pool",
-                        subtitle = "Keyless cloud specialists stay active by default; toggle off anytime for strict personal-key mode",
+                        title = "Public Free AI Pool (Opt-In)",
+                        subtitle = "Off by default; uses keyless community fallback specialists only when explicitly enabled",
                         checked = freePoolConsent,
                         tag = "toggle_free_pool_consent",
                         onCheckedChange = {
                             freePoolConsent = it
                             AyraPreferences.setFreeAiPoolEnabled(context, it)
+                        }
+                    )
+                    SecurityToggleItem(
+                        title = "Opt-In Cloud Sync (Firestore)",
+                        subtitle = "Off by default; explicitly enables syncing chats & plugins to your signed-in account",
+                        checked = cloudSyncEnabled,
+                        tag = "toggle_cloud_sync_consent",
+                        onCheckedChange = {
+                            cloudSyncEnabled = it
+                            AyraPreferences.setCloudSyncEnabled(context, it)
                         }
                     )
                     SecurityToggleItem(
@@ -444,6 +456,16 @@ fun SecurityCenterScreen(
                         onCheckedChange = {
                             cloudE2eeSync = it
                             AyraPreferences.setCloudE2eeSyncEnabled(context, it)
+                        }
+                    )
+                    SecurityToggleItem(
+                        title = "Prefer Direct Personal Keys (BYOK) Over Backend Proxy",
+                        subtitle = "When signed in with a backend gateway URL configured, Route B proxy runs first unless BYOK priority is enabled",
+                        checked = preferByokDirect,
+                        tag = "toggle_prefer_byok",
+                        onCheckedChange = {
+                            preferByokDirect = it
+                            AyraPreferences.setByokPreferred(context, it)
                         }
                     )
                     SecurityToggleItem(

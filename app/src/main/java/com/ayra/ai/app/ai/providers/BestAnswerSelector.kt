@@ -90,7 +90,8 @@ object BestAnswerSelector {
             AgentDomain.DATA_ANALYSIS_AGENT -> "data"
             AgentDomain.IMAGE_AGENT, AgentDomain.VIDEO_AGENT -> "creative"
             AgentDomain.EDUCATION_AGENT -> "education"
-            AgentDomain.GENERAL_ASSISTANT -> "general"
+            AgentDomain.VOICE_AGENT -> "fast"
+            AgentDomain.AUTOMATION_AGENT, AgentDomain.GENERAL_ASSISTANT -> "general"
         }
         if (channel.specialties.contains(desiredSpecialty)) {
             score += 14f

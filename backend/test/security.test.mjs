@@ -377,7 +377,7 @@ test("Model catalog exposes honest verification status, provenance, and unavaila
   assert.equal(ok.status, 200);
   const catalog = await ok.json();
   const flash = catalog.models.find((m) => m.id === "gemini-3.8-flash");
-  const groq = catalog.models.find((m) => m.id === "llama-3.3-70b-versatile");
+  const groq = catalog.models.find((m) => m.id === "qwen/qwen3.8-27b");
   assert.ok(flash);
   assert.equal(flash.verificationStatus, "LIVE_VERIFIED"); // earlier chat succeeded & closed circuit breaker
   assert.equal(flash.pricingVerified, false);
@@ -673,4 +673,181 @@ test("Daily token quota enforces 429 with DAILY_TOKEN_QUOTA_EXCEEDED", async () 
   } finally {
     await new Promise((resolve) => qServer.close(() => resolve()));
   }
+});
+
+test("H2: Abusive user hitting 5x per-user limit does NOT push innocent users into 429; pre-auth IP limiter blocks floods", async () => {
+  const verifiers = {
+    verifyIdToken: async (token) => {
+      if (token === "user_a_valid_id_token_12345") return { uid: "uid_a", email: "a@example.com", role: "user" };
+      if (token === "user_b_valid_id_token_12345") return { uid: "uid_b", email: "b@example.com", role: "user" };
+      throw new Error("bad token");
+    },
+    verifyAppCheckToken: async () => undefined,
+  };
+  const isoApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      rateLimitMax: 3,
+      globalRateLimitMax: 10,
+      ipPreAuthRateLimitMax: 100,
+    },
+    verifiers,
+    rateLimitStore: new MemoryRateLimitStore(),
+  });
+  const s = await new Promise((resolve) => {
+    const srv = isoApp.listen(0, "127.0.0.1", () => resolve(srv));
+  });
+  try {
+    const u = `http://127.0.0.1:${s.address().port}`;
+    // User A sends 5x limit (15 requests > globalRateLimitMax=10)
+    let a429s = 0;
+    for (let i = 0; i < 15; i++) {
+      const r = await fetch(`${u}/api/v1/security/posture`, {
+        headers: {
+          Authorization: "Bearer user_a_valid_id_token_12345",
+          "X-Firebase-AppCheck": "ok",
+        },
+      });
+      if (r.status === 429) a429s++;
+    }
+    assert.equal(a429s, 12);
+
+    // User B must STILL get 200 (global counter only counted A's 3 allowed requests)
+    const bRes = await fetch(`${u}/api/v1/security/posture`, {
+      headers: {
+        Authorization: "Bearer user_b_valid_id_token_12345",
+        "X-Firebase-AppCheck": "ok",
+      },
+    });
+    assert.equal(bRes.status, 200);
+  } finally {
+    await new Promise((resolve) => s.close(() => resolve()));
+  }
+
+  // Pre-auth IP flood stops unauthenticated callers before auth/jwt verification runs
+  let authVerifyCalls = 0;
+  const ipApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      ipPreAuthRateLimitMax: 2,
+    },
+    verifiers: {
+      verifyIdToken: async () => {
+        authVerifyCalls++;
+        throw new Error("bad");
+      },
+      verifyAppCheckToken: async () => undefined,
+    },
+    rateLimitStore: new MemoryRateLimitStore(),
+  });
+  const ipSrv = await new Promise((resolve) => {
+    const srv = ipApp.listen(0, "127.0.0.1", () => resolve(srv));
+  });
+  try {
+    const u = `http://127.0.0.1:${ipSrv.address().port}`;
+    const r1 = await fetch(`${u}/api/v1/security/posture`);
+    const r2 = await fetch(`${u}/api/v1/security/posture`);
+    const r3 = await fetch(`${u}/api/v1/security/posture`);
+    assert.equal(r1.status, 401);
+    assert.equal(r2.status, 401);
+    assert.equal(r3.status, 429);
+    assert.equal((await r3.json()).errorCode, "IP_RATE_LIMIT_EXCEEDED");
+    assert.equal(authVerifyCalls, 0);
+  } finally {
+    await new Promise((resolve) => ipSrv.close(() => resolve()));
+  }
+});
+
+test("M3 & M4: Atomic AI quota settles actual tokens, refunds failures, and Redis releaseConcurrency uses safe Lua EVAL", async () => {
+  let failUpstream = false;
+  const qApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      dailyTokenQuotaPerUser: 10_000,
+    },
+    verifiers: {
+      verifyIdToken: async () => ({ uid: "uid_settle", email: "s@example.com", role: "user" }),
+      verifyAppCheckToken: async () => undefined,
+    },
+    rateLimitStore: new MemoryRateLimitStore(),
+    fetchFn: async () => {
+      if (failUpstream) {
+        return new Response("upstream error", { status: 502 });
+      }
+      return new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "ok" }] } }],
+          usageMetadata: { totalTokenCount: 42 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+  const qSrv = await new Promise((resolve) => {
+    const srv = qApp.listen(0, "127.0.0.1", () => resolve(srv));
+  });
+  try {
+    const u = `http://127.0.0.1:${qSrv.address().port}`;
+    const okRes = await fetch(`${u}/api/v1/ai/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer settle_valid_id_token_12345",
+        "X-Firebase-AppCheck": "ok",
+      },
+      body: JSON.stringify({
+        provider: "gemini",
+        model: "gemini-3.8-flash",
+        messages: [{ role: "user", content: "Hi" }],
+        maxTokens: 2048,
+      }),
+    });
+    assert.equal(okRes.status, 200);
+    const okJson = await okRes.json();
+    assert.equal(okJson.estimatedTokens, 42);
+    assert.equal(okJson.usageSource, "PROVIDER_REPORTED");
+
+    failUpstream = true;
+    const failRes = await fetch(`${u}/api/v1/ai/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer settle_valid_id_token_12345",
+        "X-Firebase-AppCheck": "ok",
+      },
+      body: JSON.stringify({
+        provider: "gemini",
+        model: "gemini-3.8-flash",
+        messages: [{ role: "user", content: "Hi" }],
+        maxTokens: 2048,
+      }),
+    });
+    assert.equal(failRes.status, 502);
+
+    const statusRes = await fetch(`${u}/api/v1/quotas/status`, {
+      headers: { Authorization: "Bearer settle_valid_id_token_12345", "X-Firebase-AppCheck": "ok" },
+    });
+    const statusJson = await statusRes.json();
+    // Only the 42 actual tokens remain recorded; the failed 2048 reservation was refunded
+    assert.equal(statusJson.dailyTokensUsed, 42);
+  } finally {
+    await new Promise((resolve) => qSrv.close(() => resolve()));
+  }
+
+  // M4: Redis releaseConcurrency uses atomic Lua EVAL instead of raw DECR
+  const redisCommands = [];
+  const redisStore = new RedisHttpRateLimitStore(
+    "https://redis.upstash.example",
+    "tok",
+    async (_url, init) => {
+      redisCommands.push(JSON.parse(String(init?.body ?? "[]")));
+      return new Response(JSON.stringify([{ result: 0 }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  );
+  await redisStore.releaseConcurrency("cc:user:uid_test");
+  assert.equal(redisCommands[0][0][0], "EVAL");
+  assert.ok(String(redisCommands[0][0][1]).includes("redis.call('DEL'"));
 });

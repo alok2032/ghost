@@ -477,7 +477,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             }
             AiModelTier.OPENROUTER_DEEPSEEK -> {
                 if (openRouterApiKey.isNotBlank()) {
-                    val res = specializedExecutors.queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt, currentPersona)
+                    val res = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL, effectivePrompt, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                 }
                 if (geminiApiKey.isNotBlank()) {
@@ -487,7 +487,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             }
             AiModelTier.OPENROUTER_LLAMA -> {
                 if (openRouterApiKey.isNotBlank()) {
-                    val res = specializedExecutors.queryOpenRouterModel("meta-llama/llama-3.3-70b-instruct:free", effectivePrompt, currentPersona)
+                    val res = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_DEFAULT_MODEL, effectivePrompt, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                 }
                 if (geminiApiKey.isNotBlank()) {
@@ -539,7 +539,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
 
         if (openRouterApiKey.isNotBlank()) {
             try {
-                val orRes = specializedExecutors.queryOpenRouterModel("deepseek/deepseek-r1:free", effectivePrompt, currentPersona)
+                val orRes = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL, effectivePrompt, currentPersona)
                 if (orRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = orRes, modelUsed = "OpenRouter Multi-AI"))
             } catch (e: CancellationException) {
                 throw e

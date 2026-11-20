@@ -262,10 +262,10 @@ fun AiRoutingAndMemoryCard(context: Context) {
     val routingModes = remember {
         listOf(
             Triple(ModelTier.AUTO.id, "Auto ⚡", "Adaptive selection"),
-            Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 3.7"),
+            Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 5.5"),
             Triple("fast", "Ultra Fast 🚀", "Gemini 3.8 Flash / Groq"),
             Triple(ModelTier.OPEN_WEIGHTS.id, "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
-            Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek R1 / o3-mini"),
+            Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek V4 Pro / GPT-6.2 Astra"),
             Triple("coding", "Coding & STEM 💻", "GLM 5.3 / Codestral"),
             Triple("local", "Private LAN 🏠", "Local Ollama / LM Studio")
         )
@@ -924,12 +924,12 @@ fun FreeAiPoolCard(context: Context) {
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = "Global Free AI Pool (Auto-Active) 🌐",
+                    text = "Global Free AI Pool (Opt-In) 🌐",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Always-on keyless specialists (GPT-Large, Qwen Coder, DeepSeek R1 & Flux) active by default with zero setup. Personal keys above add higher speed & priority.",
+                    text = "Optional community fallback models when External Cloud AI consent is enabled in Security Center. Disabled by default until opted in.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -955,7 +955,7 @@ private fun saveKey(context: Context, provider: AiProviderType, key: String) {
         AiProviderType.SAMBANOVA -> AyraPreferences.setSambaNovaKey(context, key)
         AiProviderType.HUGGINGFACE -> AyraPreferences.setHuggingFaceKey(context, key)
         AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, key)
-        AiProviderType.POLLINATIONS_FREE -> AyraPreferences.setFreeAiPoolEnabled(context, key.isNotBlank())
+        AiProviderType.POLLINATIONS_FREE -> {}
         AiProviderType.OPENAI -> AyraPreferences.setOpenAiKey(context, key)
         AiProviderType.ANTHROPIC -> AyraPreferences.setAnthropicKey(context, key)
         AiProviderType.DEEPSEEK -> AyraPreferences.setDeepSeekKey(context, key)

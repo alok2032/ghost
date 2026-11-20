@@ -10,6 +10,7 @@ export interface BackendConfig {
   corsAllowedOrigins: string[];
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  ipPreAuthRateLimitMax: number;
   aiProviderRateLimitMax: number;
   aiModelRateLimitMax: number;
   toolRateLimitMax: number;
@@ -69,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     corsAllowedOrigins: allowedOrigins,
     rateLimitWindowMs: parsePositiveInt(env.RATE_LIMIT_WINDOW_MS, 60_000),
     rateLimitMax: parsePositiveInt(env.RATE_LIMIT_MAX, 30),
+    ipPreAuthRateLimitMax: parsePositiveInt(env.IP_PRE_AUTH_RATE_LIMIT_MAX, 240),
     aiProviderRateLimitMax: parsePositiveInt(env.AI_PROVIDER_RATE_LIMIT_MAX, 120),
     aiModelRateLimitMax: parsePositiveInt(env.AI_MODEL_RATE_LIMIT_MAX, 60),
     toolRateLimitMax: parsePositiveInt(env.TOOL_RATE_LIMIT_MAX, 20),

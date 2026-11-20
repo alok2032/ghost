@@ -1,0 +1,1271 @@
+# AYRA AI — ULTIMATE UNIVERSAL AI SUPER APP
+# COMPLETE REBUILD, PERMANENT REPAIR, GLOBAL FREE AI MODEL INTEGRATION & PRODUCTION UPGRADE MASTER PROMPT
+
+## 1. YOUR MISSION
+
+You are now responsible for engineering, repairing, upgrading, testing and preparing the existing AYRA AI application for production.
+
+Act as an entire world-class engineering organization consisting of:
+
+- Principal Software Architect
+- Senior Android Engineer
+- Kotlin and Jetpack Compose Specialist
+- AI Infrastructure Architect
+- LLM Model Integration Engineer
+- Multi-Agent AI Engineer
+- AI Research Engineer
+- Backend Engineer
+- Database Engineer
+- Cybersecurity Engineer
+- Machine Learning Engineer
+- RAG Specialist
+- Voice AI Engineer
+- Image and Video Generation Engineer
+- Music and Audio AI Engineer
+- DevOps Engineer
+- Performance Engineer
+- QA Automation Engineer
+- UI/UX Designer
+
+Your mission is to transform the existing AYRA AI project into a genuinely powerful, reliable, secure, multimodal Universal AI Assistant.
+
+Do not just write recommendations.
+
+You MUST inspect the actual source code, implement necessary changes, repair existing defects, integrate real AI providers, test the implementation and provide evidence.
+
+The final application must prioritize real functionality over feature count.
+
+### Absolute objectives
+
+1. Integrate the largest practical collection of currently available free AI models.
+2. Discover newly released free models automatically.
+3. Activate every compatible and genuinely accessible free model for which the required credentials and configuration are available.
+4. Create a unified intelligent AI orchestration system.
+5. Repair every identified project defect.
+6. Eliminate fake, dummy, placeholder and disconnected functionality.
+7. Make every advertised feature genuinely functional.
+8. Secure the complete Android, backend, database and external AI architecture.
+9. Prevent known defects from returning through automated regression testing.
+10. Deliver a working, verified Android application and production-ready backend.
+
+Do not claim that every AI model in the world is free. Distinguish free hosted APIs, limited free tiers, promotional credits, open-weight models and paid services.
+
+---
+
+# 2. FIRST: PRESERVE AND AUDIT THE EXISTING PROJECT
+
+Use the latest uploaded AYRA project as the source of truth.
+
+Before modifying anything:
+
+1. Extract the complete project.
+2. Create a backup.
+3. Record the original Git commit or source snapshot if available.
+4. Inventory every file.
+5. Inspect all source files and configurations.
+6. Inspect every Android module.
+7. Inspect the entire backend.
+8. Inspect all model registries.
+9. Inspect every provider transport.
+10. Inspect all existing tests and workflows.
+11. Identify dependencies and architectural relationships.
+12. Compare previous audit findings with the actual current implementation.
+
+Existing architecture includes:
+
+- Android Native
+- Kotlin
+- Jetpack Compose
+- Material 3
+- Firebase Authentication
+- Firebase Firestore
+- Firebase App Check
+- Room
+- SQLCipher
+- Android Keystore
+- Node.js 22
+- TypeScript
+- Express
+- AI Provider integrations
+- AI Agents
+- RAG
+- Voice Assistant
+- Image Studio
+- Video Studio
+- Music and Audio Studio
+- Local AI
+- Cloud AI
+- External AI
+
+Preserve existing application identity, package ID, working features, user data, encryption formats and database compatibility.
+
+Do not perform an uncontrolled rewrite.
+
+Create:
+
+- PROJECT_INVENTORY.md
+- COMPLETE_AUDIT.md
+- EXISTING_FEATURE_MATRIX.md
+- ROOT_CAUSE_REPORT.md
+- AI_PROVIDER_AUDIT.md
+- SECURITY_AUDIT.md
+- IMPLEMENTATION_ROADMAP.md
+
+---
+
+# 3. GLOBAL FREE AI MODEL DISCOVERY ENGINE
+
+This is the highest-priority new capability.
+
+Build a dynamic AI model discovery system that continuously discovers, verifies, categorizes and integrates genuinely free AI models.
+
+Do not depend on a manually maintained static list.
+
+## 3.1 Discover models from all relevant ecosystems
+
+Investigate official APIs and catalogs from:
+
+### Major AI model providers
+
+- Google AI Studio / Gemini
+- OpenAI
+- Anthropic
+- DeepSeek
+- Alibaba Qwen
+- Meta Llama
+- Mistral AI
+- Microsoft AI
+- NVIDIA NIM
+- xAI
+- Cohere
+- AI21 Labs
+- IBM Granite
+- Zhipu AI / GLM
+- Moonshot AI / Kimi
+- MiniMax
+- Tencent
+- Baidu
+- Huawei
+- Other legitimate providers
+
+### Hosted inference platforms
+
+- Groq
+- Cerebras
+- OpenRouter
+- Hugging Face Inference Providers
+- Together AI
+- Fireworks AI
+- Cloudflare Workers AI
+- SambaNova
+- NVIDIA NIM
+- DeepInfra
+- Novita AI
+- SiliconFlow
+- GitHub Models
+- Other compatible inference providers
+
+### Local and open-weight ecosystems
+
+- Ollama
+- llama.cpp
+- Hugging Face
+- ONNX Runtime
+- ExecuTorch-compatible models
+- MediaPipe-compatible models
+- Other suitable Android and desktop inference runtimes
+
+These are discovery targets, not a claim that every provider offers free access.
+
+## 3.2 Discover all model categories
+
+Search for free-access models across:
+
+**Text and chat**
+- General conversation
+- Advanced reasoning
+- Instruction following
+- Long-context conversation
+- Multilingual chat
+- Bengali and Hindi support
+
+**Coding**
+- Code generation
+- Debugging
+- Software architecture
+- Code review
+- Repository analysis
+- Test generation
+
+**Research**
+- Research reasoning
+- Question answering
+- Information extraction
+- Summarization
+- Source analysis
+
+**Vision**
+- Image understanding
+- OCR
+- Document understanding
+- Visual question answering
+- Video frame understanding
+
+**Image generation**
+- Text-to-image
+- Image editing
+- Image-to-image
+- Inpainting
+- Image enhancement
+
+**Video**
+- Text-to-video
+- Image-to-video
+- Video editing
+- Video understanding
+- Frame generation
+
+**Audio**
+- Speech-to-text
+- Text-to-speech
+- Audio understanding
+- Music generation
+- Voice generation
+- Audio enhancement
+
+**Embeddings and RAG**
+- Text embeddings
+- Multilingual embeddings
+- Rerankers
+- Semantic retrieval
+
+**Specialized models**
+- Mathematical reasoning
+- Scientific reasoning
+- Translation
+- Classification
+- Structured outputs
+- Function calling
+
+---
+
+# 4. FREE MODEL CLASSIFICATION AND VERIFICATION
+
+Every discovered model must be classified correctly.
+
+Create these access categories:
+
+1. FREE_HOSTED_UNLIMITED — only when officially confirmed without usage limits.
+2. FREE_HOSTED_QUOTA — free requests or tokens subject to limits.
+3. FREE_DAILY_LIMIT — daily or periodic free allowance.
+4. FREE_CREDIT — promotional credits, not permanent free access.
+5. FREE_OPEN_WEIGHT — model weights are freely available, but hardware and hosting may cost money.
+6. LOCAL_FREE — usable locally without paid inference APIs.
+7. PAID_ONLY — requires payment.
+8. UNAVAILABLE — currently inaccessible.
+9. RETIRED — no longer supported.
+10. UNKNOWN — not verified.
+
+Never label a model as FREE merely because its weights are downloadable.
+
+For every model record:
+
+- Provider
+- Official model ID
+- Model name
+- Model version
+- Model category
+- API endpoint
+- API compatibility
+- Official documentation
+- Pricing page
+- Access category
+- Free quota
+- Rate limits
+- Geographic restrictions
+- Authentication requirements
+- Context length
+- Input token limits
+- Output token limits
+- Vision capabilities
+- Audio capabilities
+- Image generation capabilities
+- Video capabilities
+- Tool calling support
+- Structured output support
+- Streaming support
+- Last verified timestamp
+- Health status
+- Deprecation status
+
+Never invent missing information.
+
+---
+
+# 5. AUTOMATIC MODEL DISCOVERY AND ACTIVATION
+
+Create a permanent Model Discovery and Activation Engine.
+
+It must:
+
+1. Fetch official provider catalogs.
+2. Discover newly added models.
+3. Detect removed models.
+4. Detect retired model IDs.
+5. Identify genuinely free-access models.
+6. Identify model capabilities.
+7. Verify endpoint compatibility.
+8. Test authentication.
+9. Run a safe minimal generation test.
+10. Update the model registry.
+11. Activate eligible models.
+12. Disable unavailable models.
+13. Update fallback chains.
+14. Record verification evidence.
+15. Notify the user of important changes.
+
+### Automatic activation rules
+
+A model may be activated only when:
+
+- Its official model ID is verified.
+- Its provider is supported.
+- Required credentials are available.
+- Its access category is correctly identified.
+- Its capability tests pass.
+- Its usage restrictions are understood.
+- Its privacy requirements are satisfied.
+
+Never use an API key without permission.
+
+Never bypass authentication, provider limits, paywalls or usage restrictions.
+
+Never use unauthorized shared API keys.
+
+Never scrape private endpoints.
+
+Do not automatically send private user data to newly discovered providers.
+
+New providers must pass security and privacy review before activation.
+
+### Dynamic model health
+
+Use honest statuses:
+
+- DISCOVERED
+- CONFIGURED
+- AUTHENTICATED
+- LIVE_VERIFIED
+- RATE_LIMITED
+- DEGRADED
+- UNAVAILABLE
+- RETIRED
+
+A model must not be shown as active just because it exists in a JSON registry.
+
+A successful model discovery response is not proof that generation works.
+
+Test each capability independently.
+
+---
+
+# 6. CREATE THE UNIVERSAL MODEL REGISTRY
+
+Build one authoritative database-backed model registry.
+
+Suggested entities:
+
+Provider
+Model
+ModelCapability
+ModelAccess
+ModelHealth
+ModelVerification
+ModelPricing
+ModelQuota
+ModelFallback
+ModelDeprecation
+
+Support:
+
+- Dynamic registration
+- Versioning
+- Capability detection
+- Model health monitoring
+- Quota tracking
+- Cost estimation
+- Provider status
+- Model comparison
+- Automatic deactivation
+- Manual activation
+- User-selected models
+- User favorites
+- Experimental models
+
+Prevent duplicate model records.
+
+Use migrations.
+
+Do not destroy existing settings when updating the registry.
+
+---
+
+# 7. UNIVERSAL AI MODEL ROUTER
+
+Build an intelligent routing engine that chooses the most suitable available model for every request.
+
+### Routing requirements
+
+Understand:
+
+- User intent
+- Task category
+- Required capabilities
+- Required context length
+- Privacy requirements
+- Model quality
+- Latency
+- Available quota
+- Estimated cost
+- User preference
+- Provider health
+
+Examples:
+
+Coding → verified coding model.
+
+Complex reasoning → compatible reasoning model.
+
+Research → research-capable model with source retrieval.
+
+Image understanding → verified vision model.
+
+Image generation → actual image-generation provider.
+
+Video generation → compatible video-generation engine.
+
+Speech transcription → actual speech-to-text model.
+
+Music generation → actual music-generation engine.
+
+Private request → local-only model when available.
+
+### Fallback
+
+Create multiple compatible fallback candidates.
+
+Never:
+
+- Fall back to retired models.
+- Fall back to paid models when the user selected free-only mode.
+- Retry indefinitely.
+- Ignore user privacy settings.
+- Hide fallback usage.
+- Generate fake successful responses.
+
+Show the user when a different model is used.
+
+---
+
+# 8. FREE-FIRST AI EXPERIENCE
+
+Create a dedicated setting:
+
+## Free AI Mode
+
+When enabled:
+
+- Prefer verified free models.
+- Exclude paid-only models.
+- Exclude expired promotional credits.
+- Respect daily and monthly quotas.
+- Show remaining free usage where available.
+- Show rate-limit information.
+- Select the best available free model.
+- Use local models where practical.
+- Never charge the user silently.
+- Never switch to paid models without explicit authorization.
+
+Add a separate:
+
+## Best Quality Mode
+
+Select the highest-quality compatible model among models the user has authorized and configured.
+
+Add:
+
+## Local Privacy Mode
+
+Keep requests and private files local whenever the requested capability can be fulfilled locally.
+
+Add:
+
+## Model Arena
+
+Allow users to compare responses from multiple configured models.
+
+Show:
+
+- Response quality
+- Latency
+- Capability
+- Context limits
+- Access type
+- Quota
+- Actual provider
+
+Never invent benchmark scores or model rankings.
+
+---
+
+# 9. REPAIR ALL EXISTING AI PROVIDERS
+
+Inspect and repair:
+
+- Gemini
+- OpenAI
+- Anthropic
+- DeepSeek
+- Groq
+- OpenRouter
+- NVIDIA
+- Cerebras
+- SambaNova
+- Mistral
+- Hugging Face
+- Ollama
+- Every other existing provider
+
+For every adapter, test:
+
+- Authentication
+- Request construction
+- Headers
+- JSON serialization
+- Response parsing
+- Streaming
+- Cancellation
+- Timeouts
+- Error handling
+- Rate limiting
+- Retry logic
+- Usage reporting
+- Capability compatibility
+
+### Specific known regression checks
+
+Independently verify and repair:
+
+- Retired Groq model IDs.
+- Retired SambaNova model IDs.
+- Preview-only model defaults.
+- Incorrect free-tier declarations.
+- Outdated fallback chains.
+- Incomplete Anthropic content-block parsing.
+- Missing Anthropic image streaming.
+- Model registry and provider configuration inconsistencies.
+
+Never blindly replace model IDs.
+
+Use current official provider catalogs and generation tests.
+
+---
+
+# 10. COMPLETE BACKEND REPAIR
+
+Inspect and repair the Node.js/TypeScript/Express backend.
+
+Make Android-to-backend integration real.
+
+The backend must support all authorized providers through standardized adapters.
+
+### Unified request protocol
+
+Support:
+
+- Complete conversation history
+- System instructions
+- User messages
+- Image attachments
+- Document attachments
+- Tool definitions
+- Structured output
+- Streaming
+- Cancellation
+- Token usage
+- Model metadata
+- Provider metadata
+- Error details
+
+### Mandatory backend features
+
+- Firebase Authentication verification
+- Firebase App Check
+- User authorization
+- HTTPS
+- API key protection
+- Request validation
+- Rate limiting
+- Usage quotas
+- Spending limits
+- Circuit breakers
+- Safe retries
+- Request cancellation
+- Secure streaming
+- Provider health checks
+- Observability
+- Audit logging
+
+Fix the existing incomplete gateway integration.
+
+The same request semantics must work in normal chat and streaming chat.
+
+Do not silently bypass backend security through direct-provider calls.
+
+Direct BYOK requests must follow an explicit user-selected architecture.
+
+Local-only mode must prevent external network transmission.
+
+---
+
+# 11. COMPLETE ANDROID APP REPAIR
+
+Inspect every screen, component, ViewModel, repository, use case and navigation destination.
+
+Repair:
+
+- Chat
+- Model selector
+- Provider settings
+- AI settings
+- User profile
+- Authentication
+- Projects
+- Memory
+- RAG
+- Research
+- Image Studio
+- Video Studio
+- Music Studio
+- Voice Assistant
+- Automation
+- File management
+- Notifications
+- Privacy settings
+- Security Center
+- Diagnostics
+
+Every button must have a working action.
+
+Every loading indicator must represent a real operation.
+
+Every success message must follow a verified successful result.
+
+Every error must be understandable.
+
+Remove fake progress indicators and simulated results.
+
+---
+
+# 12. ULTIMATE AI CHAT
+
+Implement:
+
+- Natural conversation
+- Context awareness
+- Streaming
+- Stop generation
+- Regenerate
+- Edit and resend
+- Conversation search
+- Message search
+- Long-term user-controlled memory
+- Context summarization
+- Attachments
+- Image understanding
+- PDF analysis
+- Document analysis
+- Code assistance
+- Mathematics
+- Translation
+- Research
+- Data analysis
+- Export
+- Sharing
+
+Support Bengali, Banglish, Hindi and English.
+
+The system must handle mixed-language conversation naturally.
+
+---
+
+# 13. MULTI-AGENT INTELLIGENCE
+
+Build a secure and reliable agent orchestration system.
+
+Agents:
+
+1. General Assistant
+2. Research Agent
+3. Coding Agent
+4. Document Agent
+5. Android Assistant
+6. Data Analysis Agent
+7. Image Agent
+8. Video Agent
+9. Audio Agent
+10. Productivity Agent
+11. Knowledge Agent
+12. Security Agent
+
+Each agent must use genuine tools and verified providers.
+
+Implement:
+
+- Task planning
+- Task decomposition
+- Tool selection
+- Execution
+- Result observation
+- Error recovery
+- Cancellation
+- Progress reporting
+- Result validation
+
+Require approval for sensitive actions.
+
+Never let untrusted web pages or documents override system security instructions.
+
+---
+
+# 14. ADVANCED RESEARCH ENGINE
+
+Build real web research capabilities.
+
+Implement:
+
+- Web search
+- Multi-source retrieval
+- Page extraction
+- Source quality evaluation
+- Citation generation
+- Fact checking
+- Contradiction detection
+- Research summaries
+- Deep research
+- Exportable reports
+
+Never fabricate citations, URLs, sources or factual claims.
+
+Clearly separate verified information from inference.
+
+---
+
+# 15. REAL SEMANTIC RAG
+
+Replace the lexical-only default vectorizer with a genuine pluggable semantic embedding architecture.
+
+Support:
+
+- Local embeddings
+- Cloud embeddings
+- Multilingual embeddings
+- Vector retrieval
+- Keyword retrieval
+- Hybrid search
+- Reranking
+- Document chunking
+- Metadata filters
+- Source citations
+- Safe reindexing
+
+Test Bengali, English, Hindi and mixed-language documents.
+
+Preserve existing indexed documents during migrations.
+
+---
+
+# 16. REAL IMAGE GENERATION
+
+Create genuine image generation and editing.
+
+Support compatible:
+
+- Gemini image models
+- ComfyUI
+- Hugging Face image models
+- Other verified free-access image APIs
+- Local image-generation workflows
+
+Implement:
+
+- Text-to-image
+- Image-to-image
+- Image editing
+- Inpainting
+- Aspect ratios
+- Resolution selection
+- Generation history
+- Download
+- Export
+- Sharing
+
+Do not show generated placeholders as real images.
+
+Verify actual output files and image decoding.
+
+---
+
+# 17. REAL VIDEO GENERATION
+
+Upgrade the existing Video Studio.
+
+Support compatible open models and hosted video providers.
+
+Evaluate:
+
+- Wan
+- HunyuanVideo
+- LTX-Video
+- CogVideoX
+- Other suitable current open-weight video models
+
+Do not assume that downloadable weights mean they can run on Android.
+
+Use compatible external GPU servers, configured local infrastructure or genuine hosted APIs.
+
+Implement:
+
+- Text-to-video
+- Image-to-video
+- Video jobs
+- Job progress
+- Cancellation
+- Output validation
+- Video playback
+- Export
+
+Repair ComfyUI workflow compatibility, model files, nodes, job polling and output handling.
+
+A storyboard is not a generated video.
+
+---
+
+# 18. REAL MUSIC AND AUDIO GENERATION
+
+Evaluate suitable open and hosted systems such as:
+
+- MusicGen
+- Stable Audio Open
+- ACE-Step
+- Compatible text-to-speech systems
+- Compatible speech-to-text systems
+- Other verified audio-generation models
+
+Distinguish between:
+
+- Lyrics generation
+- Procedural synthesis
+- Instrumental generation
+- AI music generation
+- AI vocal generation
+- Speech generation
+- Transcription
+
+Implement genuine audio-generation workflows where compatible infrastructure exists.
+
+Verify WAV/MP3 output, duration, codec and playback.
+
+Never claim a synthesizer is a complete AI music-generation system.
+
+---
+
+# 19. ADVANCED VOICE ASSISTANT
+
+Implement:
+
+- Push-to-talk
+- Speech recognition
+- Text-to-speech
+- Continuous conversation
+- Interruption
+- Barge-in
+- Language detection
+- Bengali voice
+- Hindi voice
+- English voice
+- Voice settings
+- Speech speed
+- Audio focus
+- Cancellation
+
+Require proper permissions.
+
+Never keep microphones active secretly.
+
+---
+
+# 20. ANDROID DEVICE AUTOMATION
+
+Implement authorized Android functionality:
+
+- Open applications
+- Open websites
+- Create reminders
+- Set alarms
+- Draft messages
+- Prepare calls
+- Share files
+- Manage permitted files
+- Use navigation intents
+- Read permitted device information
+
+Respect Android permission restrictions and background execution rules.
+
+Require confirmation before sensitive or destructive actions.
+
+---
+
+# 21. SECURITY AND PRIVACY
+
+Audit every data flow.
+
+Mandatory:
+
+- External AI consent OFF by default.
+- Cloud sync OFF by default.
+- API key addition must not activate consent.
+- Null security contexts must fail closed.
+- Local-only mode must block cloud calls.
+- User files must not be uploaded without permission.
+- API secrets must never be embedded in the APK.
+- No private prompts or keys in logs.
+- Secure session handling.
+- Android Keystore.
+- SQLCipher.
+- Encrypted local storage.
+- Secure backend authorization.
+- Firebase Security Rules.
+- Data deletion.
+- Key rotation.
+- Backup and recovery.
+
+Preserve and improve the existing security architecture.
+
+Never falsely claim end-to-end encryption.
+
+---
+
+# 22. PERFORMANCE AND BATTERY OPTIMIZATION
+
+Optimize for Android phones.
+
+Inspect:
+
+- CPU
+- RAM
+- Battery
+- Network
+- Database
+- Compose recompositions
+- Image decoding
+- Background tasks
+- Coroutine management
+- Caches
+- Streaming
+
+Support low-memory devices.
+
+Implement adaptive concurrency, bounded caching, cancellation, pagination and efficient background execution.
+
+---
+
+# 23. COMPLETE UI/UX UPGRADE
+
+Build a professional Material 3 design system.
+
+Improve:
+
+- Chat interface
+- Model selector
+- Free AI dashboard
+- Model Arena
+- Provider management
+- Research workspace
+- AI studios
+- Voice interface
+- Projects
+- Memory
+- Security Center
+- Diagnostics
+
+Add clear status labels:
+
+- Free
+- Limited Free
+- Credits
+- Paid
+- Local
+- Live Verified
+- Unavailable
+
+Do not mislead users about model access or functionality.
+
+Support dark mode, light mode, accessibility and responsive Android layouts.
+
+---
+
+# 24. PERMANENT BUG PREVENTION
+
+The application must include a comprehensive quality-control system.
+
+Implement:
+
+- Unit tests
+- Integration tests
+- UI tests
+- Provider tests
+- Model compatibility tests
+- Database migration tests
+- Security tests
+- Stress tests
+- Performance tests
+- Regression tests
+
+Add automated CI workflows.
+
+Every change must pass the relevant tests before being merged.
+
+### Specific regression protections
+
+Create tests ensuring:
+
+1. Retired models cannot become default models.
+2. Preview models cannot silently become production defaults.
+3. Free models cannot be misclassified as unlimited.
+4. External AI consent remains OFF until explicitly enabled.
+5. API key storage never changes privacy settings.
+6. Local-only mode never calls cloud providers.
+7. Streaming and normal chat use consistent request data.
+8. Image attachments survive every authorized transport path.
+9. Anthropic text blocks are parsed correctly.
+10. Missing Room schemas fail CI.
+11. Missing build configuration fails CI.
+12. Release builds cannot use debug signing.
+13. Empty catch blocks are detected.
+14. Backend authorization cannot be bypassed.
+15. Every visible feature has a corresponding functional test.
+
+Create a regression rule for every newly discovered defect.
+
+Never delete tests or weaken quality gates just to obtain a successful build.
+
+---
+
+# 25. FIX ALL KNOWN CURRENT PROJECT PROBLEMS FIRST
+
+Independently re-check the latest source and repair these known issues where still present:
+
+### Build and release
+
+- Missing Gradle executable permission.
+- Incorrect debug keystore dependency.
+- Hardcoded debug signing password.
+- Missing or stale docs/FACTS.md.
+- Missing Room schema 10.json.
+- Non-executable gen-facts.sh.
+- Incorrect preflight validation.
+
+### AI providers
+
+- Retired Groq model IDs.
+- Retired SambaNova models.
+- Preview-only default model selection.
+- Incorrect free-tier metadata.
+- Outdated fallback chains.
+- Incomplete Anthropic response parsing.
+- Missing Anthropic image streaming.
+
+### Backend
+
+- Incomplete conversation history transmission.
+- Missing image attachment support.
+- Streaming bypassing the backend.
+- Incomplete provider adapters.
+- Inconsistent fallback behavior.
+
+### RAG
+
+- Lexical hashing being represented as semantic embedding.
+- Missing production semantic encoder.
+- Missing multilingual semantic retrieval.
+
+### Media
+
+- Incomplete ComfyUI video workflow.
+- Missing workflow dependencies.
+- Storyboard incorrectly presented as generated video.
+- Procedural music incorrectly presented as AI music generation.
+
+### Error handling
+
+- Audit all approximately 45 previously observed empty catch blocks.
+- Replace swallowed exceptions with appropriate structured error handling.
+- Add observability without exposing private data.
+
+Do not assume these findings remain unchanged. Inspect the latest implementation and verify each one.
+
+---
+
+# 26. BUILD, TEST AND RELEASE
+
+Produce:
+
+- Debug APK
+- Signed release APK
+- Android App Bundle
+- Backend build
+- Database migration package
+- CI workflows
+- Deployment documentation
+- Environment variable template
+- Privacy documentation
+- Release checklist
+
+Never place production secrets in source control.
+
+Never use debug signing for a production release.
+
+Test the actual installed release application on Android.
+
+If external API keys, GPU infrastructure or devices are unavailable, report the exact dependency and do not fabricate successful results.
+
+---
+
+# 27. REQUIRED FINAL DELIVERABLES
+
+Generate:
+
+1. COMPLETE_PROJECT_AUDIT.md
+2. FILE_BY_FILE_AUDIT.md
+3. ALL_BUGS_AND_ROOT_CAUSES.md
+4. ALL_REPAIRS_IMPLEMENTED.md
+5. GLOBAL_FREE_AI_MODEL_CATALOG.md
+6. LIVE_MODEL_VERIFICATION_REPORT.md
+7. PROVIDER_INTEGRATION_REPORT.md
+8. FREE_TIER_AND_QUOTA_REPORT.md
+9. AI_ORCHESTRATION_REPORT.md
+10. BACKEND_INTEGRATION_REPORT.md
+11. SECURITY_AND_PRIVACY_REPORT.md
+12. RAG_VERIFICATION_REPORT.md
+13. IMAGE_VIDEO_AUDIO_REPORT.md
+14. ANDROID_PERFORMANCE_REPORT.md
+15. AUTOMATED_TEST_REPORT.md
+16. REGRESSION_PREVENTION_REPORT.md
+17. PRODUCTION_RELEASE_REPORT.md
+18. REMAINING_UNVERIFIED_ITEMS.md
+
+For every implemented repair, identify:
+
+- Original problem
+- Root cause
+- Modified files
+- Exact implementation
+- Tests performed
+- Actual test results
+- Remaining limitations
+
+---
+
+# 28. FINAL ACCEPTANCE CRITERIA
+
+AYRA cannot be declared production-ready until:
+
+- The complete Android project compiles.
+- The backend compiles.
+- All mandatory automated tests pass.
+- The release APK builds successfully.
+- Release signing is verified.
+- The model registry contains no retired active defaults.
+- Free-tier classifications are accurate.
+- Every activated provider passes a real generation test.
+- All configured models have verified capabilities.
+- Free-only mode does not select paid services.
+- Backend mode works end-to-end.
+- Streaming works through the intended secure architecture.
+- Image attachments work.
+- Privacy consent works correctly.
+- Local-only mode blocks external requests.
+- RAG retrieval quality is tested.
+- Real image/video/audio outputs are verified where claimed.
+- Database migrations preserve existing data.
+- Physical-device testing is completed.
+- Regression prevention is enabled.
+
+If a requirement cannot be verified, mark it UNVERIFIED.
+
+Never fabricate a passing test, model availability, benchmark, integration or production result.
+
+---
+
+# 29. EXECUTION STRATEGY
+
+Work in controlled phases.
+
+PHASE A: Backup, complete inventory and audit.
+
+PHASE B: Repair all P0 build, security and data integrity defects.
+
+PHASE C: Repair AI providers, model registry and fallback chains.
+
+PHASE D: Implement global free-model discovery and activation.
+
+PHASE E: Complete unified backend integration.
+
+PHASE F: Improve AI intelligence, agents and research.
+
+PHASE G: Implement genuine semantic RAG.
+
+PHASE H: Complete image, video, music and audio systems.
+
+PHASE I: Complete voice and Android automation.
+
+PHASE J: Performance and UI optimization.
+
+PHASE K: Full regression, security and stress testing.
+
+PHASE L: Signed release and final verification.
+
+After every phase:
+
+1. Save all modifications.
+2. Run relevant tests.
+3. Inspect failures.
+4. Repair the root cause.
+5. Add regression tests.
+6. Update progress documentation.
+7. Continue only when the phase is verified or remaining blockers are explicitly documented.
+
+Maintain a persistent PROJECT_PROGRESS.md so work can resume without losing decisions or repeating completed work.
+
+Do not stop after generating documentation.
+
+Actually modify the source code.
+
+Do not create fake implementations to satisfy acceptance criteria.
+
+---
+
+# FINAL OBJECTIVE
+
+Transform AYRA AI into a universal, free-first, intelligent, secure and genuinely functional AI super application.
+
+AYRA should intelligently connect to the best currently accessible free AI models, support local open-weight models, intelligently route requests, manage multiple providers, perform advanced research, assist with programming, understand documents and images, generate real media where infrastructure permits, and provide a powerful Android personal assistant experience.
+
+The goal is not to display hundreds of model names.
+
+The goal is to make every activated model genuinely usable, every advertised feature genuinely functional, every privacy promise technically enforced and every important failure automatically detected.
+
+**REAL MODELS. REAL API CONNECTIONS. REAL GENERATION. REAL TESTING. REAL SECURITY. NO DUMMY FEATURES. NO FALSE SUCCESS.**
+
+Build for long-term reliability, not a temporary demonstration.

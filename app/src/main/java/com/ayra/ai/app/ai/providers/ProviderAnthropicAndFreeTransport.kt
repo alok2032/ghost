@@ -80,8 +80,8 @@ internal object ProviderAnthropicAndFreeTransport {
         return httpClient.newCall(request).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
-            if (response.code == 404) {
-                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
+            if (response.code == 404 || response.code == 410) {
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message }, httpStatus = response.code)
             }
             if (!response.isSuccessful) throw ProviderError.ServerError(response.code, response.message)
 
@@ -132,8 +132,8 @@ internal object ProviderAnthropicAndFreeTransport {
         httpClient.newCall(request).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
-            if (response.code == 404) {
-                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
+            if (response.code == 404 || response.code == 410) {
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message }, httpStatus = response.code)
             }
             if (!response.isSuccessful) {
                 val err = response.readBounded(truncateOnOverflow = true)
@@ -187,8 +187,8 @@ internal object ProviderAnthropicAndFreeTransport {
                             description = "Anthropic Claude model",
                             contextWindow = "200k tokens",
                             supportsVision = true,
-                            isReasoning = modelId.contains("3-7") || modelId.contains("sonnet"),
-                            isDefault = modelId.contains("3-7-sonnet")
+                            isReasoning = modelId.contains("5-5") || modelId.contains("opus") || modelId.contains("sonnet"),
+                            isDefault = modelId.contains("sonnet-5-5")
                         )
                     )
                 }
@@ -262,54 +262,52 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MINIMAX_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_QWEN_MODEL)
-            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o-mini")
-            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
+            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_MINI_MODEL)
+            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
         }
         AiRoutingMode.BEST_QUALITY -> when {
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
-            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-sonnet-4-20250514")
-            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o")
-            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
+            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, ExternalAiProviders.ANTHROPIC_OPUS_MODEL)
+            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_DEFAULT_MODEL)
+            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_REASONER_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MUSE_MODEL)
-            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL)
+            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
         }
         AiRoutingMode.REASONING -> when {
-            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-reasoner")
+            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_REASONER_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_QWEN_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GLM_MODEL)
-            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "o3-mini")
-            configured.contains(AiProviderType.PERPLEXITY) -> Pair(AiProviderType.PERPLEXITY, "sonar-reasoning")
-            else -> Pair(AiProviderType.OPENROUTER, "deepseek/deepseek-r1:free")
+            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_REASONING_MODEL)
+            configured.contains(AiProviderType.PERPLEXITY) -> Pair(AiProviderType.PERPLEXITY, ExternalAiProviders.PERPLEXITY_REASONING_MODEL)
+            else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL)
         }
         AiRoutingMode.CODING -> when {
-            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, "claude-sonnet-4-20250514")
+            configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, ExternalAiProviders.ANTHROPIC_SONNET_MODEL)
             configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, "codestral-latest")
-            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
+            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GLM_MODEL)
-            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL)
-            configured.contains(AiProviderType.GITHUB_MODELS) -> Pair(AiProviderType.GITHUB_MODELS, ExternalAiProviders.GITHUB_GPT4O_MODEL)
+            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, ExternalAiProviders.HF_QWEN_MODEL)
-            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, "gpt-4o")
-            else -> Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-coder-32b-instruct")
+            configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_DEFAULT_MODEL)
+            else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_CODER_MODEL)
         }
         AiRoutingMode.PRIVACY_LOCAL -> when {
             configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "llama3.3")
-            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, "deepseek-chat")
-            else -> Pair(AiProviderType.OPENROUTER, "meta-llama/llama-3.3-70b-instruct")
+            configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
+            else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_DEFAULT_MODEL)
         }
         AiRoutingMode.COST_EFFICIENT -> when {
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
-            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL)
+            configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_LLAMA_MODEL)
-            configured.contains(AiProviderType.GITHUB_MODELS) -> Pair(AiProviderType.GITHUB_MODELS, ExternalAiProviders.GITHUB_GPT4O_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, "openai")
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MINIMAX_MODEL)
@@ -317,7 +315,7 @@ internal object ProviderAnthropicAndFreeTransport {
         }
         AiRoutingMode.OPEN_WEIGHTS -> when {
             configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: "qwen2.5:14b")
-            configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, "qwen/qwen-2.5-72b-instruct")
+            configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL)
             configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, ExternalAiProviders.HF_QWEN_MODEL)
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_QWEN_MODEL)

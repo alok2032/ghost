@@ -1,6 +1,6 @@
 # AYRA AI — Architecture & File Map (`com.ayra.ai.app`)
 
-Last verified: 18 Nov 2026 | Total Kotlin files (`main`/`debug`/`release`): 161 (~51,600 lines) | Backend TS files (`src/`): 11 | Android test files: 34
+Last verified: 20 Nov 2026 | See `docs/FACTS.md` for live generated source, test, and dependency counts.
 
 ---
 

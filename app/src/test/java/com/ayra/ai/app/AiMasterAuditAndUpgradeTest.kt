@@ -48,6 +48,7 @@ class AiMasterAuditAndUpgradeTest {
 
     @After
     fun tearDown() {
+        AyraPreferences.clearAllPreferences(context)
         server.shutdown()
     }
 
@@ -76,6 +77,8 @@ class AiMasterAuditAndUpgradeTest {
 
     @Test
     fun testOptimalRoutingSelectsGroqCerebrasSambaNovaHuggingFace() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
         val providers = ExternalAiProviders(context)
 
         AyraPreferences.setGroqKey(context, "gsk_test_routing_key")

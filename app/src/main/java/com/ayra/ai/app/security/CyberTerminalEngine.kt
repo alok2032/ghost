@@ -33,7 +33,7 @@ object CyberTerminalEngine {
 
     val WELCOME_BANNER = """
     ╔══════════════════════════════════════════════════════════════════════╗
-    ║      GHOST AI • DEFENSIVE CYBER SECURITY TERMINAL & LAB v3.1         ║
+    ║      AYRA AI • DEFENSIVE CYBER SECURITY TERMINAL & LAB v3.1          ║
     ║      Real Sandbox Filesystem, Network Probes, CVE API & Crypto       ║
     ╚══════════════════════════════════════════════════════════════════════╝
     Type 'help' for real sandbox & network diagnostic commands, or 'labs' for ethical CTFs.

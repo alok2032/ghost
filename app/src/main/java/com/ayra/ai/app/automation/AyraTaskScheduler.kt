@@ -120,6 +120,17 @@ class AyraTaskScheduler(private val context: Context) {
         }
     }
 
+    /**
+     * Strictly creates a local REMINDER task without branching into CALL, SMS, or WhatsApp.
+     * Used by autonomous agent tools (H3) so reminder_schedule can never schedule calls/messages.
+     */
+    suspend fun scheduleReminderOnly(userInput: String): AutomationResult = withContext(Dispatchers.IO) {
+        val lower = userInput.lowercase()
+        val isBengali = userInput.any { it in '\u0980'..'\u09FF' }
+        val (epochMillis, formattedTime) = parseTime(userInput)
+        return@withContext scheduleReminderTask(userInput, lower, isBengali, epochMillis, formattedTime)
+    }
+
     // --- A. SCHEDULED CALL TASK ---
     private suspend fun scheduleCallTask(
         userInput: String,
@@ -367,7 +378,22 @@ class AyraTaskScheduler(private val context: Context) {
                     task.scheduledEpochMillis
                 )
             } else {
-                db.scheduledTaskDao().updateStatus(task.id, "MISSED")
+                val overdueMs = now - task.scheduledEpochMillis
+                if (overdueMs <= OVERDUE_CATCHUP_WINDOW_MS) {
+                    ScheduledTaskReceiver.executeScheduledTaskNotification(
+                        context = context,
+                        taskId = task.id,
+                        targetApp = task.targetApp,
+                        recipient = task.recipient,
+                        messageText = task.messageText,
+                        phoneNumber = task.phoneNumber,
+                        playSoundAndVoice = false
+                    )
+                    db.scheduledTaskDao().updateStatus(task.id, "FIRED")
+                } else {
+                    db.scheduledTaskDao().updateStatus(task.id, "MISSED")
+                    ScheduledTaskReceiver.notifyMissedTask(context, task)
+                }
             }
         }
     }
@@ -492,6 +518,8 @@ class AyraTaskScheduler(private val context: Context) {
     }
 
     companion object {
+        const val OVERDUE_CATCHUP_WINDOW_MS = 15L * 60_000L
+
         fun convertBengaliDigits(input: String): String {
             val bengaliDigits = "০১২৩৪৫৬৭৮৯"
             val builder = StringBuilder()

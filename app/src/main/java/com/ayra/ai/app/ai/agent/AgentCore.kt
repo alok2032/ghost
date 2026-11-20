@@ -266,6 +266,14 @@ class DefaultAgentCore(
                     )
                 }
             }
+            if (taintedByUntrustedData && tool.name == "reminder_schedule") {
+                return ProposedAction.ExecuteExternalTool(
+                    toolName = "reminder_schedule",
+                    summary = "Confirm scheduling reminder after processing untrusted content",
+                    targetUrl = "",
+                    argsJson = args.toString()
+                )
+            }
             if (taintedByUntrustedData && tool.isExternal && tool.name != "web_search") {
                 return ProposedAction.ExecuteExternalTool(
                     toolName = tool.name,

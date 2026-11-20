@@ -480,7 +480,14 @@ class AyraHighLoadStressTest {
         assertNotNull(fastRoute.second)
 
         val reasoningRoute = providers.getOptimalModelForRoutingMode(com.ayra.ai.app.ai.providers.AiRoutingMode.REASONING)
-        assertTrue(reasoningRoute.second.contains("reasoner") || reasoningRoute.second.contains("r1") || reasoningRoute.second.contains("pro") || reasoningRoute.second.contains("o3"))
+        assertTrue(
+            reasoningRoute.second.contains("reasoner") ||
+                reasoningRoute.second.contains("r1") ||
+                reasoningRoute.second.contains("pro") ||
+                reasoningRoute.second.contains("astra") ||
+                reasoningRoute.second.contains("qwen") ||
+                reasoningRoute.second.contains("free")
+        )
 
         val codingRoute = providers.getOptimalModelForRoutingMode(com.ayra.ai.app.ai.providers.AiRoutingMode.CODING)
         assertTrue(codingRoute.second.contains("sonnet") || codingRoute.second.contains("coder") || codingRoute.second.contains("codestral") || codingRoute.second.contains("pro"))

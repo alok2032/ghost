@@ -130,7 +130,7 @@ internal object ProviderOpenAiTransport {
             put("model", model)
             put("messages", buildOpenAiMessages(provider, model, turns))
             put("max_tokens", maxTokens)
-            if (!model.contains("reasoner") && !model.contains("o1") && !model.contains("o3")) {
+            if (!model.contains("reasoner") && !model.contains("astra") && !model.contains("v4-pro") && !model.contains("o1") && !model.contains("o3")) {
                 put("temperature", 0.65)
                 put("top_p", 0.95)
             }
@@ -149,8 +149,8 @@ internal object ProviderOpenAiTransport {
         return client.newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
-            if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true))
+            if (response.code == 404 || response.code == 410) {
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true), httpStatus = response.code)
             }
             if (!response.isSuccessful) {
                 val errBody = response.readBounded(truncateOnOverflow = true)
@@ -207,7 +207,7 @@ internal object ProviderOpenAiTransport {
                 put("tools", toolsArray)
                 put("tool_choice", "auto")
             }
-            if (!model.contains("reasoner") && !model.contains("o1") && !model.contains("o3")) {
+            if (!model.contains("reasoner") && !model.contains("astra") && !model.contains("v4-pro") && !model.contains("o1") && !model.contains("o3")) {
                 put("temperature", 0.3)
             }
         }
@@ -224,8 +224,8 @@ internal object ProviderOpenAiTransport {
         return client.newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
-            if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true))
+            if (response.code == 404 || response.code == 410) {
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true), httpStatus = response.code)
             }
             if (!response.isSuccessful) {
                 throw ProviderError.ServerError(response.code, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
@@ -288,8 +288,8 @@ internal object ProviderOpenAiTransport {
         client.newCall(reqBuilder.build()).execute().use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
-            if (response.code == 404) {
-                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
+            if (response.code == 404 || response.code == 410) {
+                throw ProviderError.ModelNotFound(provider, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message }, httpStatus = response.code)
             }
             if (!response.isSuccessful) {
                 val err = response.readBounded(truncateOnOverflow = true)

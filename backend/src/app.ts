@@ -101,6 +101,9 @@ export function createZeroTrustApp(deps: AppDependencies) {
   const replayProtectedAuthMiddleware = requireZeroTrustAuth(config, verifiers, {
     consumeAppCheck: true,
   });
+  const ipPreAuthLimiter = quotaCoordinator.createIpPreAuthLimiter();
+  app.use("/api/v1", ipPreAuthLimiter);
+
   const limiter = quotaCoordinator.createUserWindowLimiter();
   const concurrencyGuard = quotaCoordinator.createConcurrencyGuard();
   const sandboxQuotaLimiter = quotaCoordinator.createToolQuotaLimiter(
@@ -179,14 +182,15 @@ export function createZeroTrustApp(deps: AppDependencies) {
 
       const uid = req.principal?.uid ?? "anonymous";
       const est = estimateRequestUsage(parsed.data);
+      let reservation: Awaited<ReturnType<QuotaCoordinator["reserveAiQuotas"]>> | null = null;
 
       try {
-        await quotaCoordinator.enforceAiQuotas({
+        reservation = await quotaCoordinator.reserveAiQuotas({
           uid,
           provider: parsed.data.provider,
           model: parsed.data.model,
-          estimatedTokens: est.estimatedTokens,
-          estimatedUsdMicros: est.estimatedSpendUsdMicros,
+          reservedTokens: est.estimatedTokens,
+          reservedUsdMicros: est.estimatedSpendUsdMicros,
         });
 
         const result = await forwardSecureAiRequest(
@@ -197,25 +201,31 @@ export function createZeroTrustApp(deps: AppDependencies) {
           deps.ssrfResolver
         );
 
-        await quotaCoordinator.recordAiUsage({
-          uid,
-          tokensUsed: result.estimatedTokens,
-          spendUsdMicros: result.estimatedSpendUsdMicros,
-        });
+        await quotaCoordinator.settleAiQuotas(
+          reservation,
+          result.actualTokens,
+          result.estimatedSpendUsdMicros
+        );
+        reservation = null;
 
         logSecurityEvent({
           severity: "INFO",
           category: "AI_GATEWAY",
           uid: req.principal?.uid,
-          message: `Completed proxied AI inference (${parsed.data.provider}/${parsed.data.model}, estTokens=${result.estimatedTokens})`,
+          message: `Completed proxied AI inference (${parsed.data.provider}/${parsed.data.model}, tokens=${result.actualTokens}, src=${result.usageSource})`,
         });
         res.status(200).json({
           provider: result.provider,
           model: result.model,
           content: result.content,
-          estimatedTokens: result.estimatedTokens,
+          estimatedTokens: result.actualTokens,
+          usageSource: result.usageSource,
+          pricingVerified: result.pricingVerified,
         });
       } catch (err) {
+        if (reservation) {
+          await quotaCoordinator.refundAiReservation(reservation);
+        }
         if (err instanceof QuotaExceededError) {
           res.setHeader("Retry-After", String(err.retryAfterSeconds));
           res.status(429).json({

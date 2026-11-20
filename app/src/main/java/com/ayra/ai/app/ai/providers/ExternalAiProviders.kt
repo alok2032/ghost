@@ -63,13 +63,16 @@ class ExternalAiProviders @JvmOverloads constructor(
 
     val circuitBreaker = ProviderCircuitBreaker()
 
+    val isTestHarnessMode: Boolean
+        get() = baseUrlOverrides.isNotEmpty() ||
+            channelKeyOverrides.isNotEmpty() ||
+            customHttpClient != null
+
     val allowExternalWikiGrounding: Boolean
         get() {
             val isLocalOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
-            val hasExternalConsent = context?.let { AyraPreferences.hasExternalAiConsent(it) } ?: true
-            return baseUrlOverrides.isEmpty() &&
-                channelKeyOverrides.isEmpty() &&
-                customHttpClient == null &&
+            val hasExternalConsent = context?.let { AyraPreferences.hasExternalAiConsent(it) } ?: false
+            return !isTestHarnessMode &&
                 !isLocalOnly &&
                 hasExternalConsent
         }
@@ -91,22 +94,43 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val GEMINI_FLASH_LITE_MODEL = "gemini-3.5-flash-lite"
         const val GEMINI_GEMMA4_MODEL = "gemma-4-31b-it"
 
+        const val OPENAI_DEFAULT_MODEL = "gpt-6.2-sol"
+        const val OPENAI_REASONING_MODEL = "gpt-6.2-astra"
+        const val OPENAI_MINI_MODEL = "gpt-6-luna"
+
+        const val ANTHROPIC_SONNET_MODEL = "claude-sonnet-5-5"
+        const val ANTHROPIC_OPUS_MODEL = "claude-opus-5-5"
+        const val ANTHROPIC_HAIKU_MODEL = "claude-haiku-5-5"
+
+        const val DEEPSEEK_CHAT_MODEL = "deepseek-flash"
+        const val DEEPSEEK_REASONER_MODEL = "deepseek-v4-pro"
+
+        const val XAI_DEFAULT_MODEL = "grok-4.7"
+        const val PERPLEXITY_REASONING_MODEL = "sonar-reasoning-pro"
+
+        const val OPENROUTER_DEFAULT_MODEL = "openrouter/free"
+        const val OPENROUTER_AUTO_MODEL = "openrouter/auto"
+        const val OPENROUTER_QWEN_FREE_MODEL = "qwen/qwen3.8-27b:free"
+        const val OPENROUTER_CODER_MODEL = "qwen/qwen3-coder:free"
+
         const val NVIDIA_MINIMAX_MODEL = "minimaxai/minimax-m3.1-flash"
         const val NVIDIA_GLM_MODEL = "z-ai/glm-5.3-flash"
         const val NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b"
         const val NVIDIA_GEMMA_MODEL = "google/gemma-4-31b-it"
 
-        const val GROQ_LLAMA_MODEL = "llama-3.3-70b-versatile"
-        const val GROQ_QWEN_MODEL = "qwen/qwen3-32b"
+        const val GROQ_LLAMA_MODEL = "llama-3.1-8b-instant"
+        const val GROQ_QWEN_MODEL = "qwen/qwen3.8-27b"
+        const val GROQ_GPT_OSS_MODEL = "openai/gpt-oss-120b"
+        const val GROQ_DEFAULT_MODEL = GROQ_QWEN_MODEL
         const val GROQ_WHISPER_MODEL = "whisper-large-v3-turbo"
-        const val CEREBRAS_LLAMA_MODEL = "llama-3.3-70b"
-        const val CEREBRAS_QWEN_MODEL = "qwen-3-32b"
+        const val CEREBRAS_LLAMA_MODEL = "gpt-oss-120b"
+        const val CEREBRAS_QWEN_MODEL = "qwen-3.8-27b"
         const val SAMBANOVA_DEEPSEEK_MODEL = "DeepSeek-V3.1-Terminus"
         const val SAMBANOVA_LLAMA_MODEL = "Meta-Llama-3.3-70B-Instruct"
         const val SAMBANOVA_QWEN_MODEL = "Qwen3-32B"
         const val SAMBANOVA_WHISPER_MODEL = "Whisper-Large-v3"
         const val HF_QWEN_MODEL = "Qwen/Qwen2.5-72B-Instruct"
-        const val GITHUB_GPT4O_MODEL = "gpt-4o-mini"
+        const val GITHUB_RETIRED_MODEL = "github-models-retired"
 
         private val THINK_BLOCK_REGEX = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
         private val dynamicModelCache = ConcurrentHashMap<AiProviderType, List<AiModelInfo>>()
@@ -143,38 +167,40 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiModelInfo(GEMINI_PRO_MODEL, "Gemini 4 Argon 🔬", AiProviderType.GEMINI, "Frontier deep reasoning, code architecture & STEM synthesis", "2M tokens", true, true, false),
             AiModelInfo(GEMINI_FLASH_LITE_MODEL, "Gemini 3.5 Flash-Lite 🚀", AiProviderType.GEMINI, "High-throughput low-latency conversational engine", "1M tokens", true, false, false),
             AiModelInfo(GEMINI_GEMMA4_MODEL, "Gemma 4 31B IT 🌐", AiProviderType.GEMINI, "Google Gemma 4 open-weights multilingual reasoning", "128k tokens", true, true, false),
-            AiModelInfo(GROQ_LLAMA_MODEL, "Groq Llama 3.3 70B ⚡", AiProviderType.GROQ, "Ultra-fast LPU inference with generous free tier", "128k tokens", false, false, false),
-            AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen3 32B 🧠", AiProviderType.GROQ, "High-speed STEM & multilingual reasoning on Groq LPU", "128k tokens", false, true, false),
-            AiModelInfo(CEREBRAS_LLAMA_MODEL, "Cerebras Llama 3.3 70B 🚀", AiProviderType.CEREBRAS, "Wafer-scale high-speed inference with generous free tier", "128k tokens", false, false, false),
-            AiModelInfo(CEREBRAS_QWEN_MODEL, "Cerebras Qwen 3 32B ⚡", AiProviderType.CEREBRAS, "Wafer-scale STEM, math & coding reasoning", "128k tokens", false, true, false),
+            AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen 3.8 27B 🧠", AiProviderType.GROQ, "High-speed STEM, coding & multilingual reasoning on Groq LPU", "131k tokens", false, true, true),
+            AiModelInfo(GROQ_GPT_OSS_MODEL, "Groq GPT-OSS 120B ⚡", AiProviderType.GROQ, "Open-weights 120B flagship on Groq LPU free developer tier", "131k tokens", false, true, false),
+            AiModelInfo(GROQ_LLAMA_MODEL, "Groq Llama 3.1 8B Instant 🚀", AiProviderType.GROQ, "Ultra-low-latency fast conversational engine on Groq LPU", "128k tokens", false, false, false),
+            AiModelInfo(CEREBRAS_LLAMA_MODEL, "Cerebras GPT-OSS 120B 🚀", AiProviderType.CEREBRAS, "Wafer-scale high-speed 120B inference on free developer tier", "128k tokens", false, true, true),
+            AiModelInfo(CEREBRAS_QWEN_MODEL, "Cerebras Qwen 3.8 27B ⚡", AiProviderType.CEREBRAS, "Wafer-scale STEM, math & coding reasoning", "128k tokens", false, true, false),
             AiModelInfo(SAMBANOVA_DEEPSEEK_MODEL, "SambaNova DeepSeek V3.1 🔬", AiProviderType.SAMBANOVA, "Fast RDU inference for coding, math & deep reasoning", "128k tokens", false, true, false),
             AiModelInfo(SAMBANOVA_QWEN_MODEL, "SambaNova Qwen3 32B 🌐", AiProviderType.SAMBANOVA, "Fast RDU multilingual & STEM reasoning", "64k tokens", false, true, false),
             AiModelInfo(HF_QWEN_MODEL, "HF Qwen 2.5 72B Instruct 🤗", AiProviderType.HUGGINGFACE, "Open-weights Hugging Face Inference Router", "128k tokens", false, true, false),
-            AiModelInfo(GITHUB_GPT4O_MODEL, "GitHub Models GPT-4o Mini 🐙", AiProviderType.GITHUB_MODELS, "Free-tier GitHub Models inference gateway", "128k tokens", true, false, false),
             AiModelInfo(NVIDIA_MINIMAX_MODEL, "MiniMax M3.1 Flash ⚡", AiProviderType.NVIDIA_NIM, "High-speed multimodal vision & coding intelligence via NVIDIA NIM", "128k tokens", true, true, true),
             AiModelInfo(NVIDIA_GLM_MODEL, "Z-AI GLM 5.3 Flash 🧠", AiProviderType.NVIDIA_NIM, "Fast STEM, mathematical reasoning & multilingual synthesis", "128k tokens", false, true, false),
             AiModelInfo(NVIDIA_MUSE_MODEL, "Meta Muse Glimmer 30B ✨", AiProviderType.NVIDIA_NIM, "Fluent creative writing, Bengali/Banglish & deep reasoning", "128k tokens", false, true, false),
             AiModelInfo(NVIDIA_GEMMA_MODEL, "Gemma 4 31B IT (NIM) 🔬", AiProviderType.NVIDIA_NIM, "Multilingual science, coding & analytical verification", "128k tokens", true, true, false),
-            AiModelInfo("gpt-4o", "GPT-4o Omni 🧠", AiProviderType.OPENAI, "OpenAI flagship multimodal intelligence", "128k tokens", true, false, false),
-            AiModelInfo("gpt-4o-mini", "GPT-4o Mini ⚡", AiProviderType.OPENAI, "Fast daily conversational model", "128k tokens", true, false, false),
-            AiModelInfo("o3-mini", "o3-mini Reasoning 🔬", AiProviderType.OPENAI, "STEM, math & coding chain-of-thought", "200k tokens", false, true, false),
-            AiModelInfo("claude-sonnet-4-20250514", "Claude Sonnet 4 🎭", AiProviderType.ANTHROPIC, "Hybrid reasoning & software architecture benchmark", "200k tokens", true, true, false),
-            AiModelInfo("claude-haiku-4-5-20251001", "Claude Haiku 4.5 ⚡", AiProviderType.ANTHROPIC, "Fast coding, analysis & concise synthesis", "200k tokens", true, false, false),
-            AiModelInfo("deepseek-chat", "DeepSeek V3 🚀", AiProviderType.DEEPSEEK, "MoE general conversational & coding intelligence", "64k tokens", false, false, false),
-            AiModelInfo("deepseek-reasoner", "DeepSeek R1 CoT 🔬", AiProviderType.DEEPSEEK, "Open mathematical proof & step-by-step CoT", "64k tokens", false, true, false),
-            AiModelInfo("grok-2-latest", "Grok 2 Latest 🤖", AiProviderType.XAI, "Frontier reasoning by xAI", "128k tokens", true, false, false),
+            AiModelInfo(OPENAI_DEFAULT_MODEL, "GPT-6.2 Sol 🧠", AiProviderType.OPENAI, "OpenAI frontier multimodal flagship intelligence", "256k tokens", true, true, true),
+            AiModelInfo(OPENAI_REASONING_MODEL, "GPT-6.2 Astra 🔬", AiProviderType.OPENAI, "Deep STEM, formal verification & reasoning model", "256k tokens", false, true, false),
+            AiModelInfo(OPENAI_MINI_MODEL, "GPT-6 Luna ⚡", AiProviderType.OPENAI, "Ultra-fast daily conversational & coding model", "128k tokens", true, false, false),
+            AiModelInfo(ANTHROPIC_SONNET_MODEL, "Claude Sonnet 5.5 🎭", AiProviderType.ANTHROPIC, "Hybrid reasoning & software architecture flagship", "200k tokens", true, true, true),
+            AiModelInfo(ANTHROPIC_OPUS_MODEL, "Claude Opus 5.5 👑", AiProviderType.ANTHROPIC, "Highest-capability Claude frontier synthesis & engineering", "200k tokens", true, true, false),
+            AiModelInfo(ANTHROPIC_HAIKU_MODEL, "Claude Haiku 5.5 ⚡", AiProviderType.ANTHROPIC, "Fast coding, analysis & concise synthesis", "200k tokens", true, false, false),
+            AiModelInfo(DEEPSEEK_CHAT_MODEL, "DeepSeek Flash 🚀", AiProviderType.DEEPSEEK, "Fast conversational & full-stack coding intelligence", "128k tokens", false, false, false),
+            AiModelInfo(DEEPSEEK_REASONER_MODEL, "DeepSeek V4 Pro 🔬", AiProviderType.DEEPSEEK, "Deep mathematical proof, formal code & step-by-step CoT", "128k tokens", false, true, true),
+            AiModelInfo(XAI_DEFAULT_MODEL, "Grok 4.7 🤖", AiProviderType.XAI, "Frontier reasoning & real-time analysis by xAI", "256k tokens", true, true, true),
             AiModelInfo("mistral-large-latest", "Mistral Large 🌐", AiProviderType.MISTRAL, "European multilingual intelligence", "128k tokens", false, false, false),
             AiModelInfo("codestral-latest", "Codestral 💻", AiProviderType.MISTRAL, "Dedicated programming & refactoring", "256k tokens", false, false, false),
-            AiModelInfo("sonar-reasoning", "Perplexity Sonar 🔎", AiProviderType.PERPLEXITY, "Web-grounded research with citations", "128k tokens", false, true, false),
-            AiModelInfo("openrouter/auto", "OpenRouter Auto 🔀", AiProviderType.OPENROUTER, "Dynamic universal gateway", "128k tokens", true, false, false),
-            AiModelInfo("qwen/qwen-2.5-72b-instruct", "Qwen 2.5 72B Instruct 🐉", AiProviderType.OPENROUTER, "Multilingual STEM & reasoning", "128k tokens", false, false, false),
-            AiModelInfo("qwen/qwen-2.5-coder-32b-instruct", "Qwen 2.5 Coder 32B 💻", AiProviderType.OPENROUTER, "Coding and bug-fixing specialist", "128k tokens", false, false, false),
+            AiModelInfo(PERPLEXITY_REASONING_MODEL, "Perplexity Sonar Pro 🔎", AiProviderType.PERPLEXITY, "Web-grounded reasoning research with citations", "128k tokens", false, true, true),
+            AiModelInfo(OPENROUTER_DEFAULT_MODEL, "OpenRouter Free Router 🔀", AiProviderType.OPENROUTER, "Dynamic zero-cost open-weights router", "128k tokens", true, false, true),
+            AiModelInfo(OPENROUTER_QWEN_FREE_MODEL, "Qwen 3.8 27B Free 🐉", AiProviderType.OPENROUTER, "Multilingual STEM & reasoning on OpenRouter free tier", "128k tokens", false, true, false),
+            AiModelInfo(OPENROUTER_CODER_MODEL, "Qwen3 Coder Free 💻", AiProviderType.OPENROUTER, "Coding and bug-fixing specialist", "128k tokens", false, false, false),
+            AiModelInfo(OPENROUTER_AUTO_MODEL, "OpenRouter Auto ⚡", AiProviderType.OPENROUTER, "Adaptive frontier & open-weights gateway", "128k tokens", true, false, false),
             AiModelInfo("qwen2.5:14b", "Local Ollama Qwen 2.5 14B 🌐", AiProviderType.LOCAL_OLLAMA, "Local/LAN open-weights Qwen model", "32k tokens", false, true, false),
             AiModelInfo("llama3.3", "Local Ollama / LM Studio 🏠", AiProviderType.LOCAL_OLLAMA, "Zero-cloud local LLM on your LAN", "32k tokens", false, false, true),
             AiModelInfo("openai", "Global Free AI Pool (GPT/OSS) 🌐", AiProviderType.POLLINATIONS_FREE, "Keyless free cloud AI fallback & ensemble backup", "32k tokens", false, false, false),
             AiModelInfo("openai-large", "Global Free Flagship (Large) ⚡", AiProviderType.POLLINATIONS_FREE, "High-reasoning keyless ensemble channel", "64k tokens", false, true, false),
             AiModelInfo("qwen-coder", "Global Free Qwen Coder 💻", AiProviderType.POLLINATIONS_FREE, "Keyless coding & architecture specialist", "32k tokens", false, false, false),
-            AiModelInfo("deepseek", "Global Free DeepSeek R1/V3 🧠", AiProviderType.POLLINATIONS_FREE, "Keyless STEM, math & step-by-step logic channel", "64k tokens", false, true, false)
+            AiModelInfo("deepseek", "Global Free DeepSeek Reasoning 🧠", AiProviderType.POLLINATIONS_FREE, "Keyless STEM, math & step-by-step logic channel", "64k tokens", false, true, false)
         )
     }
 
@@ -306,8 +332,50 @@ class ExternalAiProviders @JvmOverloads constructor(
             }
         }
 
+        if (preferredProvider != AiProviderType.LOCAL_OLLAMA &&
+            preferredProvider != AiProviderType.OMNI_ROUTE &&
+            SecureAiGatewayClient.shouldUseBackendGatewayProxy(context, isTestHarnessMode)
+        ) {
+            val ctx = context
+            if (ctx != null) {
+                val proxyProvider = preferredProvider ?: AiProviderType.GEMINI
+                val proxyModel = preferredModelId
+                    ?: ModelCatalog.defaultModelFor(proxyProvider)?.id
+                    ?: getDefaultModelForProvider(proxyProvider)
+                val proxyResult = SecureAiGatewayClient.callAuthenticatedBackendAiProxy(
+                    context = ctx,
+                    backendBaseUrl = AyraPreferences.getBackendGatewayUrl(ctx),
+                    prompt = prompt,
+                    model = proxyModel,
+                    provider = proxyProvider.id,
+                    systemPrompt = systemPrompt
+                )
+                val proxyText = proxyResult.getOrNull()?.trim().orEmpty()
+                if (proxyText.isNotBlank()) {
+                    val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(ctx, proxyProvider, true, latency)
+                    circuitBreaker.recordSuccess(proxyProvider)
+                    if (imageBase64 == null && history.isNullOrEmpty()) {
+                        circuitBreaker.putCachedResponse(cacheKey, proxyText)
+                    }
+                    return@withContext ProviderResponse(
+                        text = proxyText,
+                        modelUsed = "Ayra Gateway Route B ($proxyModel)",
+                        provider = proxyProvider,
+                        latencyMs = latency
+                    )
+                }
+            }
+        }
+
         var lastCriticalError: ProviderError? = null
         if (preferredProvider == AiProviderType.OMNI_ROUTE) {
+            if (!isTestHarnessMode) {
+                val gate = SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.GEMINI)
+                if (!gate.allowed) {
+                    throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ayra AI Zero-Trust policy.")
+                }
+            }
             try {
                 val omniEngine = context?.let { com.ayra.ai.app.ai.omniroute.OmniRouteEngine(it) }
                 if (omniEngine != null) {
@@ -325,7 +393,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                 throw e
             } catch (_: Exception) {}
         } else if (preferredProvider != null) {
-            if (allowExternalWikiGrounding) {
+            if (!isTestHarnessMode) {
                 val gate = SecureAiGatewayClient.evaluateProviderAccess(context, preferredProvider)
                 if (!gate.allowed) {
                     throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Ayra AI Zero-Trust policy.")
@@ -338,6 +406,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             ) {
                 val triedModels = mutableSetOf<String>()
                 var candidateModel: String? = initialModel
+                var failedModelNotice: String? = null
                 var rateLimitRetries = 0
                 while (candidateModel != null && triedModels.size < 3) {
                     val activeModel = candidateModel ?: break
@@ -349,9 +418,14 @@ class ExternalAiProviders @JvmOverloads constructor(
                         if (resultText.isNotBlank()) {
                             AiUsageTracker.recordCall(context, preferredProvider, true, callLatency)
                             circuitBreaker.recordSuccess(preferredProvider)
-                            if (imageBase64 == null && history.isNullOrEmpty()) circuitBreaker.putCachedResponse(cacheKey, resultText)
+                            val finalText = if (failedModelNotice != null && failedModelNotice != activeModel) {
+                                "[Model Notice: '$failedModelNotice' was unavailable/retired; switched to '$activeModel'.]\n\n$resultText"
+                            } else {
+                                resultText
+                            }
+                            if (imageBase64 == null && history.isNullOrEmpty()) circuitBreaker.putCachedResponse(cacheKey, finalText)
                             return@withContext ProviderResponse(
-                                text = resultText,
+                                text = finalText,
                                 modelUsed = "${preferredProvider.displayName} ($activeModel)",
                                 provider = preferredProvider,
                                 latencyMs = System.currentTimeMillis() - startTime
@@ -362,7 +436,12 @@ class ExternalAiProviders @JvmOverloads constructor(
                         throw e
                     } catch (e: ProviderError.ModelNotFound) {
                         AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
-                        ModelCatalog.markModelUnavailable(preferredProvider, activeModel, 404, e.displayMessage)
+                        if (e.httpStatus == 410) {
+                            ModelCatalog.markModelRetired(preferredProvider, activeModel, e.displayMessage)
+                        } else {
+                            ModelCatalog.markModelUnavailable(preferredProvider, activeModel, e.httpStatus, e.displayMessage)
+                        }
+                        failedModelNotice = activeModel
                         candidateModel = ModelCatalog.nextFallbackModel(preferredProvider, activeModel)?.takeIf { it !in triedModels }
                         if (candidateModel == null) lastCriticalError = e
                     } catch (e: ProviderError.RateLimited) {
@@ -412,15 +491,20 @@ class ExternalAiProviders @JvmOverloads constructor(
                 throw e
             } catch (e: ProviderError.ModelNotFound) {
                 AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
-                ModelCatalog.markModelUnavailable(channel.provider, channel.modelId, 404, e.displayMessage)
+                if (e.httpStatus == 410) {
+                    ModelCatalog.markModelRetired(channel.provider, channel.modelId, e.displayMessage)
+                } else {
+                    ModelCatalog.markModelUnavailable(channel.provider, channel.modelId, e.httpStatus, e.displayMessage)
+                }
                 circuitBreaker.recordChannelFailure(channel.id)
                 val fallbackId = ModelCatalog.nextFallbackModel(channel.provider, channel.modelId)
                 if (fallbackId != null) {
                     runCatching {
                         val fbText = callSpecificProvider(channel.provider, fallbackId, turns, resolveChannelKey(channel, context), withSearchGrounding)
                         if (fbText.isNotBlank()) {
+                            val noticedText = "[Model Notice: '${channel.modelId}' was unavailable/retired; switched to '$fallbackId'.]\n\n$fbText"
                             return@withContext ProviderResponse(
-                                text = fbText,
+                                text = noticedText,
                                 modelUsed = "${channel.provider.displayName} ($fallbackId)",
                                 provider = channel.provider,
                                 latencyMs = System.currentTimeMillis() - startTime
@@ -443,10 +527,10 @@ class ExternalAiProviders @JvmOverloads constructor(
             }
         }
 
-        val freeGate = if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+        val freeGate = if (!isTestHarnessMode) {
             SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.POLLINATIONS_FREE).allowed
         } else {
-            context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+            context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
         }
         if (freeGate) {
             try {
@@ -485,9 +569,9 @@ class ExternalAiProviders @JvmOverloads constructor(
             candidates.add(preferredProvider to (preferredModelId ?: getDefaultModelForProvider(preferredProvider)))
         }
         val reasoningFallbacks = listOf(
-            AiProviderType.DEEPSEEK to "deepseek-reasoner",
+            AiProviderType.DEEPSEEK to DEEPSEEK_REASONER_MODEL,
             AiProviderType.SAMBANOVA to SAMBANOVA_DEEPSEEK_MODEL,
-            AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free",
+            AiProviderType.OPENROUTER to OPENROUTER_QWEN_FREE_MODEL,
             AiProviderType.GROQ to GROQ_QWEN_MODEL,
             AiProviderType.CEREBRAS to CEREBRAS_QWEN_MODEL,
             AiProviderType.POLLINATIONS_FREE to "deepseek"
@@ -548,7 +632,7 @@ class ExternalAiProviders @JvmOverloads constructor(
     ): Flow<String> = flow {
         val turns = buildConversationTurns(systemPrompt, history, prompt, imageBase64)
         val provider = preferredProvider ?: getBestAvailableProvider()
-        if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+        if (!isTestHarnessMode) {
             val gate = SecureAiGatewayClient.evaluateProviderAccess(context, provider)
             if (!gate.allowed) throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Zero-Trust policy.")
         }
@@ -722,8 +806,12 @@ class ExternalAiProviders @JvmOverloads constructor(
     }
 
     fun isProviderConfigured(provider: AiProviderType): Boolean {
-        if (baseUrlOverrides.isEmpty() && channelKeyOverrides.isEmpty() && customHttpClient == null) {
+        if (!isTestHarnessMode) {
             if (!SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed) return false
+        }
+        if (provider == AiProviderType.GITHUB_MODELS) {
+            // Azure GitHub Models inference endpoint shut down 2026-07-30; remain inactive unless test override is supplied.
+            if (!baseUrlOverrides.containsKey(AiProviderType.GITHUB_MODELS)) return false
         }
         if (provider == AiProviderType.OMNI_ROUTE) return !(context != null && AyraPreferences.isLocalOnlyAiModeEnabled(context))
         if (provider == AiProviderType.LOCAL_OLLAMA) {
@@ -758,18 +846,18 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getDefaultModelForProvider(provider: AiProviderType): String = when (provider) {
         AiProviderType.GEMINI -> GEMINI_FLASH_MODEL
         AiProviderType.NVIDIA_NIM -> NVIDIA_MINIMAX_MODEL
-        AiProviderType.GROQ -> GROQ_LLAMA_MODEL
+        AiProviderType.GROQ -> GROQ_DEFAULT_MODEL
         AiProviderType.CEREBRAS -> CEREBRAS_LLAMA_MODEL
         AiProviderType.SAMBANOVA -> SAMBANOVA_DEEPSEEK_MODEL
         AiProviderType.HUGGINGFACE -> HF_QWEN_MODEL
-        AiProviderType.GITHUB_MODELS -> GITHUB_GPT4O_MODEL
-        AiProviderType.OPENAI -> "gpt-4o"
-        AiProviderType.ANTHROPIC -> "claude-sonnet-4-20250514"
-        AiProviderType.DEEPSEEK -> "deepseek-chat"
-        AiProviderType.XAI -> "grok-2-latest"
+        AiProviderType.GITHUB_MODELS -> GITHUB_RETIRED_MODEL
+        AiProviderType.OPENAI -> OPENAI_DEFAULT_MODEL
+        AiProviderType.ANTHROPIC -> ANTHROPIC_SONNET_MODEL
+        AiProviderType.DEEPSEEK -> DEEPSEEK_REASONER_MODEL
+        AiProviderType.XAI -> XAI_DEFAULT_MODEL
         AiProviderType.MISTRAL -> "mistral-large-latest"
-        AiProviderType.PERPLEXITY -> "sonar-reasoning"
-        AiProviderType.OPENROUTER -> "openrouter/auto"
+        AiProviderType.PERPLEXITY -> PERPLEXITY_REASONING_MODEL
+        AiProviderType.OPENROUTER -> OPENROUTER_DEFAULT_MODEL
         AiProviderType.LOCAL_OLLAMA -> "llama3.3"
         AiProviderType.POLLINATIONS_FREE -> "openai"
         AiProviderType.OMNI_ROUTE -> GEMINI_FLASH_MODEL
@@ -815,9 +903,7 @@ class ExternalAiProviders @JvmOverloads constructor(
 
     suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> = withContext(Dispatchers.IO) {
         dynamicModelCache[provider]?.let { if (it.isNotEmpty()) return@withContext it }
-        if (baseUrlOverrides.isEmpty() &&
-            channelKeyOverrides.isEmpty() &&
-            customHttpClient == null &&
+        if (!isTestHarnessMode &&
             provider != AiProviderType.LOCAL_OLLAMA &&
             !SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed
         ) {

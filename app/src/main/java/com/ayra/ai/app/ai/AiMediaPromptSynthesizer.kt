@@ -262,11 +262,7 @@ object AiMediaPromptSynthesizer {
         }
         val openRouterKey = com.ayra.ai.app.data.AyraPreferences.getEffectiveOpenRouterKey(context)
         if (openRouterKey.isNotBlank()) {
-            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER.defaultBaseUrl}chat/completions", openRouterKey, "meta-llama/llama-3.3-70b-instruct:free"))
-        }
-        val githubKey = com.ayra.ai.app.data.AyraPreferences.getGitHubModelsKey(context)
-        if (githubKey.isNotBlank()) {
-            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.GITHUB_MODELS.defaultBaseUrl}chat/completions", githubKey, ExternalAiProviders.GITHUB_GPT4O_MODEL))
+            candidates.add(Triple("${com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER.defaultBaseUrl}chat/completions", openRouterKey, ExternalAiProviders.OPENROUTER_DEFAULT_MODEL))
         }
 
         for ((endpoint, key, modelId) in candidates) {

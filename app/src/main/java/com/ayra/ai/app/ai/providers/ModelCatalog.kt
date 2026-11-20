@@ -143,24 +143,34 @@ object ModelCatalog {
 
         // --- Free-Tier & Cloud Open-Weights Configured Models ---
         ModelCatalogEntry(
+            id = ExternalAiProviders.GROQ_QWEN_MODEL,
+            provider = AiProviderType.GROQ,
+            displayName = "Groq Qwen 3.8 27B",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 131_072,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.GROQ_GPT_OSS_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.GROQ_GPT_OSS_MODEL,
+            provider = AiProviderType.GROQ,
+            displayName = "Groq GPT-OSS 120B",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 131_072,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.GROQ_LLAMA_MODEL
+        ),
+        ModelCatalogEntry(
             id = ExternalAiProviders.GROQ_LLAMA_MODEL,
             provider = AiProviderType.GROQ,
-            displayName = "Groq Llama 3.3 70B Versatile",
+            displayName = "Groq Llama 3.1 8B Instant",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
             fallbackModelId = ExternalAiProviders.GROQ_QWEN_MODEL
-        ),
-        ModelCatalogEntry(
-            id = ExternalAiProviders.GROQ_QWEN_MODEL,
-            provider = AiProviderType.GROQ,
-            displayName = "Groq Qwen3 32B",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
-            contextTokens = 128_000,
-            costTier = ModelCostTier.FREE_TIER,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.GROQ_LLAMA_MODEL
         ),
         ModelCatalogEntry(
             id = ExternalAiProviders.GROQ_WHISPER_MODEL,
@@ -174,8 +184,8 @@ object ModelCatalog {
         ModelCatalogEntry(
             id = ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
             provider = AiProviderType.CEREBRAS,
-            displayName = "Cerebras Llama 3.3 70B",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
+            displayName = "Cerebras GPT-OSS 120B",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
@@ -184,7 +194,7 @@ object ModelCatalog {
         ModelCatalogEntry(
             id = ExternalAiProviders.CEREBRAS_QWEN_MODEL,
             provider = AiProviderType.CEREBRAS,
-            displayName = "Cerebras Qwen 3 32B",
+            displayName = "Cerebras Qwen 3.8 27B",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
@@ -230,91 +240,104 @@ object ModelCatalog {
             verificationStatus = ModelVerificationStatus.CONFIGURED
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.GITHUB_GPT4O_MODEL,
+            id = ExternalAiProviders.GITHUB_RETIRED_MODEL,
             provider = AiProviderType.GITHUB_MODELS,
-            displayName = "GitHub Models GPT-4o Mini",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
+            displayName = "GitHub Models (Azure Inference Retired)",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
-            verificationStatus = ModelVerificationStatus.CONFIGURED
+            verificationStatus = ModelVerificationStatus.RETIRED,
+            isDefaultCandidate = false,
+            notes = "models.inference.ai.azure.com shut down 2026-07-30"
         ),
 
         // --- Commercial User-Key Providers ---
         ModelCatalogEntry(
-            id = "gpt-4o",
+            id = ExternalAiProviders.OPENAI_DEFAULT_MODEL,
             provider = AiProviderType.OPENAI,
-            displayName = "GPT-4o",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
-            contextTokens = 128_000,
+            displayName = "OpenAI GPT-6.2 Sol",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 256_000,
             costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "gpt-4o-mini"
+            fallbackModelId = ExternalAiProviders.OPENAI_MINI_MODEL
         ),
         ModelCatalogEntry(
-            id = "gpt-4o-mini",
+            id = ExternalAiProviders.OPENAI_MINI_MODEL,
             provider = AiProviderType.OPENAI,
-            displayName = "GPT-4o Mini",
+            displayName = "OpenAI GPT-6 Luna",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.LOW,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "gpt-4o"
+            fallbackModelId = ExternalAiProviders.OPENAI_DEFAULT_MODEL
         ),
         ModelCatalogEntry(
-            id = "o3-mini",
+            id = ExternalAiProviders.OPENAI_REASONING_MODEL,
             provider = AiProviderType.OPENAI,
-            displayName = "o3-mini Reasoning",
+            displayName = "OpenAI GPT-6.2 Astra",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
-            contextTokens = 200_000,
-            costTier = ModelCostTier.MEDIUM,
+            contextTokens = 256_000,
+            costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "gpt-4o"
+            fallbackModelId = ExternalAiProviders.OPENAI_DEFAULT_MODEL
         ),
         ModelCatalogEntry(
-            id = "claude-sonnet-4-20250514",
+            id = ExternalAiProviders.ANTHROPIC_SONNET_MODEL,
             provider = AiProviderType.ANTHROPIC,
-            displayName = "Claude Sonnet 4",
+            displayName = "Claude Sonnet 5.5",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 200_000,
             costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "claude-haiku-4-5-20251001"
+            fallbackModelId = ExternalAiProviders.ANTHROPIC_HAIKU_MODEL
         ),
         ModelCatalogEntry(
-            id = "claude-haiku-4-5-20251001",
+            id = ExternalAiProviders.ANTHROPIC_OPUS_MODEL,
             provider = AiProviderType.ANTHROPIC,
-            displayName = "Claude Haiku 4.5",
+            displayName = "Claude Opus 5.5",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 200_000,
+            costTier = ModelCostTier.HIGH,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.ANTHROPIC_SONNET_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.ANTHROPIC_HAIKU_MODEL,
+            provider = AiProviderType.ANTHROPIC,
+            displayName = "Claude Haiku 5.5",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 200_000,
             costTier = ModelCostTier.MEDIUM,
-            verificationStatus = ModelVerificationStatus.CONFIGURED
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.ANTHROPIC_SONNET_MODEL
         ),
         ModelCatalogEntry(
-            id = "deepseek-chat",
+            id = ExternalAiProviders.DEEPSEEK_CHAT_MODEL,
             provider = AiProviderType.DEEPSEEK,
-            displayName = "DeepSeek V3",
+            displayName = "DeepSeek Flash",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
-            contextTokens = 64_000,
-            costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "deepseek-reasoner"
-        ),
-        ModelCatalogEntry(
-            id = "deepseek-reasoner",
-            provider = AiProviderType.DEEPSEEK,
-            displayName = "DeepSeek R1",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
-            contextTokens = 64_000,
-            costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "deepseek-chat"
-        ),
-        ModelCatalogEntry(
-            id = "grok-2-latest",
-            provider = AiProviderType.XAI,
-            displayName = "Grok 2 Latest",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS),
             contextTokens = 128_000,
+            costTier = ModelCostTier.LOW,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.DEEPSEEK_REASONER_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.DEEPSEEK_REASONER_MODEL,
+            provider = AiProviderType.DEEPSEEK,
+            displayName = "DeepSeek V4 Pro",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 128_000,
+            costTier = ModelCostTier.LOW,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.DEEPSEEK_CHAT_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.XAI_DEFAULT_MODEL,
+            provider = AiProviderType.XAI,
+            displayName = "xAI Grok 4.7",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.REASONING),
+            contextTokens = 256_000,
             costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.CONFIGURED
         ),
@@ -339,63 +362,53 @@ object ModelCatalog {
             fallbackModelId = "mistral-large-latest"
         ),
         ModelCatalogEntry(
-            id = "sonar-reasoning",
+            id = ExternalAiProviders.PERPLEXITY_REASONING_MODEL,
             provider = AiProviderType.PERPLEXITY,
-            displayName = "Perplexity Sonar Reasoning",
+            displayName = "Perplexity Sonar Reasoning Pro",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.REASONING),
             contextTokens = 128_000,
             costTier = ModelCostTier.MEDIUM,
             verificationStatus = ModelVerificationStatus.CONFIGURED
         ),
         ModelCatalogEntry(
-            id = "openrouter/auto",
+            id = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL,
+            provider = AiProviderType.OPENROUTER,
+            displayName = "OpenRouter Free Router",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
+            contextTokens = 128_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL,
+            provider = AiProviderType.OPENROUTER,
+            displayName = "Qwen 3.8 27B Free (OpenRouter)",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
+            contextTokens = 128_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.OPENROUTER_AUTO_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.OPENROUTER_CODER_MODEL,
+            provider = AiProviderType.OPENROUTER,
+            displayName = "Qwen3 Coder Free (OpenRouter)",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
+            contextTokens = 128_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
+        ),
+        ModelCatalogEntry(
+            id = ExternalAiProviders.OPENROUTER_AUTO_MODEL,
             provider = AiProviderType.OPENROUTER,
             displayName = "OpenRouter Auto",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.LOW,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "qwen/qwen-2.5-72b-instruct"
-        ),
-        ModelCatalogEntry(
-            id = "qwen/qwen-2.5-72b-instruct",
-            provider = AiProviderType.OPENROUTER,
-            displayName = "Qwen 2.5 72B Instruct",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
-            contextTokens = 128_000,
-            costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "openrouter/auto"
-        ),
-        ModelCatalogEntry(
-            id = "qwen/qwen-2.5-coder-32b-instruct",
-            provider = AiProviderType.OPENROUTER,
-            displayName = "Qwen 2.5 Coder 32B",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
-            contextTokens = 128_000,
-            costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "openrouter/auto"
-        ),
-        ModelCatalogEntry(
-            id = "deepseek/deepseek-r1:free",
-            provider = AiProviderType.OPENROUTER,
-            displayName = "DeepSeek R1 Free (OpenRouter)",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
-            contextTokens = 64_000,
-            costTier = ModelCostTier.FREE_TIER,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "openrouter/auto"
-        ),
-        ModelCatalogEntry(
-            id = "meta-llama/llama-3.3-70b-instruct:free",
-            provider = AiProviderType.OPENROUTER,
-            displayName = "Llama 3.3 70B Free (OpenRouter)",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
-            contextTokens = 128_000,
-            costTier = ModelCostTier.FREE_TIER,
-            verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "openrouter/auto"
+            fallbackModelId = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
         ),
 
         // --- Local / LAN Self-Hosted ---

@@ -113,11 +113,20 @@ internal object ProviderGeminiTransport {
             if (response.code == 400 && allowGrounding) {
                 return callGemini(httpClient, baseUrlOverride, turns, actualModel, apiKey, false, visitedModels)
             }
-            if (response.code == 404) {
+            if (response.code == 404 || response.code == 410) {
+                if (response.code == 410) {
+                    ModelCatalog.markModelRetired(AiProviderType.GEMINI, actualModel, "HTTP 410")
+                }
                 val nextModel = nextGeminiFallback(actualModel)
                 if (nextModel != null && nextModel !in visitedModels) {
                     return callGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, withSearchGrounding, visitedModels + actualModel)
                 }
+                throw ProviderError.ModelNotFound(
+                    AiProviderType.GEMINI,
+                    actualModel,
+                    response.readBounded(truncateOnOverflow = true).ifBlank { response.message },
+                    httpStatus = response.code
+                )
             }
             if (response.code == 429) throw ProviderError.RateLimited("Gemini quota exceeded.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.GEMINI)
@@ -166,11 +175,20 @@ internal object ProviderGeminiTransport {
         }
 
         httpClient.newCall(reqBuilder.build()).execute().use { response ->
-            if (response.code == 404) {
+            if (response.code == 404 || response.code == 410) {
+                if (response.code == 410) {
+                    ModelCatalog.markModelRetired(AiProviderType.GEMINI, actualModel, "HTTP 410")
+                }
                 val nextModel = nextGeminiFallback(actualModel)
                 if (nextModel != null && nextModel !in visitedModels) {
                     return streamGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, collector, visitedModels + actualModel)
                 }
+                throw ProviderError.ModelNotFound(
+                    AiProviderType.GEMINI,
+                    actualModel,
+                    response.readBounded(truncateOnOverflow = true).ifBlank { response.message },
+                    httpStatus = response.code
+                )
             }
             if (response.code == 429) throw ProviderError.RateLimited("Gemini quota exceeded.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.GEMINI)

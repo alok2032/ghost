@@ -2,7 +2,7 @@
 
 This document defines the production signing architecture for **Ayra AI (`com.ayra.ai.app`)** across local developer releases, automated CI/CD builds, and Google Play App Signing.
 
-> **Workspace Container Constraint Note**: Inside the interactive AI Studio workspace container, `app/build.gradle.kts` (`signingConfigs` and `buildTypes.*.signingConfig`) and `debug.keystore*` are kept unmodified per platform guidelines so automated preview builds stay compatible. Before building a production release artifact on a standalone build workstation or CI runner, apply the standard externalized release signing configuration documented below.
+> **Workspace Container Constraint Note (H1):** Inside the interactive AI Studio workspace container, `app/build.gradle.kts` (`signingConfigs` and `buildTypes.*.signingConfig`) and `debug.keystore*` are kept unmodified per platform policy so preview builds stay reproducible (`UNVERIFIED` for production upload signing inside the container). Standalone CI and Play release pipelines MUST supply externalized upload-key credentials and enforce `-PayraRequireProductionSigning=true` as documented below.
 
 ---
 

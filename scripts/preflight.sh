@@ -111,16 +111,14 @@ section "4. Dead Models & Legacy Unsafe Aliases"
 if [ ! -f config/dead-models.txt ]; then
   fail "config/dead-models.txt missing"
 else
-  DEAD_REGEX=$(grep -vE '^\s*(#|$)' config/dead-models.txt | tr '\n' '|' | sed 's/|$//')
-  if [ -n "$DEAD_REGEX" ]; then
-    DEAD_HITS=$(MAIN_KT | grep -vE '(ModelCatalog|AyraPreferences)' | xargs grep -nE "$DEAD_REGEX" 2>/dev/null || true)
-    # Use quoted string checks for common exact deprecated IDs in app/src/main
-    EXACT_DEAD=$(MAIN_KT | xargs grep -nE '"(gemini-1\.5-|gemini-2\.0-flash|gemini-2\.0-pro|gemini-2\.5-flash|gemini-2\.5-pro|claude-3-5-sonnet-20241022|claude-3-7-sonnet-20250219)' 2>/dev/null || true)
+  QUOTED_DEAD_REGEX=$(grep -vE '^\s*(#|$)' config/dead-models.txt | sed -E 's/^\^(.*)\$$/"\1"/; s/^\^([^"].*)/"\1/' | tr '\n' '|' | sed 's/|$//')
+  if [ -n "$QUOTED_DEAD_REGEX" ]; then
+    EXACT_DEAD=$(MAIN_KT | xargs grep -nE "$QUOTED_DEAD_REGEX" 2>/dev/null || true)
     if [ -n "$EXACT_DEAD" ]; then
       fail "dead/retiring model IDs hardcoded in app/src/main:"
       echo "$EXACT_DEAD" | sed 's/^/        /' | cut -c1-160
     else
-      ok "no dead/retiring model IDs active in app/src/main"
+      ok "no dead/retiring model IDs active in app/src/main (verified against config/dead-models.txt)"
     fi
   fi
 fi
@@ -265,6 +263,18 @@ if [ -n "$DUAL_WRITES" ]; then
   echo "$DUAL_WRITES" | sed 's/^/        /'
 else
   ok "AyraPreferences consolidates API key writes exclusively to SecureKeyStore"
+fi
+
+# ---------------------------------------------------------------- 14
+section "14. Automation & Reminder Tool Confirmation Guard (H3)"
+TOOL_REG="app/src/main/java/com/ayra/ai/app/ai/agent/AgentToolRegistry.kt"
+if grep -q 'scheduleTaskFromPrompt' "$TOOL_REG" 2>/dev/null; then
+  fail "AgentToolRegistry.kt still calls unguarded scheduleTaskFromPrompt (H3 bypass risk)"
+elif grep -q 'scheduleReminderOnly' "$TOOL_REG" 2>/dev/null && \
+     grep -q 'taintedByUntrustedData && tool.name == "reminder_schedule"' app/src/main/java/com/ayra/ai/app/ai/agent/AgentCore.kt 2>/dev/null; then
+  ok "reminder_schedule restricted to scheduleReminderOnly and gated by taint guard in AgentCore"
+else
+  fail "H3 reminder_schedule REMINDER-only restriction or AgentCore taint gate missing"
 fi
 
 echo

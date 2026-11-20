@@ -15,7 +15,26 @@ export interface AiGatewayResponse {
   model: string;
   content: string;
   estimatedTokens: number;
+  actualTokens: number;
   estimatedSpendUsdMicros: number;
+  usageSource: "PROVIDER_REPORTED" | "ESTIMATED";
+  pricingVerified: boolean;
+}
+
+// Conservative estimated blended pricing (micro-USD per 1M tokens -> /1_000_000) when provider billing API is unavailable.
+// Flagged pricingVerified=false in telemetry and model catalog until verified against official billing exports.
+function estimateMicroUsdForModelTokens(model: string, totalTokens: number): number {
+  const m = model.toLowerCase();
+  const microUsdPerMillion = m.endsWith(":free") || m === "openrouter/free"
+    ? 0
+    : m.includes("flash-lite") || m.includes("haiku") || m.includes("luna") || m.includes("8b")
+      ? 350_000 // ~$0.35 / 1M blended estimate
+      : m.includes("flash") || m.includes("3.8-27b") || m.includes("oss-120b")
+        ? 800_000 // ~$0.80 / 1M blended estimate
+        : m.includes("argon") || m.includes("pro") || m.includes("opus") || m.includes("astra")
+          ? 6_000_000 // ~$6.00 / 1M blended ceiling estimate
+          : 2_000_000; // ~$2.00 / 1M default conservative ceiling
+  return Math.max(0, Math.ceil((totalTokens * microUsdPerMillion) / 1_000_000));
 }
 
 export class ProviderCircuitBreaker {
@@ -98,11 +117,11 @@ export function estimateRequestUsage(payload: AiChatRequest): {
 } {
   const inputChars = payload.messages.reduce((sum, m) => sum + m.content.length, 0);
   const estInputTokens = Math.max(16, Math.ceil(inputChars / 4));
-  const estTotalTokens = estInputTokens + Math.min(payload.maxTokens, 1024);
-  // Conservative ceiling cost estimate: $2.00 per 1M tokens -> 2 micro-USD per token
+  // Reserve full requested completion ceiling so concurrent calls cannot overspend quota
+  const estTotalTokens = estInputTokens + Math.max(16, payload.maxTokens);
   return {
     estimatedTokens: estTotalTokens,
-    estimatedSpendUsdMicros: estTotalTokens * 2,
+    estimatedSpendUsdMicros: estimateMicroUsdForModelTokens(payload.model, estTotalTokens),
   };
 }
 
@@ -114,7 +133,8 @@ export async function forwardSecureAiRequest(
   ssrfResolver?: (hostname: string) => Promise<Array<{ address: string }>>
 ): Promise<AiGatewayResponse> {
   circuitBreaker?.assertClosed(payload.provider);
-  const usage = estimateRequestUsage(payload);
+  const inputChars = payload.messages.reduce((sum, m) => sum + m.content.length, 0);
+  const estInputTokens = Math.max(16, Math.ceil(inputChars / 4));
 
   try {
     if (payload.provider === "gemini") {
@@ -164,6 +184,11 @@ export async function forwardSecureAiRequest(
       }
       const data = (await upstreamRes.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        usageMetadata?: {
+          totalTokenCount?: number;
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+        };
       };
       const text =
         data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
@@ -171,13 +196,22 @@ export async function forwardSecureAiRequest(
         throw new GatewayError(502, "Upstream provider returned empty content.");
       }
       circuitBreaker?.recordSuccess(payload.provider);
-      const actualTokens = Math.max(usage.estimatedTokens, Math.ceil((text.length + 64) / 4));
+      const reportedTotal =
+        data.usageMetadata?.totalTokenCount ??
+        ((data.usageMetadata?.promptTokenCount ?? 0) + (data.usageMetadata?.candidatesTokenCount ?? 0) || undefined);
+      const actualTokens =
+        typeof reportedTotal === "number" && Number.isFinite(reportedTotal) && reportedTotal > 0
+          ? Math.round(reportedTotal)
+          : estInputTokens + Math.max(8, Math.ceil(text.length / 4));
       return {
         provider: payload.provider,
         model: payload.model,
         content: text,
         estimatedTokens: actualTokens,
-        estimatedSpendUsdMicros: actualTokens * 2,
+        actualTokens,
+        estimatedSpendUsdMicros: estimateMicroUsdForModelTokens(payload.model, actualTokens),
+        usageSource: reportedTotal ? "PROVIDER_REPORTED" : "ESTIMATED",
+        pricingVerified: false,
       };
     }
 
@@ -237,19 +271,29 @@ export async function forwardSecureAiRequest(
 
     const data = (await upstreamRes.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
     };
     const text = data.choices?.[0]?.message?.content?.trim() ?? "";
     if (!text) {
       throw new GatewayError(502, "Upstream provider returned empty completion.");
     }
     circuitBreaker?.recordSuccess(payload.provider);
-    const actualTokens = Math.max(usage.estimatedTokens, Math.ceil((text.length + 64) / 4));
+    const reportedTotal =
+      data.usage?.total_tokens ??
+      ((data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0) || undefined);
+    const actualTokens =
+      typeof reportedTotal === "number" && Number.isFinite(reportedTotal) && reportedTotal > 0
+        ? Math.round(reportedTotal)
+        : estInputTokens + Math.max(8, Math.ceil(text.length / 4));
     return {
       provider: payload.provider,
       model: payload.model,
       content: text,
       estimatedTokens: actualTokens,
-      estimatedSpendUsdMicros: actualTokens * 2,
+      actualTokens,
+      estimatedSpendUsdMicros: estimateMicroUsdForModelTokens(payload.model, actualTokens),
+      usageSource: reportedTotal ? "PROVIDER_REPORTED" : "ESTIMATED",
+      pricingVerified: false,
     };
   } catch (err) {
     if (err instanceof GatewayError && err.statusCode >= 500) {

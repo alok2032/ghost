@@ -34,7 +34,7 @@ class OpenModelEngine(private val context: Context? = null) {
 
         val candidates = listOf(
             AiProviderType.LOCAL_OLLAMA to (ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: OLLAMA_DEFAULT_SERVING),
-            AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+            AiProviderType.OPENROUTER to ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL,
             AiProviderType.HUGGINGFACE to ExternalAiProviders.HF_QWEN_MODEL,
             AiProviderType.GROQ to ExternalAiProviders.GROQ_QWEN_MODEL,
             AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_QWEN_MODEL,

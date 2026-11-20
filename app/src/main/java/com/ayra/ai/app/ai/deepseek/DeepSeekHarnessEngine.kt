@@ -45,7 +45,7 @@ class DeepSeekHarnessEngine(private val context: Context? = null) {
                 prompt = prompt,
                 systemPrompt = systemPrompt,
                 preferredProvider = if (useDirectDeepSeek) AiProviderType.DEEPSEEK else null,
-                preferredModelId = if (useDirectDeepSeek) "deepseek-reasoner" else null
+                preferredModelId = if (useDirectDeepSeek) ExternalAiProviders.DEEPSEEK_REASONER_MODEL else null
             )
         } catch (e: CancellationException) {
             throw e

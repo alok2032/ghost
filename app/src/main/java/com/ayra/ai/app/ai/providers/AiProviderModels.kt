@@ -83,8 +83,12 @@ sealed class ProviderError(val displayMessage: String) : Exception(displayMessag
         ProviderError("Provider rate limit reached (HTTP 429). Please retry shortly or switch provider.")
     class Unauthorized(provider: AiProviderType) :
         ProviderError("Invalid or unauthorized API key for ${provider.displayName}. Please check Settings -> Keys.")
-    class ModelNotFound(val provider: AiProviderType, val modelId: String, details: String = "") :
-        ProviderError("Model '$modelId' unavailable on ${provider.displayName} (HTTP 404). ${details.take(120)}")
+    class ModelNotFound(
+        val provider: AiProviderType,
+        val modelId: String,
+        details: String = "",
+        val httpStatus: Int = 404
+    ) : ProviderError("Model '$modelId' unavailable on ${provider.displayName} (HTTP $httpStatus). ${details.take(120)}")
     class ServerError(code: Int, message: String) :
         ProviderError("Remote server error (HTTP $code): $message")
     class Timeout(message: String = "Request timed out while waiting for model inference.") :
@@ -171,10 +175,10 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> AyraPreferences.getEffectiveGeminiKey(c) }
         ),
         AiModelChannel(
-            id = "groq_llama_3_3",
+            id = "groq_qwen_3_8",
             provider = AiProviderType.GROQ,
-            modelId = ExternalAiProviders.GROQ_LLAMA_MODEL,
-            displayName = "Groq Llama 3.3 70B",
+            modelId = ExternalAiProviders.GROQ_QWEN_MODEL,
+            displayName = "Groq Qwen 3.8 27B",
             specialties = setOf("general", "fast", "coding", "reasoning", "education"),
             supportsVision = false,
             isReasoning = true,
@@ -182,13 +186,13 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> c?.let { AyraPreferences.getGroqKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "cerebras_llama_3_3",
+            id = "cerebras_gpt_oss",
             provider = AiProviderType.CEREBRAS,
             modelId = ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-            displayName = "Cerebras Llama 3.3 70B",
+            displayName = "Cerebras GPT-OSS 120B",
             specialties = setOf("general", "fast", "coding", "reasoning"),
             supportsVision = false,
-            isReasoning = false,
+            isReasoning = true,
             maxTokens = 4096,
             keyResolver = { c -> c?.let { AyraPreferences.getCerebrasKey(it) } ?: "" }
         ),
@@ -215,17 +219,6 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> c?.let { AyraPreferences.getHuggingFaceKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "github_models_gpt4o_mini",
-            provider = AiProviderType.GITHUB_MODELS,
-            modelId = ExternalAiProviders.GITHUB_GPT4O_MODEL,
-            displayName = "GitHub Models GPT-4o Mini",
-            specialties = setOf("general", "coding", "fast", "research"),
-            supportsVision = true,
-            isReasoning = false,
-            maxTokens = 4096,
-            keyResolver = { c -> c?.let { AyraPreferences.getGitHubModelsKey(it) } ?: "" }
-        ),
-        AiModelChannel(
             id = "gemini_gemma_4",
             provider = AiProviderType.GEMINI,
             modelId = ExternalAiProviders.GEMINI_GEMMA4_MODEL,
@@ -237,43 +230,43 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> AyraPreferences.getEffectiveGeminiKey(c) }
         ),
         AiModelChannel(
-            id = "openai_gpt4o",
+            id = "openai_gpt_6_2_sol",
             provider = AiProviderType.OPENAI,
-            modelId = "gpt-4o",
-            displayName = "OpenAI GPT-4o",
+            modelId = ExternalAiProviders.OPENAI_DEFAULT_MODEL,
+            displayName = "OpenAI GPT-6.2 Sol",
             specialties = setOf("general", "coding", "vision", "creative", "research", "document", "data"),
             supportsVision = true,
-            isReasoning = false,
-            maxTokens = 4096,
+            isReasoning = true,
+            maxTokens = 8192,
             keyResolver = { c -> c?.let { AyraPreferences.getOpenAiKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "anthropic_claude_3_7",
+            id = "anthropic_claude_5_5",
             provider = AiProviderType.ANTHROPIC,
-            modelId = "claude-sonnet-4-20250514",
-            displayName = "Claude Sonnet 4",
+            modelId = ExternalAiProviders.ANTHROPIC_SONNET_MODEL,
+            displayName = "Claude Sonnet 5.5",
             specialties = setOf("coding", "cyber", "reasoning", "document", "research", "vision"),
             supportsVision = true,
             isReasoning = true,
-            maxTokens = 4096,
+            maxTokens = 8192,
             keyResolver = { c -> c?.let { AyraPreferences.getAnthropicKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "deepseek_reasoner",
+            id = "deepseek_v4_pro",
             provider = AiProviderType.DEEPSEEK,
-            modelId = "deepseek-reasoner",
-            displayName = "DeepSeek R1",
+            modelId = ExternalAiProviders.DEEPSEEK_REASONER_MODEL,
+            displayName = "DeepSeek V4 Pro",
             specialties = setOf("math", "coding", "reasoning", "data", "cyber"),
             supportsVision = false,
             isReasoning = true,
-            maxTokens = 4096,
+            maxTokens = 8192,
             keyResolver = { c -> c?.let { AyraPreferences.getDeepSeekKey(it) } ?: "" }
         ),
         AiModelChannel(
             id = "perplexity_sonar",
             provider = AiProviderType.PERPLEXITY,
-            modelId = "sonar-reasoning",
-            displayName = "Perplexity Sonar",
+            modelId = ExternalAiProviders.PERPLEXITY_REASONING_MODEL,
+            displayName = "Perplexity Sonar Pro",
             specialties = setOf("research", "general", "education"),
             supportsVision = false,
             isReasoning = true,
@@ -294,18 +287,18 @@ internal object DefaultAiChannelRegistry {
         AiModelChannel(
             id = "xai_grok",
             provider = AiProviderType.XAI,
-            modelId = "grok-2-latest",
-            displayName = "xAI Grok 2",
+            modelId = ExternalAiProviders.XAI_DEFAULT_MODEL,
+            displayName = "xAI Grok 4.7",
             specialties = setOf("general", "research", "creative"),
             supportsVision = true,
-            isReasoning = false,
+            isReasoning = true,
             maxTokens = 4096,
             keyResolver = { c -> c?.let { AyraPreferences.getXAiKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "openrouter_auto",
+            id = "openrouter_free",
             provider = AiProviderType.OPENROUTER,
-            modelId = if (domainName == "CODING_AGENT") "qwen/qwen-2.5-coder-32b-instruct" else "openrouter/auto",
+            modelId = if (domainName == "CODING_AGENT") ExternalAiProviders.OPENROUTER_CODER_MODEL else ExternalAiProviders.OPENROUTER_DEFAULT_MODEL,
             displayName = "OpenRouter Multi-Model",
             specialties = setOf("general", "coding", "math", "reasoning", "creative"),
             supportsVision = true,
@@ -342,7 +335,7 @@ internal object DefaultAiChannelRegistry {
                 if (channelKeyOverrides.isNotEmpty()) {
                     channelKeyOverrides["pollinations_free_openai"] ?: ""
                 } else {
-                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
                     if (enabled) "free" else ""
                 }
             }
@@ -360,7 +353,7 @@ internal object DefaultAiChannelRegistry {
                 if (channelKeyOverrides.isNotEmpty()) {
                     channelKeyOverrides["pollinations_free_openai_large"] ?: ""
                 } else {
-                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
                     if (enabled) "free" else ""
                 }
             }
@@ -378,7 +371,7 @@ internal object DefaultAiChannelRegistry {
                 if (channelKeyOverrides.isNotEmpty()) {
                     channelKeyOverrides["pollinations_free_qwen_coder"] ?: ""
                 } else {
-                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
                     if (enabled) "free" else ""
                 }
             }
@@ -396,7 +389,7 @@ internal object DefaultAiChannelRegistry {
                 if (channelKeyOverrides.isNotEmpty()) {
                     channelKeyOverrides["pollinations_free_deepseek"] ?: ""
                 } else {
-                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+                    val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
                     if (enabled) "free" else ""
                 }
             }

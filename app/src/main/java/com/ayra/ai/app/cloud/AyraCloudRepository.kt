@@ -91,7 +91,8 @@ class AyraCloudRepository(
 
     private fun isCloudSyncSuppressed(): Boolean {
         val ctx = appContext ?: return false
-        return AyraPreferences.isLocalOnlyAiModeEnabled(ctx)
+        return AyraPreferences.isLocalOnlyAiModeEnabled(ctx) ||
+            !AyraPreferences.isCloudSyncEnabled(ctx)
     }
 
     fun resolveEffectiveSyncMode(): CloudSyncMode {

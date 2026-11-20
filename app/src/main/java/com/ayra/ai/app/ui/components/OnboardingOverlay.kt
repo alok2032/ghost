@@ -78,6 +78,8 @@ fun OnboardingOverlay(
     val uiConfig = LocalAyraUiConfig.current
     var step by rememberSaveable { mutableIntStateOf(0) }
     var localOnlyEnabled by remember { mutableStateOf(AyraPreferences.isLocalOnlyAiModeEnabled(context)) }
+    var externalAiConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
+    var freePoolEnabled by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
 
     val steps = remember {
         listOf(
@@ -308,8 +310,86 @@ fun OnboardingOverlay(
                                             onCheckedChange = { checked ->
                                                 localOnlyEnabled = checked
                                                 AyraPreferences.setLocalOnlyAiModeEnabled(context, checked)
+                                                if (checked) {
+                                                    freePoolEnabled = false
+                                                }
                                             },
                                             modifier = Modifier.testTag("onboarding_local_only_switch")
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "External Cloud AI Consent (Opt-In)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = "Allow prompts to reach cloud models (Gemini, OpenAI, Anthropic, Groq) when Local-Only is off",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Switch(
+                                            checked = externalAiConsent,
+                                            onCheckedChange = { checked ->
+                                                externalAiConsent = checked
+                                                AyraPreferences.setExternalAiConsent(context, checked)
+                                                if (!checked) {
+                                                    freePoolEnabled = false
+                                                    AyraPreferences.setFreeAiPoolEnabled(context, false)
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("onboarding_external_consent_switch")
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Public Free AI Pool (Opt-In)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = "Use anonymous community specialists when you have not added personal API keys",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Switch(
+                                            checked = freePoolEnabled,
+                                            enabled = !localOnlyEnabled && externalAiConsent,
+                                            onCheckedChange = { checked ->
+                                                freePoolEnabled = checked
+                                                AyraPreferences.setFreeAiPoolEnabled(context, checked)
+                                            },
+                                            modifier = Modifier.testTag("onboarding_free_pool_switch")
                                         )
                                     }
                                 }

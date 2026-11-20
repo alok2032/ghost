@@ -211,17 +211,16 @@ class ProviderPool @JvmOverloads constructor(
 
         // 2. Domain Classification & Specialist Channel Ranking (filtered by Zero-Trust route policy)
         val domain = AyraAgentOrchestrator.classifyIntent(request.prompt)
-        val isLocalOnlyMode = externalProviders.allowExternalWikiGrounding &&
-            context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } == true
+        val isLocalOnlyMode = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } == true
         val channels = externalProviders.getActiveChannels(
             domainName = domain.name,
             hasImage = !request.imageBase64.isNullOrBlank()
         ).filter { ch ->
-            !externalProviders.allowExternalWikiGrounding ||
+            externalProviders.isTestHarnessMode ||
                 com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, ch.provider).allowed
         }
         val availableProviders = getAvailableProviders().filter { p ->
-            !externalProviders.allowExternalWikiGrounding ||
+            externalProviders.isTestHarnessMode ||
                 com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, p).allowed
         }
 

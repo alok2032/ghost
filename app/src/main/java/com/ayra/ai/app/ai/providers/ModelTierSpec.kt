@@ -177,9 +177,9 @@ enum class ModelTier(
             GEMINI_PRO -> AiProviderType.GEMINI to ExternalAiProviders.GEMINI_PRO_MODEL
             DEEPSEEK_HARNESS, OPENROUTER_DEEPSEEK -> {
                 listOf(
-                    AiProviderType.DEEPSEEK to "deepseek-reasoner",
+                    AiProviderType.DEEPSEEK to ExternalAiProviders.DEEPSEEK_REASONER_MODEL,
                     AiProviderType.SAMBANOVA to ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL,
-                    AiProviderType.OPENROUTER to "deepseek/deepseek-r1:free"
+                    AiProviderType.OPENROUTER to ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL
                 ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
             }
             OPENROUTER_LLAMA -> {
@@ -187,13 +187,13 @@ enum class ModelTier(
                     AiProviderType.GROQ to ExternalAiProviders.GROQ_LLAMA_MODEL,
                     AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
                     AiProviderType.SAMBANOVA to ExternalAiProviders.SAMBANOVA_LLAMA_MODEL,
-                    AiProviderType.OPENROUTER to "meta-llama/llama-3.3-70b-instruct:free"
+                    AiProviderType.OPENROUTER to ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
                 ).firstOrNull { externalProviders.isProviderConfigured(it.first) } ?: (null to null)
             }
             OPEN_WEIGHTS -> {
                 listOf(
                     AiProviderType.LOCAL_OLLAMA to OpenModelEngine.OLLAMA_DEFAULT_SERVING,
-                    AiProviderType.OPENROUTER to "qwen/qwen-2.5-72b-instruct",
+                    AiProviderType.OPENROUTER to ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL,
                     AiProviderType.HUGGINGFACE to ExternalAiProviders.HF_QWEN_MODEL,
                     AiProviderType.GROQ to ExternalAiProviders.GROQ_QWEN_MODEL,
                     AiProviderType.CEREBRAS to ExternalAiProviders.CEREBRAS_QWEN_MODEL

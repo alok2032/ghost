@@ -22,9 +22,14 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
         run: |
           node <<'EOF'
           import fs from "node:fs";
+          import path from "node:path";
 
           const deadLines = fs.readFileSync("config/dead-models.txt", "utf8")
             .split("\n")
@@ -32,33 +37,46 @@ jobs:
             .filter((l) => l && !l.startsWith("#"))
             .map((p) => new RegExp(p));
 
-          const catalogSrc = fs.readFileSync("app/src/main/java/com/ayra/ai/app/ai/providers/ModelCatalog.kt", "utf8");
-          const providersSrc = fs.readFileSync("app/src/main/java/com/ayra/ai/app/ai/providers/ExternalAiProviders.kt", "utf8");
+          function walkKt(dir, out = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walkKt(full, out);
+              else if (entry.name.endsWith(".kt")) out.push(full);
+            }
+            return out;
+          }
 
           const literals = new Set();
-          for (const m of (catalogSrc + "\n" + providersSrc).matchAll(/"([a-zA-Z0-9._:/-]+)"/g)) {
-            literals.add(m[1]);
+          for (const file of walkKt("app/src/main/java")) {
+            const src = fs.readFileSync(file, "utf8");
+            for (const m of src.matchAll(/"([a-zA-Z0-9._:/-]+)"/g)) {
+              literals.add(`${file}:${m[1]}`);
+            }
           }
 
           const deadHits = [];
-          for (const id of literals) {
+          for (const entry of literals) {
+            const idx = entry.indexOf(":");
+            const file = entry.slice(0, idx);
+            const id = entry.slice(idx + 1);
             if (deadLines.some((re) => re.test(id))) {
-              deadHits.push(id);
+              deadHits.push(`${file} -> ${id}`);
             }
           }
 
           const liveFindings = [];
-          async function checkOpenAiCompat(name, url, key) {
+          async function checkOpenAiCompat(name, url, key, sampleCheck = [], extraHeaders = {}) {
             if (!key) return;
             try {
-              const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+              const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${key}`, ...extraHeaders }
+              });
               if (!res.ok) {
                 liveFindings.push(`${name}: /models returned HTTP ${res.status}`);
                 return;
               }
               const body = await res.json();
               const available = new Set((body.data || []).map((x) => x.id));
-              const sampleCheck = name === "OpenAI" ? ["gpt-4o", "gpt-4o-mini"] : name === "Groq" ? ["llama-3.3-70b-versatile"] : [];
               for (const expected of sampleCheck) {
                 if (!available.has(expected)) {
                   liveFindings.push(`${name}: baseline model '${expected}' missing from live /models`);
@@ -69,14 +87,64 @@ jobs:
             }
           }
 
-          await checkOpenAiCompat("OpenAI", "https://api.openai.com/v1/models", process.env.OPENAI_API_KEY);
-          await checkOpenAiCompat("Groq", "https://api.groq.com/openai/v1/models", process.env.GROQ_API_KEY);
-          await checkOpenAiCompat("OpenRouter", "https://openrouter.ai/api/v1/models", process.env.OPENROUTER_API_KEY);
+          async function checkGemini(key) {
+            if (!key) return;
+            try {
+              const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+                headers: { "x-goog-api-key": key }
+              });
+              if (!res.ok) {
+                liveFindings.push(`Gemini: /v1beta/models returned HTTP ${res.status}`);
+                return;
+              }
+              const body = await res.json();
+              const available = new Set((body.models || []).map((x) => String(x.name || "").replace(/^models\//, "")));
+              for (const expected of ["gemini-3.8-flash", "gemini-4-argon"]) {
+                if (!available.has(expected)) {
+                  liveFindings.push(`Gemini: baseline model '${expected}' missing from live /models`);
+                }
+              }
+            } catch (err) {
+              liveFindings.push(`Gemini: probe failed (${err.message})`);
+            }
+          }
+
+          async function checkAnthropic(key) {
+            if (!key) return;
+            try {
+              const res = await fetch("https://api.anthropic.com/v1/models", {
+                headers: { "x-api-key": key, "anthropic-version": "2023-06-01" }
+              });
+              if (!res.ok) {
+                liveFindings.push(`Anthropic: /v1/models returned HTTP ${res.status}`);
+                return;
+              }
+              const body = await res.json();
+              const available = new Set((body.data || []).map((x) => x.id));
+              for (const expected of ["claude-sonnet-5-5", "claude-haiku-5-5"]) {
+                if (!available.has(expected)) {
+                  liveFindings.push(`Anthropic: baseline model '${expected}' missing from live /models`);
+                }
+              }
+            } catch (err) {
+              liveFindings.push(`Anthropic: probe failed (${err.message})`);
+            }
+          }
+
+          await Promise.all([
+            checkGemini(process.env.GEMINI_API_KEY),
+            checkAnthropic(process.env.ANTHROPIC_API_KEY),
+            checkOpenAiCompat("OpenAI", "https://api.openai.com/v1/models", process.env.OPENAI_API_KEY, ["gpt-6.2-sol", "gpt-6-luna"]),
+            checkOpenAiCompat("Groq", "https://api.groq.com/openai/v1/models", process.env.GROQ_API_KEY, ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]),
+            checkOpenAiCompat("DeepSeek", "https://api.deepseek.com/v1/models", process.env.DEEPSEEK_API_KEY, ["deepseek-flash", "deepseek-v4-pro"]),
+            checkOpenAiCompat("xAI", "https://api.x.ai/v1/models", process.env.XAI_API_KEY, ["grok-4.7"]),
+            checkOpenAiCompat("OpenRouter", "https://openrouter.ai/api/v1/models", process.env.OPENROUTER_API_KEY, ["openrouter/free", "qwen/qwen3.8-27b:free"])
+          ]);
 
           const hasDrift = deadHits.length > 0 || liveFindings.length > 0;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_drift=${hasDrift}\n`);
           const report = [
-            `Dead model hits in catalog: ${deadHits.length ? deadHits.join(", ") : "none"}`,
+            `Dead model hits in app/src/main/java: ${deadHits.length ? deadHits.join(", ") : "none"}`,
             `Live /models drift findings: ${liveFindings.length ? liveFindings.join("; ") : "none (or no provider API secrets configured)"}`
           ].join("\n");
           fs.writeFileSync("/tmp/model_drift_report.txt", report);

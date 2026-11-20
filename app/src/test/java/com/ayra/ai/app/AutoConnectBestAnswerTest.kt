@@ -58,14 +58,24 @@ class AutoConnectBestAnswerTest {
     }
 
     @Test
-    fun freshInstallAutoConnectsBuiltInAiEnginesWithZeroManualSetup() {
-        // Fresh preferences: zero BYOK keys saved
-        assertTrue("Free AI Pool must be auto-enabled out of the box", AyraPreferences.isFreeAiPoolEnabled(context))
-        assertTrue("Free AI Pool consent must default to true when external consent is on", AyraPreferences.hasFreePoolConsent(context))
-        assertTrue("Zero-friction launch must skip blocking first-run wizard", AyraPreferences.isOnboardingCompleted(context))
+    fun freshInstallFailsClosedUntilExplicitOptInAndLocalOnlyBlocksExternal() {
+        // Fresh preferences (Phase 12 fail-closed defaults): external pool & sync disabled until opted in
+        assertFalse("Fresh install must fail-closed on external consent", AyraPreferences.hasExternalAiConsent(context))
+        assertFalse("Free AI Pool must remain disabled until user opts in", AyraPreferences.isFreeAiPoolEnabled(context))
+        assertFalse("Free AI Pool consent must default to false", AyraPreferences.hasFreePoolConsent(context))
+        assertFalse("First-run onboarding must not be skipped silently", AyraPreferences.isOnboardingCompleted(context))
+        assertFalse("Cloud sync must fail-closed out of the box", AyraPreferences.isCloudSyncEnabled(context))
 
         val ext = ExternalAiProviders(context)
-        assertTrue("App must be immediately chat-ready without BYOK keys", ext.hasAnyConfiguredProvider())
+        assertFalse("App must not send traffic externally before opt-in", ext.hasAnyConfiguredProvider())
+        assertTrue("Active channels must be empty before external consent", ext.getActiveChannels().isEmpty())
+
+        // Explicit user opt-in activates built-in Free AI Pool channels cleanly
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setFreeAiPoolEnabled(context, true)
+        assertTrue("Opted-in Free AI Pool must enable channels", AyraPreferences.isFreeAiPoolEnabled(context))
+        assertTrue("Opted-in Free AI Pool consent must be true", AyraPreferences.hasFreePoolConsent(context))
+        assertTrue("Opted-in app must have active channels", ext.hasAnyConfiguredProvider())
 
         val channels = ext.getActiveChannels()
         val channelIds = channels.map { it.id }.toSet()
@@ -81,6 +91,9 @@ class AutoConnectBestAnswerTest {
 
     @Test
     fun localOnlyModeAndRevokedConsentFailClosedImmediately() {
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setFreeAiPoolEnabled(context, true)
+
         val ext = ExternalAiProviders(context)
         assertTrue(ext.hasAnyConfiguredProvider())
 
@@ -124,7 +137,8 @@ class AutoConnectBestAnswerTest {
             displayName = "Qwen Coder",
             specialties = setOf("coding", "math"),
             supportsVision = false,
-            isReasoning = true
+            isReasoning = true,
+            keyResolver = { "" }
         )
         val genericChannel = AiModelChannel(
             id = "generic_chat",
@@ -132,7 +146,8 @@ class AutoConnectBestAnswerTest {
             modelId = "gpt-4o-mini",
             displayName = "Generic Chat",
             specialties = setOf("general"),
-            supportsVision = false
+            supportsVision = false,
+            keyResolver = { "" }
         )
         val brokenChannel = AiModelChannel(
             id = "broken_channel",
@@ -140,7 +155,8 @@ class AutoConnectBestAnswerTest {
             modelId = "deepseek-chat",
             displayName = "Broken Model",
             specialties = setOf("coding"),
-            supportsVision = false
+            supportsVision = false,
+            keyResolver = { "" }
         )
 
         val goodBengaliCodeDraft = """

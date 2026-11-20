@@ -20,6 +20,31 @@ internal data class ProcessedDocumentAttachment(
 
 internal object ChatScreenMediaHelper {
 
+    val SUPPORTED_DOCUMENT_MIME_TYPES = arrayOf(
+        "application/pdf",
+        "text/*",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/json"
+    )
+
+    fun shouldShowContactsBanner(
+        context: Context,
+        pendingAction: com.ayra.ai.app.automation.ProposedAction?
+    ): Boolean {
+        val unresolved = when (pendingAction) {
+            is com.ayra.ai.app.automation.ProposedAction.DirectCall -> pendingAction.phoneNumber.none { it.isDigit() }
+            is com.ayra.ai.app.automation.ProposedAction.SendSms -> pendingAction.phoneNumber.none { it.isDigit() }
+            else -> false
+        }
+        return unresolved &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
     fun permissionRationaleFor(permission: String): Triple<String, String, String> = when (permission) {
         Manifest.permission.RECORD_AUDIO -> Triple(
             "Microphone Access for Voice AI",

@@ -118,7 +118,7 @@ object AiModelRegistry {
                 return if (firebaseReady) ModelHealthStatus.UNKNOWN else ModelHealthStatus.OFFLINE
             }
             if (provider == AiProviderType.POLLINATIONS_FREE) {
-                val enabled = context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: true
+                val enabled = context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
                 return if (enabled) ModelHealthStatus.UNKNOWN else ModelHealthStatus.UNCONFIGURED
             }
             val configured = ext?.isProviderConfigured(provider) ?: false
@@ -199,27 +199,27 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
-                id = "groq_llama_3_3_70b",
+                id = "groq_qwen_3_8_27b",
                 provider = AiProviderType.GROQ,
-                modelId = ExternalAiProviders.GROQ_LLAMA_MODEL,
-                displayName = "Groq Llama 3.3 70B Versatile",
-                category = ModelCategory.GENERAL,
+                modelId = ExternalAiProviders.GROQ_QWEN_MODEL,
+                displayName = "Groq Qwen 3.8 27B",
+                category = ModelCategory.REASONING,
                 endpoint = "https://api.groq.com/openai/v1/chat/completions",
                 authRequirement = "Bearer API Key (Free Console)",
                 tierStatus = ProviderTierStatus.FREE_TIER_API,
                 rateLimitNote = "30 RPM / 14.4K RPD free tier",
-                contextWindow = "128k tokens",
+                contextWindow = "131k tokens",
                 supportsStreaming = true,
                 supportsVision = false,
                 supportsToolCalling = true,
-                modelVersion = "3.3-70b",
+                modelVersion = "qwen3.8-27b",
                 healthStatus = statusFor(AiProviderType.GROQ)
             ),
             RegistryModelEntry(
-                id = "cerebras_llama_3_3_70b",
+                id = "cerebras_gpt_oss_120b",
                 provider = AiProviderType.CEREBRAS,
                 modelId = ExternalAiProviders.CEREBRAS_LLAMA_MODEL,
-                displayName = "Cerebras Llama 3.3 70B",
+                displayName = "Cerebras GPT-OSS 120B",
                 category = ModelCategory.GENERAL,
                 endpoint = "https://api.cerebras.ai/v1/chat/completions",
                 authRequirement = "Bearer API Key (Free Tier)",
@@ -229,7 +229,7 @@ object AiModelRegistry {
                 supportsStreaming = true,
                 supportsVision = false,
                 supportsToolCalling = true,
-                modelVersion = "3.3-70b",
+                modelVersion = "gpt-oss-120b",
                 healthStatus = statusFor(AiProviderType.CEREBRAS)
             ),
             RegistryModelEntry(
@@ -285,21 +285,23 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.HUGGINGFACE)
             ),
             RegistryModelEntry(
-                id = "github_models_gpt4o_mini",
+                id = "github_models_retired",
                 provider = AiProviderType.GITHUB_MODELS,
-                modelId = ExternalAiProviders.GITHUB_GPT4O_MODEL,
-                displayName = "GitHub Models GPT-4o Mini",
+                modelId = ExternalAiProviders.GITHUB_RETIRED_MODEL,
+                displayName = "GitHub Models (Azure Inference Retired)",
                 category = ModelCategory.CODING,
                 endpoint = "https://models.inference.ai.azure.com/chat/completions",
-                authRequirement = "GitHub PAT (models:read)",
+                authRequirement = "Retired 2026-07-30",
                 tierStatus = ProviderTierStatus.FREE_TIER_API,
-                rateLimitNote = "Free GitHub Models rate limit",
+                rateLimitNote = "Azure inference endpoint shut down 2026-07-30",
                 contextWindow = "128k tokens",
-                supportsStreaming = true,
-                supportsVision = true,
-                supportsToolCalling = true,
-                modelVersion = "gpt-4o-mini",
-                healthStatus = statusFor(AiProviderType.GITHUB_MODELS)
+                supportsStreaming = false,
+                supportsVision = false,
+                supportsToolCalling = false,
+                modelVersion = "retired",
+                healthStatus = ModelHealthStatus.OFFLINE,
+                verificationStatus = ModelVerificationStatus.RETIRED,
+                failureReason = "models.inference.ai.azure.com shut down 2026-07-30"
             ),
             RegistryModelEntry(
                 id = "nim_minimax_m3_1",
@@ -336,9 +338,9 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.NVIDIA_NIM)
             ),
             RegistryModelEntry(
-                id = "openrouter_auto",
+                id = "openrouter_free",
                 provider = AiProviderType.OPENROUTER,
-                modelId = "openrouter/auto",
+                modelId = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL,
                 displayName = "OpenRouter Universal Gateway",
                 category = ModelCategory.RESEARCH,
                 endpoint = "https://openrouter.ai/api/v1/chat/completions",
@@ -349,31 +351,31 @@ object AiModelRegistry {
                 supportsStreaming = true,
                 supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "auto",
+                modelVersion = "free",
                 healthStatus = statusFor(AiProviderType.OPENROUTER)
             ),
             RegistryModelEntry(
-                id = "openai_gpt4o",
+                id = "openai_gpt_6_2_sol",
                 provider = AiProviderType.OPENAI,
-                modelId = "gpt-4o",
-                displayName = "OpenAI GPT-4o",
+                modelId = ExternalAiProviders.OPENAI_DEFAULT_MODEL,
+                displayName = "OpenAI GPT-6.2 Sol",
                 category = ModelCategory.GENERAL,
                 endpoint = "https://api.openai.com/v1/chat/completions",
                 authRequirement = "OpenAI API Key",
                 tierStatus = ProviderTierStatus.PAID_API,
                 rateLimitNote = "Pay-as-you-go OpenAI tier",
-                contextWindow = "128k tokens",
+                contextWindow = "256k tokens",
                 supportsStreaming = true,
                 supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "gpt-4o",
+                modelVersion = "gpt-6.2-sol",
                 healthStatus = statusFor(AiProviderType.OPENAI)
             ),
             RegistryModelEntry(
-                id = "anthropic_claude_3_7",
+                id = "anthropic_claude_5_5",
                 provider = AiProviderType.ANTHROPIC,
-                modelId = "claude-sonnet-4-20250514",
-                displayName = "Anthropic Claude Sonnet 4",
+                modelId = ExternalAiProviders.ANTHROPIC_SONNET_MODEL,
+                displayName = "Anthropic Claude Sonnet 5.5",
                 category = ModelCategory.CODING,
                 endpoint = "https://api.anthropic.com/v1/messages",
                 authRequirement = "Anthropic API Key",
@@ -383,24 +385,24 @@ object AiModelRegistry {
                 supportsStreaming = true,
                 supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "sonnet-4",
+                modelVersion = "sonnet-5.5",
                 healthStatus = statusFor(AiProviderType.ANTHROPIC)
             ),
             RegistryModelEntry(
-                id = "deepseek_r1",
+                id = "deepseek_v4_pro",
                 provider = AiProviderType.DEEPSEEK,
-                modelId = "deepseek-reasoner",
-                displayName = "DeepSeek R1 Reasoner",
+                modelId = ExternalAiProviders.DEEPSEEK_REASONER_MODEL,
+                displayName = "DeepSeek V4 Pro",
                 category = ModelCategory.REASONING,
                 endpoint = "https://api.deepseek.com/chat/completions",
                 authRequirement = "DeepSeek API Key",
                 tierStatus = ProviderTierStatus.PAID_API,
                 rateLimitNote = "Pay-as-you-go DeepSeek tier",
-                contextWindow = "64k tokens",
+                contextWindow = "128k tokens",
                 supportsStreaming = true,
                 supportsVision = false,
-                supportsToolCalling = false,
-                modelVersion = "r1",
+                supportsToolCalling = true,
+                modelVersion = "v4-pro",
                 healthStatus = statusFor(AiProviderType.DEEPSEEK)
             ),
             RegistryModelEntry(
@@ -566,12 +568,12 @@ object AiModelRegistry {
                     )
                 }
             } else {
-                // Avoid costly Blaze-only image/argon test pings unless user triggers generation; report configured status honestly
+                // Avoid costly Blaze-only image/argon test pings unless user triggers generation; never claim OPERATIONAL without probing
                 return@withContext entry.copy(
-                    healthStatus = ModelHealthStatus.OPERATIONAL,
+                    healthStatus = ModelHealthStatus.UNKNOWN,
                     latencyMs = null,
                     lastCheckedMs = now,
-                    lastError = "Firebase initialized (Blaze required on call)"
+                    lastError = "Configured (Blaze required on call — unprobed)"
                 )
             }
         }
@@ -640,15 +642,19 @@ object AiModelRegistry {
             val status = if (e is ProviderError.RateLimited) ModelHealthStatus.DEGRADED else ModelHealthStatus.OFFLINE
             val httpStatus = when (e) {
                 is ProviderError.RateLimited -> 429
-                is ProviderError.ModelNotFound -> 404
+                is ProviderError.ModelNotFound -> e.httpStatus
                 else -> 503
             }
-            ModelCatalog.markModelUnavailable(
-                entry.provider,
-                entry.modelId,
-                httpStatus,
-                e.message ?: "Connection failed"
-            )
+            if (httpStatus == 410) {
+                ModelCatalog.markModelRetired(entry.provider, entry.modelId, e.message ?: "Model retired")
+            } else {
+                ModelCatalog.markModelUnavailable(
+                    entry.provider,
+                    entry.modelId,
+                    httpStatus,
+                    e.message ?: "Connection failed"
+                )
+            }
             entry.copy(
                 healthStatus = status,
                 lastCheckedMs = now,

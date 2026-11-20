@@ -328,14 +328,14 @@ class DefaultAgentToolRegistry(private val context: Context) : AgentToolRegistry
 
     private fun reminderScheduleTool() = object : AgentTool {
         override val name = "reminder_schedule"
-        override val description = "Schedule a local reminder prompt in Ayra AI Scheduler."
+        override val description = "Schedule a local reminder prompt ONLY in Ayra AI Scheduler."
         override val parametersSchemaJson = """{"type":"object","properties":{"prompt":{"type":"string"}},"required":["prompt"]}"""
         override val isExternal = false
         override val requiresConfirmation = false
         override suspend fun execute(args: JSONObject): AgentToolOutput {
             val p = args.optString("prompt", "").trim()
             if (p.isBlank()) return AgentToolOutput(false, "Reminder text missing.")
-            val res = AyraTaskScheduler(context).scheduleTaskFromPrompt(p)
+            val res = AyraTaskScheduler(context).scheduleReminderOnly(p)
             return AgentToolOutput(res.executed, res.feedbackMessage, craftType = res.actionType, craftPayload = res.extraData)
         }
     }
