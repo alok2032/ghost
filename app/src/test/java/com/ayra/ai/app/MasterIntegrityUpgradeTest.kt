@@ -47,6 +47,7 @@ class MasterIntegrityUpgradeTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        AyraPreferences.clearAllPreferences(context)
         server = MockWebServer()
         server.start()
         ProviderPool(context).clearCache()
@@ -57,6 +58,7 @@ class MasterIntegrityUpgradeTest {
     fun tearDown() {
         ProviderPool(context).clearCache()
         UnifiedAiEngine.clearCache()
+        AyraPreferences.clearAllPreferences(context)
         runCatching { server.shutdown() }
     }
 
@@ -226,16 +228,35 @@ class MasterIntegrityUpgradeTest {
 
     @Test
     fun testProviderPoolPropagatesCancellationCleanly() = runBlocking {
-        val pool = ProviderPool(context)
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBodyDelay(5, java.util.concurrent.TimeUnit.SECONDS)
+                .setBody("""{"choices":[{"message":{"role":"assistant","content":"late response"}}]}""")
+        )
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
+        val ext = com.ayra.ai.app.ai.providers.ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(
+                com.ayra.ai.app.ai.providers.AiProviderType.OPENAI to server.url("/").toString()
+            ),
+            customHttpClient = okhttp3.OkHttpClient(),
+            channelKeyOverrides = mapOf(
+                com.ayra.ai.app.ai.providers.AiProviderType.OPENAI.id to "sk-cancel-test"
+            )
+        )
+        val pool = ProviderPool(context, ext)
         val deferred = async {
             pool.executeSync(
                 ChatRequest(
                     prompt = "Hello",
+                    preferredProvider = com.ayra.ai.app.ai.providers.AiProviderType.OPENAI,
                     systemPromptOverride = "be brief"
                 )
             )
         }
-        delay(5)
+        delay(50)
         deferred.cancel(CancellationException("cancelled by test"))
         var threwCancellation = false
         try {
