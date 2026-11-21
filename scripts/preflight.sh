@@ -131,6 +131,14 @@ else
   ok "no legacy qwen_uncensored/godmode aliases outside preference migration"
 fi
 
+DEAD_ENDPOINTS=$(MAIN_KT | xargs grep -nF 'models.inference.ai.azure.com' 2>/dev/null || true)
+if [ -n "$DEAD_ENDPOINTS" ]; then
+  fail "shut-down Azure GitHub Models endpoint referenced in app/src/main:"
+  echo "$DEAD_ENDPOINTS" | sed 's/^/        /'
+else
+  ok "no dead Azure GitHub Models endpoints in app/src/main"
+fi
+
 # ---------------------------------------------------------------- 5
 section "5. Credential Transport (No API Keys in URLs)"
 KEY_IN_URL=$(MAIN_KT | xargs grep -nE '([?&]|\{?[A-Za-z_]+\}?)key=(\$|\{)' 2>/dev/null || true)

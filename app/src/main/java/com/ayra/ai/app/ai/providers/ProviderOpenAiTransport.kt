@@ -37,7 +37,12 @@ internal object ProviderOpenAiTransport {
             AiProviderType.CEREBRAS -> "https://api.cerebras.ai/v1/"
             AiProviderType.SAMBANOVA -> "https://api.sambanova.ai/v1/"
             AiProviderType.HUGGINGFACE -> "https://router.huggingface.co/v1/"
-            AiProviderType.GITHUB_MODELS -> "https://models.inference.ai.azure.com/"
+            AiProviderType.GITHUB_MODELS -> throw ProviderError.ModelNotFound(
+                provider,
+                "github-models",
+                "GitHub Models Azure inference endpoint was retired on 2026-07-30.",
+                httpStatus = 410
+            )
             AiProviderType.OPENAI -> "https://api.openai.com/v1/"
             AiProviderType.DEEPSEEK -> "https://api.deepseek.com/"
             AiProviderType.XAI -> "https://api.x.ai/v1/"
@@ -383,11 +388,12 @@ internal object ProviderOpenAiTransport {
             val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: root.optJSONArray("models") ?: JSONArray()
             for (i in 0 until data.length()) {
-                val obj = data.getJSONObject(i)
-                val modelId = obj.optString("id", obj.optString("name", ""))
-                if (modelId.isNotBlank()) {
-                    val isVision = modelId.contains("vision") || modelId.contains("4o") || modelId.contains("pixtral") || modelId.contains("minimax")
-                    val isReasoning = modelId.contains("r1") || modelId.contains("o1") || modelId.contains("o3") || modelId.contains("reasoner") || modelId.contains("glm") || modelId.contains("gemma")
+                val obj = data.optJSONObject(i) ?: continue
+                val modelId = obj.optString("id", obj.optString("name", "")).trim()
+                if (modelId.isNotBlank() && !shouldSkipDiscoveredModel(modelId)) {
+                    val lower = modelId.lowercase()
+                    val isVision = lower.contains("vision") || lower.contains("4o") || lower.contains("pixtral") || lower.contains("minimax") || lower.contains("gpt-6") || lower.contains("gemma")
+                    val isReasoning = lower.contains("r1") || lower.contains("o1") || lower.contains("o3") || lower.contains("reasoner") || lower.contains("glm") || lower.contains("gemma") || lower.contains("astra") || lower.contains("v4-pro")
                     out.add(
                         AiModelInfo(
                             id = modelId,
@@ -403,5 +409,18 @@ internal object ProviderOpenAiTransport {
                 }
             }
         }
+    }
+
+    internal fun shouldSkipDiscoveredModel(modelId: String): Boolean {
+        val lower = modelId.trim().lowercase()
+        if (lower.isBlank()) return true
+        val nonChatPrefixes = listOf(
+            "whisper", "tts-", "dall-e", "text-embedding", "embedding-",
+            "omni-moderation", "text-moderation", "babbage-", "davinci-",
+            "sora-", "canary-"
+        )
+        if (nonChatPrefixes.any { lower.startsWith(it) || lower.contains("/$it") }) return true
+        if (lower.contains("realtime") || lower.contains("transcribe") || lower.contains("audio-preview")) return true
+        return false
     }
 }

@@ -4,11 +4,13 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.ayra.ai.app.ai.UnifiedAiEngine
 import com.ayra.ai.app.ai.agent.AgentEvent
 import com.ayra.ai.app.ai.agent.AgentRequest
 import com.ayra.ai.app.ai.agent.DefaultAgentCore
 import com.ayra.ai.app.ai.agent.DefaultAgentToolRegistry
 import com.ayra.ai.app.ai.agent.StepStatus
+import com.ayra.ai.app.ai.providers.AiModelInfo
 import com.ayra.ai.app.ai.providers.AiModelRegistry
 import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
@@ -22,6 +24,7 @@ import com.ayra.ai.app.cloud.AyraCloudRepository
 import com.ayra.ai.app.cloud.CloudSyncMode
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.data.ScheduledTask
 import com.ayra.ai.app.security.SecureAiGatewayClient
 import com.ayra.ai.app.security.SecureKeyStore
@@ -59,6 +62,8 @@ class SecurityAndModelUpgradeRegressionTest {
         AyraPreferences.clearAllPreferences(context)
         SecureKeyStore.clearAllSecrets(context)
         ModelCatalog.clearRuntimeHealth()
+        ExternalAiProviders.clearDynamicModelCacheForTesting()
+        UnifiedAiEngine.clearCache()
         ChatDatabase.closeDatabaseForMaintenance()
         server = MockWebServer()
         server.start()
@@ -69,6 +74,8 @@ class SecurityAndModelUpgradeRegressionTest {
         runCatching { server.shutdown() }
         ChatDatabase.closeDatabaseForMaintenance()
         ModelCatalog.clearRuntimeHealth()
+        ExternalAiProviders.clearDynamicModelCacheForTesting()
+        UnifiedAiEngine.clearCache()
         AyraPreferences.clearAllPreferences(context)
         SecureKeyStore.clearAllSecrets(context)
     }
@@ -340,5 +347,117 @@ class SecurityAndModelUpgradeRegressionTest {
         val pinged = AiModelRegistry.pingEntry(context, argonEntry)
         assertEquals(ModelHealthStatus.UNKNOWN, pinged.healthStatus)
         assertTrue(pinged.lastError.orEmpty().contains("unprobed", ignoreCase = true))
+    }
+
+    @Test
+    fun phase2_githubModelsRemovedFromRegistryDiscoveryFiltersNonChatAndCatalogTtlExpires() = runBlocking {
+        val registryEntries = AiModelRegistry.buildInitialCatalog(context)
+        assertTrue(
+            "Expected no retired GITHUB_MODELS entry in active registry",
+            registryEntries.none { it.provider == AiProviderType.GITHUB_MODELS }
+        )
+        assertTrue(
+            "Expected no dead Azure inference endpoint in registry",
+            registryEntries.none { it.endpoint.contains("models.inference.ai.azure.com", ignoreCase = true) }
+        )
+
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setOpenAiKey(context, "sk-proj-test-discovery")
+
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"data":[
+                    {"id":"gpt-6.2-sol"},
+                    {"id":"whisper-1"},
+                    {"id":"tts-1"},
+                    {"id":"dall-e-3"},
+                    {"id":"text-embedding-3-large"},
+                    {"id":"gpt-6-luna"}
+                ]}"""
+            )
+        )
+
+        val providers = ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(AiProviderType.OPENAI to server.url("/v1/").toString()),
+            customHttpClient = OkHttpClient()
+        )
+        val discovered = providers.discoverDynamicModels(AiProviderType.OPENAI)
+        val ids = discovered.map { it.id }
+        assertTrue(ids.contains("gpt-6.2-sol"))
+        assertTrue(ids.contains("gpt-6-luna"))
+        assertFalse(ids.contains("whisper-1"))
+        assertFalse(ids.contains("tts-1"))
+        assertFalse(ids.contains("dall-e-3"))
+        assertFalse(ids.contains("text-embedding-3-large"))
+
+        // Catalog TTL expiration prunes stale discovered-only VERIFIED_LIVE entries
+        ModelCatalog.registerLiveDiscoveredModels(
+            provider = AiProviderType.OPENAI,
+            models = listOf(
+                AiModelInfo(
+                    id = "gpt-ephemeral-test",
+                    displayName = "Ephemeral Model",
+                    provider = AiProviderType.OPENAI,
+                    description = "test",
+                    contextWindow = "128k"
+                )
+            ),
+            ttlMs = -1_000L
+        )
+        assertEquals(null, ModelCatalog.findEntry(AiProviderType.OPENAI, "gpt-ephemeral-test"))
+    }
+
+    @Test
+    fun audit_unifiedAiEngineBypassesCacheForMultiTurnAndOfflineStatus() = runBlocking {
+        // 1. Offline Status must never be cached so subsequent configured calls succeed
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+        val engine = UnifiedAiEngine(context)
+
+        val firstOffline = engine.generateUnifiedResponse(prompt = "Give an example")
+        assertEquals("Offline Status", firstOffline.modelUsed)
+
+        // Now enable consent + mock OpenAI response; cached Offline Status must NOT mask live response
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setOpenAiKey(context, "sk-proj-test-live")
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"choices":[{"message":{"content":"Single turn example: Kotlin data class"}}]}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"choices":[{"message":{"content":"Follow-up coroutine example based on history"}}]}"""
+            )
+        )
+        val mockProviders = ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(AiProviderType.OPENAI to server.url("/v1/").toString()),
+            customHttpClient = OkHttpClient()
+        )
+        val liveEngine = UnifiedAiEngine(context, injectedExternalAiProviders = mockProviders)
+        val singleTurn = liveEngine.generateUnifiedResponse(
+            prompt = "Give an example",
+            modelTier = "fast"
+        )
+        assertTrue(singleTurn.text.contains("Single turn example"))
+
+        // 2. Non-empty conversationHistory MUST bypass single-turn memoryResponseCache
+        val multiTurn = liveEngine.generateUnifiedResponse(
+            prompt = "Give an example",
+            modelTier = "fast",
+            conversationHistory = listOf(
+                ChatMessage(role = "user", content = "Let's discuss Kotlin Coroutines"),
+                ChatMessage(role = "assistant", content = "Sure, ask about Flow or launch.")
+            )
+        )
+        assertTrue(
+            "Expected fresh multi-turn response rather than cached single-turn answer, got: ${multiTurn.text}",
+            multiTurn.text.contains("Follow-up coroutine example")
+        )
+        assertEquals(2, server.requestCount)
     }
 }

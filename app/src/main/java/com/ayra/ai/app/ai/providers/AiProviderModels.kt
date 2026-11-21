@@ -11,7 +11,7 @@ enum class AiProviderType(val id: String, val displayName: String, val defaultBa
     CEREBRAS("cerebras", "Cerebras Cloud (Free Tier)", "https://api.cerebras.ai/v1/"),
     SAMBANOVA("sambanova", "SambaNova Cloud (Free Tier)", "https://api.sambanova.ai/v1/"),
     HUGGINGFACE("huggingface", "Hugging Face Router", "https://router.huggingface.co/v1/"),
-    GITHUB_MODELS("github_models", "GitHub Models (Free Tier)", "https://models.inference.ai.azure.com/"),
+    GITHUB_MODELS("github_models", "GitHub Models (Retired)", ""),
     OPENAI("openai", "OpenAI", "https://api.openai.com/v1/"),
     ANTHROPIC("anthropic", "Anthropic Claude", "https://api.anthropic.com/v1/"),
     DEEPSEEK("deepseek", "DeepSeek", "https://api.deepseek.com/"),

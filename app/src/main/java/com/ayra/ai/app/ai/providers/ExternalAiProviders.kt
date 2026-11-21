@@ -133,7 +133,13 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val GITHUB_RETIRED_MODEL = "github-models-retired"
 
         private val THINK_BLOCK_REGEX = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
-        private val dynamicModelCache = ConcurrentHashMap<AiProviderType, List<AiModelInfo>>()
+        private const val DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1000L
+        private data class CachedDiscovery(val models: List<AiModelInfo>, val fetchedAtMs: Long)
+        private val dynamicModelCache = ConcurrentHashMap<AiProviderType, CachedDiscovery>()
+
+        internal fun clearDynamicModelCacheForTesting() {
+            dynamicModelCache.clear()
+        }
 
         fun resolveGeminiModel(model: String): String {
             val clean = model.trim().lowercase().removePrefix("models/")
@@ -832,7 +838,7 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getActiveConfiguredProviders(): List<AiProviderType> =
         listOf(
             AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
-            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM, AiProviderType.GITHUB_MODELS,
+            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM,
             AiProviderType.HUGGINGFACE, AiProviderType.OPENAI, AiProviderType.ANTHROPIC,
             AiProviderType.DEEPSEEK, AiProviderType.PERPLEXITY, AiProviderType.XAI,
             AiProviderType.MISTRAL, AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA,
@@ -902,7 +908,14 @@ class ExternalAiProviders @JvmOverloads constructor(
         )
 
     suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> = withContext(Dispatchers.IO) {
-        dynamicModelCache[provider]?.let { if (it.isNotEmpty()) return@withContext it }
+        if (provider == AiProviderType.GITHUB_MODELS) return@withContext emptyList()
+        val now = System.currentTimeMillis()
+        dynamicModelCache[provider]?.let { cached ->
+            if (cached.models.isNotEmpty() && now - cached.fetchedAtMs < DISCOVERY_CACHE_TTL_MS) {
+                return@withContext cached.models
+            }
+            dynamicModelCache.remove(provider)
+        }
         if (!isTestHarnessMode &&
             provider != AiProviderType.LOCAL_OLLAMA &&
             !SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed
@@ -916,7 +929,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                 AiProviderType.GEMINI -> ProviderGeminiTransport.discoverModels(httpClient, key, discovered)
                 AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.discoverAnthropicModels(httpClient, key, discovered)
                 AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
-                AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
+                AiProviderType.HUGGINGFACE, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
                 AiProviderType.XAI, AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER ->
                     ProviderOpenAiTransport.discoverModels(httpClient, context, provider, baseUrlOverrides, key, discovered)
                 else -> {}
@@ -926,7 +939,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         } catch (_: Exception) {}
 
         if (discovered.isNotEmpty()) {
-            dynamicModelCache[provider] = discovered
+            dynamicModelCache[provider] = CachedDiscovery(discovered, System.currentTimeMillis())
             ModelCatalog.registerLiveDiscoveredModels(provider, discovered)
             discovered
         } else {

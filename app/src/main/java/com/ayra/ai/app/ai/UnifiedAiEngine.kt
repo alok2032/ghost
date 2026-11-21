@@ -142,7 +142,10 @@ enum class AiModelTier(
     }
 }
 
-class UnifiedAiEngine(private val context: Context? = null) {
+class UnifiedAiEngine @JvmOverloads constructor(
+    private val context: Context? = null,
+    private val injectedExternalAiProviders: ExternalAiProviders? = null
+) {
 
     companion object {
         private val memoryResponseCache = java.util.concurrent.ConcurrentHashMap<String, AiResponse>()
@@ -182,7 +185,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
     private val fastWebClient: OkHttpClient
         get() = ExternalAiProviders.sharedFastWebClient
 
-    val externalAiProviders by lazy { ExternalAiProviders(context) }
+    val externalAiProviders by lazy { injectedExternalAiProviders ?: ExternalAiProviders(context) }
     val omniRouteEngine by lazy { context?.let { com.ayra.ai.app.ai.omniroute.OmniRouteEngine(it) } }
     val deepSeekHarness by lazy { com.ayra.ai.app.ai.deepseek.DeepSeekHarnessEngine(context) }
     val eccEngine by lazy { com.ayra.ai.app.ai.ecc.EnterpriseCognitiveEngine(context) }
@@ -241,7 +244,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
         val localOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
         val privacyMode = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } ?: false
         val cacheKey = "${currentPersona}_${selectedModelTier}_${langPref}_${localOnly}_${privacyMode}_${cleanPrompt.lowercase()}"
-        if (attachedImageBase64 == null && attachedDocumentText == null && cleanPrompt.isNotBlank()) {
+        if (attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank()) {
             memoryResponseCache[cacheKey]?.let { return@withContext it }
         }
 
@@ -376,9 +379,9 @@ class UnifiedAiEngine(private val context: Context? = null) {
             mapped to canonicalTier.displayName
         }
 
-        val shouldCache = (attachedImageBase64 == null && attachedDocumentText == null && cleanPrompt.isNotBlank())
+        val shouldCache = (attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank())
         fun emitResponse(resp: AiResponse): AiResponse {
-            if (shouldCache && resp.craftType == null) {
+            if (shouldCache && resp.craftType == null && resp.modelUsed != "Offline Status") {
                 if (memoryResponseCache.size > MAX_CACHE_ENTRIES) {
                     memoryResponseCache.clear()
                 }
@@ -577,7 +580,7 @@ class UnifiedAiEngine(private val context: Context? = null) {
             lower.contains("debate") || lower.contains("তর্ক") || lower.contains("chain of thought")
 
         if (isLogicOrPhilosophy && openRouterApiKey.isNotBlank()) {
-            return Pair(AiModelTier.OPENROUTER_DEEPSEEK, "DeepSeek-R1 🧠 (Auto: Chain-of-Thought)")
+            return Pair(AiModelTier.OPENROUTER_DEEPSEEK, "Qwen 3.8 27B / DeepSeek 🧠 (Auto: Chain-of-Thought)")
         } else if (isLogicOrPhilosophy) {
             return Pair(AiModelTier.GEMINI_PRO, "Gemini 4 Argon Reasoning 🧠 (Auto: Deep Logic)")
         }

@@ -285,25 +285,6 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.HUGGINGFACE)
             ),
             RegistryModelEntry(
-                id = "github_models_retired",
-                provider = AiProviderType.GITHUB_MODELS,
-                modelId = ExternalAiProviders.GITHUB_RETIRED_MODEL,
-                displayName = "GitHub Models (Azure Inference Retired)",
-                category = ModelCategory.CODING,
-                endpoint = "https://models.inference.ai.azure.com/chat/completions",
-                authRequirement = "Retired 2026-07-30",
-                tierStatus = ProviderTierStatus.FREE_TIER_API,
-                rateLimitNote = "Azure inference endpoint shut down 2026-07-30",
-                contextWindow = "128k tokens",
-                supportsStreaming = false,
-                supportsVision = false,
-                supportsToolCalling = false,
-                modelVersion = "retired",
-                healthStatus = ModelHealthStatus.OFFLINE,
-                verificationStatus = ModelVerificationStatus.RETIRED,
-                failureReason = "models.inference.ai.azure.com shut down 2026-07-30"
-            ),
-            RegistryModelEntry(
                 id = "nim_minimax_m3_1",
                 provider = AiProviderType.NVIDIA_NIM,
                 modelId = ExternalAiProviders.NVIDIA_MINIMAX_MODEL,
@@ -719,7 +700,7 @@ object AiModelRegistry {
                                 authRequirement = "Configured Key",
                                 tierStatus = when (provider) {
                                     AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
-                                    AiProviderType.GITHUB_MODELS, AiProviderType.HUGGINGFACE, AiProviderType.NVIDIA_NIM -> ProviderTierStatus.FREE_TIER_API
+                                    AiProviderType.HUGGINGFACE, AiProviderType.NVIDIA_NIM -> ProviderTierStatus.FREE_TIER_API
                                     AiProviderType.GEMINI -> ProviderTierStatus.FREE_FIREBASE_AI_LOGIC
                                     else -> ProviderTierStatus.PAID_API
                                 },

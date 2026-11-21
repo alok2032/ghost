@@ -78,7 +78,6 @@ fun ProviderKeysSection(
             Triple(AiProviderType.CEREBRAS, "Cerebras Cloud (Free Tier)", "https://cloud.cerebras.ai/"),
             Triple(AiProviderType.SAMBANOVA, "SambaNova Cloud (Free Tier)", "https://cloud.sambanova.ai/"),
             Triple(AiProviderType.HUGGINGFACE, "Hugging Face Tokens", "https://huggingface.co/settings/tokens"),
-            Triple(AiProviderType.GITHUB_MODELS, "GitHub PAT (Models)", "https://github.com/settings/tokens"),
             Triple(AiProviderType.OPENAI, "OpenAI API", "https://platform.openai.com/api-keys"),
             Triple(AiProviderType.ANTHROPIC, "Anthropic Console", "https://console.anthropic.com/settings/keys"),
             Triple(AiProviderType.DEEPSEEK, "DeepSeek Platform", "https://platform.deepseek.com/api_keys"),
@@ -954,7 +953,7 @@ private fun saveKey(context: Context, provider: AiProviderType, key: String) {
         AiProviderType.CEREBRAS -> AyraPreferences.setCerebrasKey(context, key)
         AiProviderType.SAMBANOVA -> AyraPreferences.setSambaNovaKey(context, key)
         AiProviderType.HUGGINGFACE -> AyraPreferences.setHuggingFaceKey(context, key)
-        AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, key)
+        AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, "")
         AiProviderType.POLLINATIONS_FREE -> {}
         AiProviderType.OPENAI -> AyraPreferences.setOpenAiKey(context, key)
         AiProviderType.ANTHROPIC -> AyraPreferences.setAnthropicKey(context, key)

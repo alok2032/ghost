@@ -702,8 +702,7 @@ class DefaultAgentCore(
         val openAiCompatProvider = configured.firstOrNull { p ->
             p in setOf(
                 AiProviderType.OPENAI, AiProviderType.OPENROUTER, AiProviderType.GROQ,
-                AiProviderType.DEEPSEEK, AiProviderType.NVIDIA_NIM, AiProviderType.GITHUB_MODELS,
-                AiProviderType.LOCAL_OLLAMA
+                AiProviderType.DEEPSEEK, AiProviderType.NVIDIA_NIM, AiProviderType.LOCAL_OLLAMA
             )
         }
         if (openAiCompatProvider != null) {

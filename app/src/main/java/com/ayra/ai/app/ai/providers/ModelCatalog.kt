@@ -248,7 +248,7 @@ object ModelCatalog {
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.RETIRED,
             isDefaultCandidate = false,
-            notes = "models.inference.ai.azure.com shut down 2026-07-30"
+            notes = "Azure GitHub Models inference endpoint shut down 2026-07-30"
         ),
 
         // --- Commercial User-Key Providers ---
@@ -494,8 +494,26 @@ object ModelCatalog {
     private fun key(provider: AiProviderType, modelId: String): String =
         "${provider.id}::${modelId.trim().lowercase()}"
 
+    private fun isDiscoveredEntryExpired(entry: ModelCatalogEntry, nowMs: Long = System.currentTimeMillis()): Boolean {
+        val exp = entry.expiresAtMs ?: return false
+        return entry.verificationStatus == ModelVerificationStatus.VERIFIED_LIVE && nowMs > exp
+    }
+
+    private fun pruneExpiredDiscoveredModels(nowMs: Long = System.currentTimeMillis()) {
+        discoveredModels.entries.removeIf { (_, entry) -> isDiscoveredEntryExpired(entry, nowMs) }
+    }
+
     private fun applyRuntimeHealth(entry: ModelCatalogEntry): ModelCatalogEntry {
         val k = key(entry.provider, entry.id)
+        val now = System.currentTimeMillis()
+        if (isDiscoveredEntryExpired(entry, now)) {
+            discoveredModels.remove(k)
+            return entry.copy(
+                verificationStatus = ModelVerificationStatus.UNVERIFIED,
+                isDefaultCandidate = false,
+                failureReason = "Live discovery cache expired; re-probe /models to verify."
+            )
+        }
         val lastSuccess = lastSuccessTimestamps[k] ?: entry.lastSuccessMs
         val retiredReason = retiredModels[k]
         if (retiredReason != null) {
@@ -508,7 +526,7 @@ object ModelCatalog {
         }
         val block = blockedModels[k]
         if (block != null) {
-            if (System.currentTimeMillis() > block.blockedUntilMs) {
+            if (now > block.blockedUntilMs) {
                 blockedModels.remove(k)
             } else {
                 return entry.copy(
@@ -528,6 +546,7 @@ object ModelCatalog {
     }
 
     fun allEntries(): List<ModelCatalogEntry> {
+        pruneExpiredDiscoveredModels()
         val merged = LinkedHashMap<String, ModelCatalogEntry>()
         baselineCatalog.forEach { merged[key(it.provider, it.id)] = applyRuntimeHealth(it) }
         remoteOverrideEntries.forEach { (k, v) -> merged[k] = applyRuntimeHealth(v) }
@@ -537,7 +556,15 @@ object ModelCatalog {
 
     fun findEntry(provider: AiProviderType, modelId: String): ModelCatalogEntry? {
         val k = key(provider, modelId)
-        val raw = discoveredModels[k]
+        val discovered = discoveredModels[k]?.let {
+            if (isDiscoveredEntryExpired(it)) {
+                discoveredModels.remove(k)
+                null
+            } else {
+                it
+            }
+        }
+        val raw = discovered
             ?: remoteOverrideEntries[k]
             ?: baselineCatalog.firstOrNull { key(it.provider, it.id) == k }
             ?: return null
@@ -553,7 +580,11 @@ object ModelCatalog {
         ) && entry.isDefaultCandidate
     }
 
-    fun registerLiveDiscoveredModels(provider: AiProviderType, models: List<AiModelInfo>) {
+    fun registerLiveDiscoveredModels(
+        provider: AiProviderType,
+        models: List<AiModelInfo>,
+        ttlMs: Long = LIVE_DISCOVERY_TTL_MS
+    ) {
         val now = System.currentTimeMillis()
         models.forEach { info ->
             val caps = buildSet {
@@ -578,7 +609,7 @@ object ModelCatalog {
                 verifiedByProvider = provider.id,
                 verificationMethod = "live_models_api",
                 lastSuccessMs = now,
-                expiresAtMs = now + LIVE_DISCOVERY_TTL_MS,
+                expiresAtMs = now + ttlMs,
                 pricingVerified = false
             )
             val k = key(provider, info.id)

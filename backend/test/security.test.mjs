@@ -380,10 +380,27 @@ test("Model catalog exposes honest verification status, provenance, and unavaila
   const groq = catalog.models.find((m) => m.id === "qwen/qwen3.8-27b");
   assert.ok(flash);
   assert.equal(flash.verificationStatus, "LIVE_VERIFIED"); // earlier chat succeeded & closed circuit breaker
+  assert.equal(flash.availableViaGateway, true);
+  assert.equal(flash.credentialConfigured, true);
   assert.equal(flash.pricingVerified, false);
   assert.ok(groq);
-  assert.equal(groq.verificationStatus, "UNAVAILABLE"); // groqApiKey empty
+  assert.equal(groq.verificationStatus, "UNCONFIGURED"); // groqApiKey empty
+  assert.equal(groq.availableViaGateway, false);
+  assert.equal(groq.credentialConfigured, false);
   assert.equal(JSON.stringify(catalog).includes("AIzaFakeServerKey"), false);
+
+  // Configured credential without any live probe must report STATIC_UNVERIFIED with availableViaGateway=false
+  const { buildCuratedModelCatalog } = await import("../dist/services/modelCatalog.js");
+  const unprobedCatalog = buildCuratedModelCatalog({
+    ...testConfig,
+    nvidiaApiKey: "nvapi_unprobed_test_key",
+  });
+  const nimEntry = unprobedCatalog.models.find((m) => m.id === "meta/llama-3.3-70b-instruct");
+  assert.ok(nimEntry);
+  assert.equal(nimEntry.credentialConfigured, true);
+  assert.equal(nimEntry.verificationStatus, "STATIC_UNVERIFIED");
+  assert.equal(nimEntry.verifiedByProvider, false);
+  assert.equal(nimEntry.availableViaGateway, false);
 });
 
 test("In-process node:vm is permanently eliminated from backend source", () => {
