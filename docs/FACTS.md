@@ -15,4 +15,4 @@
 | Android Unit Test Files / `@Test` Cases | `41` files / `260` tests | `app/src/test` |
 | Backend Node Tests | `17` | `backend/test/security.test.mjs` |
 | Firestore Rules Emulator Tests | `10` | `firestore.test.js` |
-| Swallowed `catch (_)` Count (`app/src/main`) | `120` | `.ci/swallowed-baseline.txt` |
+| Swallowed `catch (_)` Count (`app/src/main`) | `114` | `.ci/swallowed-baseline.txt` |

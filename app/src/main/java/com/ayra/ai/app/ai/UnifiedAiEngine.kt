@@ -349,7 +349,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     throw e
                 } catch (_: Exception) {}
             }
-            if (geminiApiKey.isNotBlank()) {
+            val geminiAllowed = externalAiProviders.isTestHarnessMode ||
+                com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, com.ayra.ai.app.ai.providers.AiProviderType.GEMINI).allowed
+            if (geminiApiKey.isNotBlank() && geminiAllowed) {
                 val codePrompt = "Write COMPLETE, PRODUCTION-READY, FULLY FUNCTIONAL, SELF-CONTAINED code for this request without any placeholder comments:\n$cleanPrompt"
                 val res = specializedExecutors.queryGeminiPro(codePrompt, attachedImageBase64, currentPersona)
                 if (res.isNotBlank()) {
@@ -471,31 +473,36 @@ class UnifiedAiEngine @JvmOverloads constructor(
             }
         }
 
+        val canDirectGemini = externalAiProviders.isTestHarnessMode ||
+            com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, com.ayra.ai.app.ai.providers.AiProviderType.GEMINI).allowed
+        val canDirectOpenRouter = externalAiProviders.isTestHarnessMode ||
+            com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, com.ayra.ai.app.ai.providers.AiProviderType.OPENROUTER).allowed
+
         when (targetTier) {
-            AiModelTier.GEMINI_FLASH -> if (geminiApiKey.isNotBlank()) {
+            AiModelTier.GEMINI_FLASH -> if (geminiApiKey.isNotBlank() && canDirectGemini) {
                 val res = specializedExecutors.queryGeminiFlash(effectivePrompt, attachedImageBase64, currentPersona)
                 if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
             }
-            AiModelTier.GEMINI_PRO -> if (geminiApiKey.isNotBlank()) {
+            AiModelTier.GEMINI_PRO -> if (geminiApiKey.isNotBlank() && canDirectGemini) {
                 val res = specializedExecutors.queryGeminiPro(effectivePrompt, attachedImageBase64, currentPersona)
                 if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
             }
             AiModelTier.OPENROUTER_DEEPSEEK -> {
-                if (openRouterApiKey.isNotBlank()) {
+                if (openRouterApiKey.isNotBlank() && canDirectOpenRouter) {
                     val res = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL, effectivePrompt, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                 }
-                if (geminiApiKey.isNotBlank()) {
+                if (geminiApiKey.isNotBlank() && canDirectGemini) {
                     val res = specializedExecutors.queryGeminiPro(effectivePrompt, attachedImageBase64, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 4 Argon Reasoning 🧠"))
                 }
             }
             AiModelTier.OPENROUTER_LLAMA -> {
-                if (openRouterApiKey.isNotBlank()) {
+                if (openRouterApiKey.isNotBlank() && canDirectOpenRouter) {
                     val res = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_DEFAULT_MODEL, effectivePrompt, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = modelDisplayName))
                 }
-                if (geminiApiKey.isNotBlank()) {
+                if (geminiApiKey.isNotBlank() && canDirectGemini) {
                     val res = specializedExecutors.queryGeminiFlash(effectivePrompt, attachedImageBase64, currentPersona)
                     if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.8 Flash Live ⚡"))
                 }
@@ -510,7 +517,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     if (dsResp.text.isNotBlank()) return@withContext emitResponse(dsResp)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("UnifiedAiEngine", "DeepSeek harness fallback failed: ${e.message}")
+                }
             }
             AiModelTier.SECURITY_RESEARCH -> if (context != null) {
                 try {
@@ -518,7 +527,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     if (secResp.text.isNotBlank()) return@withContext emitResponse(secResp)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("UnifiedAiEngine", "Security research fallback failed: ${e.message}")
+                }
             }
             AiModelTier.ECC_COGNITIVE -> if (context != null) {
                 try {
@@ -526,7 +537,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     if (eccResp.text.isNotBlank()) return@withContext emitResponse(eccResp)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("UnifiedAiEngine", "ECC cognitive fallback failed: ${e.message}")
+                }
             }
             AiModelTier.OPEN_HIGGSFIELD -> return@withContext craftGenerators.generateVideoCraft(effectivePrompt, currentPersona, attachedImageBase64)
             AiModelTier.SUPERPOWERS -> {
@@ -537,18 +550,20 @@ class UnifiedAiEngine @JvmOverloads constructor(
             AiModelTier.AUTO, AiModelTier.OMNI_ROUTE -> {}
         }
 
-        if (geminiApiKey.isNotBlank()) {
+        if (geminiApiKey.isNotBlank() && canDirectGemini) {
             val fastRes = specializedExecutors.queryGeminiFlash(effectivePrompt, attachedImageBase64, currentPersona)
             if (fastRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = fastRes, modelUsed = "Gemini 3.8 Flash Live ⚡"))
         }
 
-        if (openRouterApiKey.isNotBlank()) {
+        if (openRouterApiKey.isNotBlank() && canDirectOpenRouter) {
             try {
                 val orRes = specializedExecutors.queryOpenRouterModel(ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL, effectivePrompt, currentPersona)
                 if (orRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = orRes, modelUsed = "OpenRouter Multi-AI"))
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.w("UnifiedAiEngine", "OpenRouter direct fallback failed: ${e.message}")
+            }
         }
 
         val diagnosticSuffix = poolFailureMessage?.takeIf { it.isNotBlank() }?.let { "\n\nDetails: $it" }.orEmpty()

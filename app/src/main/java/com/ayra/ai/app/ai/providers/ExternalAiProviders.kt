@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -113,6 +114,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val OPENROUTER_QWEN_FREE_MODEL = "qwen/qwen3.8-27b:free"
         const val OPENROUTER_CODER_MODEL = "qwen/qwen3-coder:free"
 
+        const val NVIDIA_LLAMA_MODEL = "meta/llama-3.3-70b-instruct"
         const val NVIDIA_MINIMAX_MODEL = "minimaxai/minimax-m3.1-flash"
         const val NVIDIA_GLM_MODEL = "z-ai/glm-5.3-flash"
         const val NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b"
@@ -133,12 +135,15 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val GITHUB_RETIRED_MODEL = "github-models-retired"
 
         private val THINK_BLOCK_REGEX = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
-        private const val DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1000L
-        private data class CachedDiscovery(val models: List<AiModelInfo>, val fetchedAtMs: Long)
-        private val dynamicModelCache = ConcurrentHashMap<AiProviderType, CachedDiscovery>()
+        private val dynamicModelCache = ConcurrentHashMap<AiProviderType, List<AiModelInfo>>()
 
-        internal fun clearDynamicModelCacheForTesting() {
-            dynamicModelCache.clear()
+        @JvmStatic
+        fun clearDynamicModelCache(provider: AiProviderType? = null) {
+            if (provider == null) {
+                dynamicModelCache.clear()
+            } else {
+                dynamicModelCache.remove(provider)
+            }
         }
 
         fun resolveGeminiModel(model: String): String {
@@ -181,7 +186,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiModelInfo(SAMBANOVA_DEEPSEEK_MODEL, "SambaNova DeepSeek V3.1 🔬", AiProviderType.SAMBANOVA, "Fast RDU inference for coding, math & deep reasoning", "128k tokens", false, true, false),
             AiModelInfo(SAMBANOVA_QWEN_MODEL, "SambaNova Qwen3 32B 🌐", AiProviderType.SAMBANOVA, "Fast RDU multilingual & STEM reasoning", "64k tokens", false, true, false),
             AiModelInfo(HF_QWEN_MODEL, "HF Qwen 2.5 72B Instruct 🤗", AiProviderType.HUGGINGFACE, "Open-weights Hugging Face Inference Router", "128k tokens", false, true, false),
-            AiModelInfo(NVIDIA_MINIMAX_MODEL, "MiniMax M3.1 Flash ⚡", AiProviderType.NVIDIA_NIM, "High-speed multimodal vision & coding intelligence via NVIDIA NIM", "128k tokens", true, true, true),
+            AiModelInfo(NVIDIA_LLAMA_MODEL, "NVIDIA Llama 3.3 70B Instruct 🦙", AiProviderType.NVIDIA_NIM, "Verified general, coding & multilingual NIM baseline", "128k tokens", false, true, true),
+            AiModelInfo(NVIDIA_MINIMAX_MODEL, "MiniMax M3.1 Flash ⚡", AiProviderType.NVIDIA_NIM, "High-speed multimodal vision & coding intelligence via NVIDIA NIM", "128k tokens", true, true, false),
             AiModelInfo(NVIDIA_GLM_MODEL, "Z-AI GLM 5.3 Flash 🧠", AiProviderType.NVIDIA_NIM, "Fast STEM, mathematical reasoning & multilingual synthesis", "128k tokens", false, true, false),
             AiModelInfo(NVIDIA_MUSE_MODEL, "Meta Muse Glimmer 30B ✨", AiProviderType.NVIDIA_NIM, "Fluent creative writing, Bengali/Banglish & deep reasoning", "128k tokens", false, true, false),
             AiModelInfo(NVIDIA_GEMMA_MODEL, "Gemma 4 31B IT (NIM) 🔬", AiProviderType.NVIDIA_NIM, "Multilingual science, coding & analytical verification", "128k tokens", true, true, false),
@@ -236,10 +242,15 @@ class ExternalAiProviders @JvmOverloads constructor(
         }
 
         val active = allDefinitions.filter { channel ->
+            if (channel.provider == AiProviderType.GITHUB_MODELS && !baseUrlOverrides.containsKey(AiProviderType.GITHUB_MODELS)) {
+                return@filter false
+            }
+            if (!isTestHarnessMode && !SecureAiGatewayClient.evaluateProviderAccess(ctx, channel.provider).allowed) {
+                return@filter false
+            }
             val key = resolveChannelKey(channel, ctx)
             val keyOk = if (channel.provider == AiProviderType.LOCAL_OLLAMA) {
                 (channelKeyOverrides[channel.id]?.isNotBlank() == true) ||
-                    (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
                     (ctx != null && (AyraPreferences.getCustomEndpointUrl(ctx).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(ctx)))
             } else {
                 key.isNotBlank()
@@ -251,7 +262,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         return active.sortedWith(
             compareByDescending<AiModelChannel> { if (hasImage && it.supportsVision) 10 else if (hasImage) -10 else 0 }
                 .thenByDescending { if (it.specialties.contains(desiredSpecialty)) 6 else 0 }
-                .thenByDescending { if (it.id == "gemini_3_8_flash" || it.id == "nvidia_minimax_m3_1") 3 else 0 }
+                .thenByDescending { if (ModelCatalog.isVerifiedOrConfigured(it.provider, it.modelId)) 4 else 0 }
+                .thenByDescending { if (it.id == "gemini_3_8_flash" || it.id == "nvidia_llama_3_3_70b") 3 else 0 }
                 .thenByDescending { if (it.provider == AiProviderType.POLLINATIONS_FREE) -5 else 1 }
         )
     }
@@ -643,34 +655,95 @@ class ExternalAiProviders @JvmOverloads constructor(
             val gate = SecureAiGatewayClient.evaluateProviderAccess(context, provider)
             if (!gate.allowed) throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Zero-Trust policy.")
         }
-        val model = preferredModelId ?: getDefaultModelForProvider(provider)
-        val key = getKeyForProviderAndModel(provider, model)
+        val initialModel = preferredModelId ?: (ModelCatalog.defaultModelFor(provider)?.id ?: getDefaultModelForProvider(provider))
+        val outerCollector: FlowCollector<String> = this
 
-        when (provider) {
-            AiProviderType.GEMINI -> ProviderGeminiTransport.streamGemini(
-                httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, model, key, this
-            )
-            AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.streamAnthropic(
-                httpClient, baseUrlOverrides, turns, model, key, this
-            )
-            AiProviderType.POLLINATIONS_FREE -> {
-                val text = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                    httpClient, baseUrlOverrides, prompt, systemPrompt, model.ifBlank { "openai" }
-                )
-                if (text.isBlank()) throw ProviderError.NetworkFailure("Free AI Pool unreachable")
-                emit(text)
+        suspend fun streamSingleAttempt(activeModel: String): Boolean {
+            val activeKey = getKeyForProviderAndModel(provider, activeModel)
+            var emitted = false
+            val capturingCollector = FlowCollector<String> { chunk ->
+                if (chunk.isNotEmpty()) {
+                    emitted = true
+                    outerCollector.emit(chunk)
+                }
             }
-            AiProviderType.OMNI_ROUTE -> ProviderGeminiTransport.streamGemini(
-                httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, GEMINI_FLASH_MODEL, key, this
-            )
-            else -> {
-                val maxTok = if (provider == AiProviderType.NVIDIA_NIM && model.contains("minimax", true)) 8192 else 4096
-                ProviderOpenAiTransport.streamOpenAiCompatible(
-                    resolveClientForProvider(provider), context, provider, baseUrlOverrides,
-                    customHttpClient != null, turns, model, key, maxTok, this
+            when (provider) {
+                AiProviderType.GEMINI -> ProviderGeminiTransport.streamGemini(
+                    httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, activeModel, activeKey, capturingCollector
                 )
+                AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.streamAnthropic(
+                    httpClient, baseUrlOverrides, turns, activeModel, activeKey, capturingCollector
+                )
+                AiProviderType.POLLINATIONS_FREE -> {
+                    val text = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
+                        httpClient, baseUrlOverrides, prompt, systemPrompt, activeModel.ifBlank { "openai" }
+                    )
+                    if (text.isBlank()) throw ProviderError.NetworkFailure("Free AI Pool unreachable")
+                    capturingCollector.emit(text)
+                }
+                AiProviderType.OMNI_ROUTE -> ProviderGeminiTransport.streamGemini(
+                    httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, GEMINI_FLASH_MODEL, activeKey, capturingCollector
+                )
+                else -> {
+                    val maxTok = if (provider == AiProviderType.NVIDIA_NIM && activeModel.contains("minimax", true)) 8192 else 4096
+                    ProviderOpenAiTransport.streamOpenAiCompatible(
+                        resolveClientForProvider(provider), context, provider, baseUrlOverrides,
+                        customHttpClient != null, turns, activeModel, activeKey, maxTok, capturingCollector
+                    )
+                }
+            }
+            return emitted
+        }
+
+        val triedModels = mutableSetOf<String>()
+        var currentModel: String? = initialModel
+        var lastError: Throwable? = null
+        while (triedModels.size < 3 && currentModel != null) {
+            val activeModel = currentModel
+            if (activeModel.isBlank() || !triedModels.add(activeModel)) break
+            var rateLimitRetries = 0
+            var moveToNextModel = false
+            while (!moveToNextModel) {
+                try {
+                    val emitted = streamSingleAttempt(activeModel)
+                    if (emitted) {
+                        ModelCatalog.recordModelSuccess(provider, activeModel)
+                        circuitBreaker.recordSuccess(provider)
+                    }
+                    return@flow
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ProviderError.RateLimited) {
+                    lastError = e
+                    if (rateLimitRetries == 0) {
+                        rateLimitRetries++
+                        delay(if (customHttpClient != null) 25L else 450L)
+                    } else {
+                        currentModel = ModelCatalog.nextFallbackModel(provider, activeModel)?.takeIf { it !in triedModels }
+                        moveToNextModel = true
+                    }
+                } catch (e: ProviderError.ModelNotFound) {
+                    lastError = e
+                    if (e.httpStatus == 410) {
+                        ModelCatalog.markModelRetired(provider, activeModel, e.displayMessage)
+                    } else {
+                        ModelCatalog.markModelUnavailable(provider, activeModel, e.httpStatus, e.displayMessage)
+                    }
+                    val fallback = ModelCatalog.nextFallbackModel(provider, activeModel)
+                    if (fallback.isNullOrBlank() || fallback in triedModels) {
+                        throw e
+                    }
+                    if (triedModels.size == 1) {
+                        outerCollector.emit("⚠️ [Model Notice: '$activeModel' unavailable; switched to '$fallback']\n\n")
+                    }
+                    currentModel = fallback
+                    moveToNextModel = true
+                } catch (e: Throwable) {
+                    throw e
+                }
             }
         }
+        if (lastError != null) throw lastError
     }.flowOn(Dispatchers.IO)
 
     fun callSpecificProviderPublic(
@@ -750,6 +823,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         if (provider == AiProviderType.NVIDIA_NIM) {
             val m = modelId.lowercase()
             val channelId = when {
+                m.contains("llama") -> "nvidia_llama_3_3_70b"
                 m.contains("minimax") -> "nvidia_minimax_m3_1"
                 m.contains("glm") -> "nvidia_glm_5_3"
                 m.contains("muse") -> "nvidia_muse_30b"
@@ -761,6 +835,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             if (ctx != null) {
                 AyraApplication.ensureActiveAiKeysSeeded(ctx)
                 val resolved = when {
+                    m.contains("llama") -> AyraPreferences.getNvidiaKey(ctx)
                     m.contains("minimax") -> AyraPreferences.getNvidiaMinimaxKey(ctx)
                     m.contains("glm") -> AyraPreferences.getNvidiaGlmKey(ctx)
                     m.contains("muse") -> AyraPreferences.getNvidiaMuseKey(ctx)
@@ -776,7 +851,8 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getProviderKey(provider: AiProviderType): String {
         channelKeyOverrides[provider.id]?.let { if (it.isNotBlank()) return it }
         if (provider == AiProviderType.NVIDIA_NIM) {
-            val overriddenNim = channelKeyOverrides["nvidia_minimax_m3_1"]
+            val overriddenNim = channelKeyOverrides["nvidia_llama_3_3_70b"]
+                ?: channelKeyOverrides["nvidia_minimax_m3_1"]
                 ?: channelKeyOverrides["nvidia_muse_30b"]
                 ?: channelKeyOverrides["nvidia_glm_5_3"]
                 ?: channelKeyOverrides["nvidia_gemma_4_31b"]
@@ -786,11 +862,11 @@ class ExternalAiProviders @JvmOverloads constructor(
         AyraApplication.ensureActiveAiKeysSeeded(ctx)
         return when (provider) {
             AiProviderType.GEMINI -> AyraPreferences.getEffectiveGeminiKey(ctx)
-            AiProviderType.NVIDIA_NIM -> AyraPreferences.getNvidiaMinimaxKey(ctx)
+            AiProviderType.NVIDIA_NIM -> AyraPreferences.getNvidiaKey(ctx)
+                .ifBlank { AyraPreferences.getNvidiaMinimaxKey(ctx) }
                 .ifBlank { AyraPreferences.getNvidiaMuseKey(ctx) }
                 .ifBlank { AyraPreferences.getNvidiaGlmKey(ctx) }
                 .ifBlank { AyraPreferences.getNvidiaGemmaKey(ctx) }
-                .ifBlank { AyraPreferences.getNvidiaKey(ctx) }
             AiProviderType.GROQ -> AyraPreferences.getGroqKey(ctx)
             AiProviderType.CEREBRAS -> AyraPreferences.getCerebrasKey(ctx)
             AiProviderType.SAMBANOVA -> AyraPreferences.getSambaNovaKey(ctx)
@@ -806,13 +882,11 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiProviderType.LOCAL_OLLAMA -> {
                 val url = AyraPreferences.getCustomEndpointUrl(ctx)
                 val hasOllama = AyraPreferences.hasExplicitOllamaHost(ctx)
-                val explicitKey = AyraPreferences.getCustomEndpointKey(ctx)
-                when {
-                    explicitKey.isNotBlank() && (url.isNotBlank() || hasOllama) -> explicitKey
-                    url.isNotBlank() -> url
-                    hasOllama -> AyraPreferences.getOllamaHost(ctx)
-                    else -> ""
-                }
+                if (url.isNotBlank() || hasOllama) {
+                    AyraPreferences.getCustomEndpointKey(ctx).ifBlank {
+                        url.ifBlank { AyraPreferences.getOllamaHost(ctx) }
+                    }
+                } else ""
             }
             AiProviderType.POLLINATIONS_FREE -> if (AyraPreferences.isFreeAiPoolEnabled(ctx)) "free" else ""
             AiProviderType.OMNI_ROUTE -> AyraPreferences.getEffectiveGeminiKey(ctx)
@@ -846,7 +920,7 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getActiveConfiguredProviders(): List<AiProviderType> =
         listOf(
             AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
-            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM,
+            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM, AiProviderType.GITHUB_MODELS,
             AiProviderType.HUGGINGFACE, AiProviderType.OPENAI, AiProviderType.ANTHROPIC,
             AiProviderType.DEEPSEEK, AiProviderType.PERPLEXITY, AiProviderType.XAI,
             AiProviderType.MISTRAL, AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA,
@@ -857,9 +931,27 @@ class ExternalAiProviders @JvmOverloads constructor(
 
     fun getBestAvailableProvider(): AiProviderType = getActiveConfiguredProviders().firstOrNull() ?: AiProviderType.GEMINI
 
+    fun getSavedKeyProvidersIgnoringConsent(): List<AiProviderType> =
+        listOf(
+            AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
+            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM, AiProviderType.HUGGINGFACE,
+            AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.DEEPSEEK,
+            AiProviderType.PERPLEXITY, AiProviderType.XAI, AiProviderType.MISTRAL,
+            AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA, AiProviderType.POLLINATIONS_FREE
+        ).filter { provider ->
+            when (provider) {
+                AiProviderType.LOCAL_OLLAMA -> (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
+                    (context?.let {
+                        AyraPreferences.getCustomEndpointUrl(it).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(it)
+                    } ?: false)
+                AiProviderType.POLLINATIONS_FREE -> context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
+                else -> getProviderKey(provider).isNotBlank()
+            }
+        }
+
     fun getDefaultModelForProvider(provider: AiProviderType): String = when (provider) {
         AiProviderType.GEMINI -> GEMINI_FLASH_MODEL
-        AiProviderType.NVIDIA_NIM -> NVIDIA_MINIMAX_MODEL
+        AiProviderType.NVIDIA_NIM -> NVIDIA_LLAMA_MODEL
         AiProviderType.GROQ -> GROQ_DEFAULT_MODEL
         AiProviderType.CEREBRAS -> CEREBRAS_LLAMA_MODEL
         AiProviderType.SAMBANOVA -> SAMBANOVA_DEEPSEEK_MODEL
@@ -882,15 +974,11 @@ class ExternalAiProviders @JvmOverloads constructor(
         customKey: String? = null,
         customModel: String? = null
     ): Long = withContext(Dispatchers.IO) {
+        if (provider == AiProviderType.GITHUB_MODELS && !baseUrlOverrides.containsKey(AiProviderType.GITHUB_MODELS)) {
+            throw ProviderError.NetworkFailure("GitHub Models inference endpoint shut down on 2026-07-30.")
+        }
         val model = customModel ?: getDefaultModelForProvider(provider)
         val key = customKey ?: getKeyForProviderAndModel(provider, model)
-        if (provider == AiProviderType.LOCAL_OLLAMA &&
-            channelKeyOverrides.isEmpty() &&
-            baseUrlOverrides.isEmpty() &&
-            (context == null || (AyraPreferences.getCustomEndpointUrl(context).isBlank() && !AyraPreferences.hasExplicitOllamaHost(context)))
-        ) {
-            throw ProviderError.NetworkFailure("No Local Ollama Host or Custom Proxy URL configured.")
-        }
         if (key.isBlank() &&
             provider != AiProviderType.LOCAL_OLLAMA &&
             provider != AiProviderType.OMNI_ROUTE &&
@@ -898,12 +986,15 @@ class ExternalAiProviders @JvmOverloads constructor(
         ) {
             throw ProviderError.NoKeyConfigured(provider)
         }
+        circuitBreaker.resetProvider(provider)
         val start = System.currentTimeMillis()
         try {
             val testTurns = listOf(ChatTurn("user", "Reply with just the single word: READY"))
             val response = callSpecificProvider(provider, model, testTurns, key, withSearchGrounding = false)
             if (response.isBlank()) throw ProviderError.NetworkFailure("Empty response received from ${provider.displayName}")
             val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(1L)
+            ModelCatalog.recordModelSuccess(provider, model)
+            circuitBreaker.recordSuccess(provider)
             AiUsageTracker.recordCall(context, provider, true, elapsed)
             elapsed
         } catch (e: CancellationException) {
@@ -923,16 +1014,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         )
 
     suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> = withContext(Dispatchers.IO) {
-        if (provider == AiProviderType.GITHUB_MODELS) return@withContext emptyList()
-        val now = System.currentTimeMillis()
-        dynamicModelCache[provider]?.let { cached ->
-            if (cached.models.isNotEmpty() && now - cached.fetchedAtMs < DISCOVERY_CACHE_TTL_MS) {
-                return@withContext cached.models
-            }
-            dynamicModelCache.remove(provider)
-        }
+        dynamicModelCache[provider]?.let { if (it.isNotEmpty()) return@withContext it }
         if (!isTestHarnessMode &&
-            provider != AiProviderType.LOCAL_OLLAMA &&
             !SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed
         ) {
             return@withContext CURATED_MODELS.filter { it.provider == provider }
@@ -944,17 +1027,20 @@ class ExternalAiProviders @JvmOverloads constructor(
                 AiProviderType.GEMINI -> ProviderGeminiTransport.discoverModels(httpClient, key, discovered)
                 AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.discoverAnthropicModels(httpClient, key, discovered)
                 AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
-                AiProviderType.HUGGINGFACE, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
-                AiProviderType.XAI, AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER ->
+                AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
+                AiProviderType.XAI, AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER,
+                AiProviderType.LOCAL_OLLAMA ->
                     ProviderOpenAiTransport.discoverModels(httpClient, context, provider, baseUrlOverrides, key, discovered)
                 else -> {}
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.w("ExternalAiProviders", "Dynamic model discovery failed for ${provider.id}: ${e.message}")
+        }
 
         if (discovered.isNotEmpty()) {
-            dynamicModelCache[provider] = CachedDiscovery(discovered, System.currentTimeMillis())
+            dynamicModelCache[provider] = discovered
             ModelCatalog.registerLiveDiscoveredModels(provider, discovered)
             discovered
         } else {
@@ -1005,7 +1091,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("ExternalAiProviders", "Whisper transcription failed for ${provider.id}: ${e.message}")
                 AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
             }
         }

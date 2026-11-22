@@ -1,9 +1,8 @@
 import type { BackendConfig } from "../config.js";
 
 export type CatalogVerificationStatus =
+  | "STATIC_DEFAULT"
   | "LIVE_VERIFIED"
-  | "UNCONFIGURED"
-  | "STATIC_UNVERIFIED"
   | "UNAVAILABLE"
   | "RETIRED"
   | "RATE_LIMITED";
@@ -17,7 +16,6 @@ export interface CatalogModelEntry {
   costTier: "FREE_PLATFORM" | "FREE_TIER" | "LOW" | "MEDIUM" | "HIGH" | "LOCAL";
   isDefault: boolean;
   fallbackModelId?: string;
-  credentialConfigured: boolean;
   availableViaGateway: boolean;
   verificationStatus: CatalogVerificationStatus;
   verifiedAtMs: number;
@@ -53,7 +51,6 @@ export function buildCuratedModelCatalog(
   const baseEntries: Array<
     Omit<
       CatalogModelEntry,
-      | "credentialConfigured"
       | "availableViaGateway"
       | "verificationStatus"
       | "verifiedAtMs"
@@ -173,12 +170,12 @@ export function buildCuratedModelCatalog(
       const configured = Boolean(hasKey[entry.provider]);
       const probe = providerProbeStatus?.[entry.provider];
       const verificationStatus: CatalogVerificationStatus = !configured
-        ? "UNCONFIGURED"
-        : probe?.status ?? "STATIC_UNVERIFIED";
+        ? "UNAVAILABLE"
+        : probe?.status ?? "STATIC_DEFAULT";
       return {
         ...entry,
-        credentialConfigured: configured,
-        availableViaGateway: configured && verificationStatus === "LIVE_VERIFIED",
+        availableViaGateway:
+          configured && verificationStatus !== "RETIRED" && verificationStatus !== "UNAVAILABLE",
         verificationStatus,
         verifiedAtMs: now,
         verifiedByProvider: verificationStatus === "LIVE_VERIFIED",
@@ -187,10 +184,7 @@ export function buildCuratedModelCatalog(
         expiresAtMs: verificationStatus === "LIVE_VERIFIED" ? now + 3_600_000 : null,
         failureReason: !configured
           ? `Provider credential missing for '${entry.provider}'.`
-          : probe?.failureReason ??
-            (verificationStatus === "STATIC_UNVERIFIED"
-              ? "Credential configured on backend, but live provider reachability is unverified."
-              : null),
+          : probe?.failureReason ?? null,
         pricingVerified: false,
       };
     }),

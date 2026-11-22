@@ -437,7 +437,6 @@ fun AyraWorkspaceHost(
                             onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
                             onOpenMemory = { currentDest = AyraDestination.MEMORY },
                             onPersonaChanged = { style -> viewModel.setPersona(style) },
-                            onModelTierChanged = { tier -> viewModel.setModelTier(tier) },
                             modifier = Modifier.fillMaxSize()
                         )
                         AyraDestination.SECURITY_CENTER -> SecurityCenterScreen(

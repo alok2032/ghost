@@ -88,12 +88,12 @@ export class ProviderCircuitBreaker {
 
   getSnapshot(): Record<
     string,
-    { status: "LIVE_VERIFIED" | "UNAVAILABLE" | "STATIC_UNVERIFIED"; lastSuccessMs?: number; failureReason?: string }
+    { status: "LIVE_VERIFIED" | "UNAVAILABLE" | "STATIC_DEFAULT"; lastSuccessMs?: number; failureReason?: string }
   > {
     const now = Date.now();
     const out: Record<
       string,
-      { status: "LIVE_VERIFIED" | "UNAVAILABLE" | "STATIC_UNVERIFIED"; lastSuccessMs?: number; failureReason?: string }
+      { status: "LIVE_VERIFIED" | "UNAVAILABLE" | "STATIC_DEFAULT"; lastSuccessMs?: number; failureReason?: string }
     > = {};
     for (const [provider, st] of this.state.entries()) {
       const mapped = provider === "nvidia" ? "nvidia_nim" : provider;

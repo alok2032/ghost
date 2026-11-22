@@ -510,7 +510,11 @@ fun ChatScreen(
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (messages.isEmpty()) {
-                    EmptyCosmicState(currentPersona = currentPersona)
+                    EmptyCosmicState(
+                        currentPersona = currentPersona,
+                        readinessRefreshKey = Pair(showControlCenterSheet, showKeyOnboarding),
+                        onOpenSetup = { showControlCenterSheet = true }
+                    )
                 } else {
                     LazyColumn(
                         state = listState,
@@ -661,6 +665,8 @@ fun ChatScreen(
                 onTextChange = { viewModel.updateInputText(it) },
                 isListening = isListening,
                 isRecordingAudio = isRecordingAudio,
+                isTranscribingAudio = isTranscribingAudio,
+                canSendWithAttachment = selectedImageUri != null || selectedDocumentUri != null,
                 isGenerating = isGenerating,
                 onSend = { dispatchPrompt(inputText) },
                 onStop = { viewModel.stopGeneration() },

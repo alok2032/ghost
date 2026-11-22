@@ -89,9 +89,10 @@ class FirebaseAiEngine(private val context: Context?) {
         prompt: String,
         preferReasoning: Boolean = false
     ): String {
-        return when (modelTier.lowercase()) {
-            "gemini_pro" -> MODEL_PRO_REASONING
-            "fast" -> MODEL_FAST_LITE
+        val tierLower = modelTier.trim().lowercase()
+        return when {
+            tierLower in setOf("gemini_pro", "reasoning", "quality", "best_quality", "deep_analysis") -> MODEL_PRO_REASONING
+            tierLower in setOf("fast", "flash_lite", "lite") -> MODEL_FAST_LITE
             else -> MODEL_FLASH
         }
     }

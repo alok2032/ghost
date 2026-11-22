@@ -243,9 +243,18 @@ object AiMediaPromptSynthesizer {
         context: android.content.Context,
         type: String
     ): String {
+        if (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context) ||
+            !com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)
+        ) {
+            return ""
+        }
         val candidates = mutableListOf<Triple<String, String, String>>()
+        val nvidiaKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaKey(context)
         val minimaxKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaMinimaxKey(context)
         val museKey = com.ayra.ai.app.data.AyraPreferences.getNvidiaMuseKey(context)
+        if (nvidiaKey.isNotBlank()) {
+            candidates.add(Triple("https://integrate.api.nvidia.com/v1/chat/completions", nvidiaKey, ExternalAiProviders.NVIDIA_LLAMA_MODEL))
+        }
         if (minimaxKey.isNotBlank()) {
             candidates.add(Triple("https://integrate.api.nvidia.com/v1/chat/completions", minimaxKey, ExternalAiProviders.NVIDIA_MINIMAX_MODEL))
         }

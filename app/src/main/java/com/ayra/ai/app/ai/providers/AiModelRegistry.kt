@@ -285,6 +285,42 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.HUGGINGFACE)
             ),
             RegistryModelEntry(
+                id = "github_models_retired",
+                provider = AiProviderType.GITHUB_MODELS,
+                modelId = ExternalAiProviders.GITHUB_RETIRED_MODEL,
+                displayName = "GitHub Models (Azure Inference Retired)",
+                category = ModelCategory.CODING,
+                endpoint = "https://models.inference.ai.azure.com/chat/completions",
+                authRequirement = "Retired 2026-07-30",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "Azure inference endpoint shut down 2026-07-30",
+                contextWindow = "128k tokens",
+                supportsStreaming = false,
+                supportsVision = false,
+                supportsToolCalling = false,
+                modelVersion = "retired",
+                healthStatus = ModelHealthStatus.OFFLINE,
+                verificationStatus = ModelVerificationStatus.RETIRED,
+                failureReason = "models.inference.ai.azure.com shut down 2026-07-30"
+            ),
+            RegistryModelEntry(
+                id = "nim_llama_3_3_70b",
+                provider = AiProviderType.NVIDIA_NIM,
+                modelId = ExternalAiProviders.NVIDIA_LLAMA_MODEL,
+                displayName = "NVIDIA NIM Llama 3.3 70B Instruct",
+                category = ModelCategory.GENERAL,
+                endpoint = "https://integrate.api.nvidia.com/v1/chat/completions",
+                authRequirement = "NVIDIA Build Key",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "NVIDIA developer verified baseline",
+                contextWindow = "128k tokens",
+                supportsStreaming = true,
+                supportsVision = false,
+                supportsToolCalling = true,
+                modelVersion = "3.3-70b",
+                healthStatus = statusFor(AiProviderType.NVIDIA_NIM)
+            ),
+            RegistryModelEntry(
                 id = "nim_minimax_m3_1",
                 provider = AiProviderType.NVIDIA_NIM,
                 modelId = ExternalAiProviders.NVIDIA_MINIMAX_MODEL,
@@ -316,6 +352,40 @@ object AiModelRegistry {
                 supportsVision = false,
                 supportsToolCalling = true,
                 modelVersion = "glm-5.3",
+                healthStatus = statusFor(AiProviderType.NVIDIA_NIM)
+            ),
+            RegistryModelEntry(
+                id = "nim_muse_30b",
+                provider = AiProviderType.NVIDIA_NIM,
+                modelId = ExternalAiProviders.NVIDIA_MUSE_MODEL,
+                displayName = "NVIDIA NIM Meta Muse 30B",
+                category = ModelCategory.GENERAL,
+                endpoint = "https://integrate.api.nvidia.com/v1/chat/completions",
+                authRequirement = "NVIDIA Build Key",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "NVIDIA developer trial credits",
+                contextWindow = "128k tokens",
+                supportsStreaming = true,
+                supportsVision = false,
+                supportsToolCalling = true,
+                modelVersion = "muse-30b",
+                healthStatus = statusFor(AiProviderType.NVIDIA_NIM)
+            ),
+            RegistryModelEntry(
+                id = "nim_gemma_4_31b",
+                provider = AiProviderType.NVIDIA_NIM,
+                modelId = ExternalAiProviders.NVIDIA_GEMMA_MODEL,
+                displayName = "NVIDIA NIM Gemma 4 31B IT",
+                category = ModelCategory.REASONING,
+                endpoint = "https://integrate.api.nvidia.com/v1/chat/completions",
+                authRequirement = "NVIDIA Build Key",
+                tierStatus = ProviderTierStatus.FREE_TIER_API,
+                rateLimitNote = "NVIDIA developer trial credits",
+                contextWindow = "128k tokens",
+                supportsStreaming = true,
+                supportsVision = true,
+                supportsToolCalling = true,
+                modelVersion = "gemma-4-31b",
                 healthStatus = statusFor(AiProviderType.NVIDIA_NIM)
             ),
             RegistryModelEntry(
@@ -670,7 +740,7 @@ object AiModelRegistry {
         refreshConfigurationStates(context)
         val ext = ExternalAiProviders(context)
         val activeProviders = ext.getActiveConfiguredProviders()
-            .filter { it != AiProviderType.POLLINATIONS_FREE && it != AiProviderType.OMNI_ROUTE && it != AiProviderType.LOCAL_OLLAMA }
+            .filter { it != AiProviderType.POLLINATIONS_FREE && it != AiProviderType.OMNI_ROUTE }
 
         var addedCount = 0
         val currentList = _entries.value.toMutableList()
@@ -700,7 +770,7 @@ object AiModelRegistry {
                                 authRequirement = "Configured Key",
                                 tierStatus = when (provider) {
                                     AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
-                                    AiProviderType.HUGGINGFACE, AiProviderType.NVIDIA_NIM -> ProviderTierStatus.FREE_TIER_API
+                                    AiProviderType.GITHUB_MODELS, AiProviderType.HUGGINGFACE, AiProviderType.NVIDIA_NIM -> ProviderTierStatus.FREE_TIER_API
                                     AiProviderType.GEMINI -> ProviderTierStatus.FREE_FIREBASE_AI_LOGIC
                                     else -> ProviderTierStatus.PAID_API
                                 },

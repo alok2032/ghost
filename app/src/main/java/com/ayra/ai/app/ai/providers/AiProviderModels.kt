@@ -130,6 +130,17 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> AyraPreferences.getEffectiveGeminiKey(c) }
         ),
         AiModelChannel(
+            id = "nvidia_llama_3_3_70b",
+            provider = AiProviderType.NVIDIA_NIM,
+            modelId = ExternalAiProviders.NVIDIA_LLAMA_MODEL,
+            displayName = "Llama 3.3 70B Instruct (NIM)",
+            specialties = setOf("general", "coding", "multilingual", "education", "research"),
+            supportsVision = false,
+            isReasoning = true,
+            maxTokens = 4096,
+            keyResolver = { c -> c?.let { AyraPreferences.getNvidiaKey(it) } ?: "" }
+        ),
+        AiModelChannel(
             id = "nvidia_minimax_m3_1",
             provider = AiProviderType.NVIDIA_NIM,
             modelId = ExternalAiProviders.NVIDIA_MINIMAX_MODEL,

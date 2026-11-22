@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -157,9 +156,12 @@ internal fun ControlCenterModelsAndProvidersSection(
         }
     }
 
-    val providersEngine = remember(isKeySectionExpanded) { ExternalAiProviders(context) }
-    val activeChannels = remember(isKeySectionExpanded) { providersEngine.getActiveChannels() }
-    val fbReady = remember(isKeySectionExpanded) { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }
+    var activationRevision by remember { mutableStateOf(0) }
+    val providersEngine = remember(isKeySectionExpanded, activationRevision) { ExternalAiProviders(context) }
+    val activeChannels = remember(isKeySectionExpanded, activationRevision) { providersEngine.getActiveChannels() }
+    val savedCount = remember(isKeySectionExpanded, activationRevision) { providersEngine.getSavedKeyProvidersIgnoringConsent().size }
+    val hasConsent = remember(isKeySectionExpanded, activationRevision) { AyraPreferences.hasExternalAiConsent(context) }
+    val fbReady = remember(isKeySectionExpanded, activationRevision) { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }
     val activeCount = activeChannels.size + if (fbReady) 1 else 0
     val isMultiAiReady = activeCount > 0
 
@@ -186,16 +188,20 @@ internal fun ControlCenterModelsAndProvidersSection(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isMultiAiReady) "🟢 Auto Best-Answer Ensemble সক্রিয় ($activeCount ইঞ্জিন)" else "⚠️ কোনো AI চ্যানেল সক্রিয় নেই",
+                        text = when {
+                            isMultiAiReady -> "🟢 Auto Best-Answer Ensemble সক্রিয় ($activeCount ইঞ্জিন)"
+                            savedCount > 0 && !hasConsent -> "🟠 $savedCount কী সেভ করা আছে • Cloud Consent অন করুন"
+                            else -> "⚠️ কোনো AI চ্যানেল সক্রিয় নেই"
+                        },
                         color = if (isMultiAiReady) NeonGreen else NeonCyan,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.5.sp
                     )
                     Text(
-                        text = if (isMultiAiReady) {
-                            "প্রশ্ন বুঝে উপযুক্ত সব সক্রিয় AI একসাথে কাজ করবে ও সেরা উত্তর বেছে নেবে"
-                        } else {
-                            "উত্তর পেতে Settings -> API Keys থেকে কী যোগ করুন বা Free AI Pool অন করুন"
+                        text = when {
+                            isMultiAiReady -> "প্রশ্ন বুঝে উপযুক্ত সব সক্রিয় AI একসাথে কাজ করবে ও সেরা উত্তর বেছে নেবে"
+                            savedCount > 0 && !hasConsent -> "কী কনফিগার খুলে External Cloud AI Consent সুইচটি অন করলেই সেভ করা API গুলো অ্যাক্টিভ হবে"
+                            else -> "উত্তর পেতে কী কনফিগার থেকে API Key যোগ করুন, Local Ollama সেট করুন বা Free AI Pool অন করুন"
                         },
                         color = TextSecondary,
                         fontSize = 10.5.sp
@@ -206,8 +212,8 @@ internal fun ControlCenterModelsAndProvidersSection(
                     onClick = onToggleKeySection,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283F)),
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier.heightIn(min = 48.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
                 ) {
                     Text(
                         text = if (isKeySectionExpanded) "হাইড" else "কী কনফিগার",
@@ -219,7 +225,11 @@ internal fun ControlCenterModelsAndProvidersSection(
             }
 
             if (isKeySectionExpanded) {
-                ProviderKeysSection(context = context, modifier = Modifier.padding(top = 8.dp))
+                ProviderKeysSection(
+                    context = context,
+                    modifier = Modifier.padding(top = 8.dp),
+                    onActivationChanged = { activationRevision++ }
+                )
             }
         }
     }
@@ -506,7 +516,7 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(currentSentiment.glowColorHex).copy(alpha = 0.25f)),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = Color(currentSentiment.glowColorHex), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
@@ -526,7 +536,6 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(NeonCyan.copy(alpha = 0.2f))
                 .clickable {
@@ -537,13 +546,7 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "🔒 Locked to: ${selectedSentimentLock.displayName}",
-                color = NeonCyan,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f).padding(end = 8.dp)
-            )
+            Text("🔒 Locked to: ${selectedSentimentLock.displayName}", color = NeonCyan, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             Text("Reset to Auto Dynamic ⚡", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -557,7 +560,6 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 48.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isSelected) chipColor.copy(alpha = 0.22f) else GlassSurfaceDark)
                             .border(1.dp, if (isSelected) chipColor else Color(0x2200FFFF), RoundedCornerShape(10.dp))
@@ -566,15 +568,14 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
                                 onTestSentimentVoice(sentiment)
                                 onQuickFeedback("${sentiment.emoji} ${sentiment.displayName} লক ও টেস্ট করা হলো!")
                             }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.CenterStart
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(text = sentiment.emoji, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Column {
@@ -680,7 +681,6 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .defaultMinSize(minHeight = 48.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (isSelected) NeonCyan.copy(alpha = 0.25f) else Color(0xFF131B2E))
                     .border(1.dp, if (isSelected) NeonCyan else Color(0x2200FFFF), RoundedCornerShape(10.dp))
@@ -723,7 +723,7 @@ internal fun ControlCenterVoiceSentimentAndLanguageSection(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .defaultMinSize(minHeight = 48.dp)
+                    .defaultMinSize(minHeight = 44.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (isSelected) NeonCyan.copy(alpha = 0.25f) else Color(0xFF131B2E))
                     .border(1.dp, if (isSelected) NeonCyan else Color(0x2200FFFF), RoundedCornerShape(10.dp))

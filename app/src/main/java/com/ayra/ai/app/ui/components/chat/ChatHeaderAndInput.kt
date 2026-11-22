@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -51,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -246,6 +248,8 @@ internal fun GlassInputRow(
     onTextChange: (String) -> Unit,
     isListening: Boolean,
     isRecordingAudio: Boolean = false,
+    isTranscribingAudio: Boolean = false,
+    canSendWithAttachment: Boolean = false,
     isGenerating: Boolean,
     onSend: () -> Unit,
     onStop: () -> Unit,
@@ -253,6 +257,7 @@ internal fun GlassInputRow(
     onMicClick: () -> Unit,
     onAttachClick: () -> Unit
 ) {
+    val canSendNow = text.isNotBlank() || canSendWithAttachment
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -277,7 +282,7 @@ internal fun GlassInputRow(
         ) {
             if (text.isEmpty()) {
                 Text(
-                    text = "Ask Ayra AI, generate photo, open apps...",
+                    text = if (canSendWithAttachment) "Add a note or tap Send to analyze attachment..." else "Ask Ayra AI, generate photo, open apps...",
                     color = TextSecondary,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -288,18 +293,18 @@ internal fun GlassInputRow(
                 value = text,
                 onValueChange = onTextChange,
                 textStyle = TextStyle(
-                    color = Color.White,
+                    color = TextPrimary,
                     fontSize = 14.5.sp,
                     lineHeight = 20.sp
                 ),
                 cursorBrush = SolidColor(NeonCyan),
                 maxLines = 5,
                 keyboardOptions = KeyboardOptions(
-                    imeAction = if (text.isNotBlank() && !isGenerating) ImeAction.Send else ImeAction.Default
+                    imeAction = if (canSendNow && !isGenerating) ImeAction.Send else ImeAction.Default
                 ),
                 keyboardActions = KeyboardActions(
                     onSend = {
-                        if (text.isNotBlank() && !isGenerating) onSend()
+                        if (canSendNow && !isGenerating) onSend()
                     }
                 ),
                 modifier = Modifier
@@ -342,16 +347,24 @@ internal fun GlassInputRow(
                     .clip(CircleShape)
                     .background(if (isRecordingAudio) NeonRose else Color(0xFF0E162B))
                     .border(1.1.dp, if (isRecordingAudio) NeonRose else NeonPurple.copy(alpha = 0.85f), CircleShape)
-                    .clickable { onAudioTranscribeClick() }
+                    .clickable(enabled = !isTranscribingAudio) { onAudioTranscribeClick() }
                     .testTag("gemini_audio_transcribe_button"),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = "AI Audio Transcribe",
-                    tint = if (isRecordingAudio) Color.Black else NeonPurple,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (isTranscribingAudio) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = NeonPurple
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = "AI Audio Transcribe",
+                        tint = if (isRecordingAudio) Color.Black else NeonPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Box(
@@ -375,14 +388,15 @@ internal fun GlassInputRow(
             Box(
                 modifier = Modifier
                     .size(48.dp)
+                    .alpha(if (isGenerating || canSendNow) 1f else 0.45f)
                     .clip(CircleShape)
                     .background(
                         if (isGenerating) Brush.linearGradient(listOf(Color(0xFFFF1744), Color(0xFFD50000)))
                         else Brush.linearGradient(listOf(NeonCyan, NeonPurple))
                     )
-                    .clickable {
+                    .clickable(enabled = isGenerating || canSendNow) {
                         if (isGenerating) onStop()
-                        else if (text.isNotBlank()) onSend()
+                        else if (canSendNow) onSend()
                     }
                     .testTag("chat_send_button"),
                 contentAlignment = Alignment.Center
@@ -398,7 +412,11 @@ internal fun GlassInputRow(
 }
 
 @Composable
-internal fun EmptyCosmicState(currentPersona: String) {
+internal fun EmptyCosmicState(
+    currentPersona: String,
+    readinessRefreshKey: Any = Unit,
+    onOpenSetup: () -> Unit = {}
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "empty_cosmic_anim")
     val shimmerOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -419,7 +437,8 @@ internal fun EmptyCosmicState(currentPersona: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 18.dp, start = 14.dp, end = 14.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(top = 18.dp, start = 14.dp, end = 14.dp, bottom = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
@@ -465,16 +484,19 @@ internal fun EmptyCosmicState(currentPersona: String) {
         Spacer(modifier = Modifier.height(14.dp))
 
         val context = androidx.compose.ui.platform.LocalContext.current
-        val readinessSummary = remember(currentPersona) {
-            val extCount = runCatching { com.ayra.ai.app.ai.providers.ExternalAiProviders(context).getActiveChannels().size }.getOrDefault(0)
+        val (readinessSummary, badgeAccentColor) = remember(currentPersona, readinessRefreshKey) {
+            val ext = com.ayra.ai.app.ai.providers.ExternalAiProviders(context)
+            val extCount = runCatching { ext.getActiveChannels().size }.getOrDefault(0)
+            val savedCount = runCatching { ext.getSavedKeyProvidersIgnoringConsent().size }.getOrDefault(0)
             val fbReady = runCatching { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }.getOrDefault(false)
+            val hasConsent = com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)
+            val localOnly = com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)
             val totalEngines = extCount + if (fbReady) 1 else 0
-            if (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
-                "Local-Only Privacy Active ($extCount local engines)"
-            } else if (totalEngines > 0) {
-                "$totalEngines AI Engines Active • Question-Aware Best-Answer Ensemble Ready"
-            } else {
-                "Offline Mode • Enable Free AI Pool or add an API key"
+            when {
+                localOnly -> "Local-Only Privacy Active ($extCount local engines)" to NeonCyan
+                totalEngines > 0 -> "$totalEngines AI Engines Active • Best-Answer Ensemble Ready" to NeonGreen
+                savedCount > 0 && !hasConsent -> "$savedCount Key(s) Saved • Tap to enable Cloud Consent" to Color(0xFFF59E0B)
+                else -> "Offline Mode • Tap to add API key or Local Ollama" to NeonRose
             }
         }
 
@@ -482,16 +504,18 @@ internal fun EmptyCosmicState(currentPersona: String) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
+                .heightIn(min = 48.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(GlassSurfaceDark.copy(alpha = 0.7f))
-                .border(1.dp, NeonGreen.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp, vertical = 7.dp)
+                .border(1.dp, badgeAccentColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                .clickable { onOpenSetup() }
+                .padding(horizontal = 14.dp, vertical = 10.dp)
                 .testTag("ai_readiness_badge")
         ) {
-            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonGreen))
+            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(badgeAccentColor))
             Text(
                 text = readinessSummary,
-                color = NeonGreen,
+                color = badgeAccentColor,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold
             )

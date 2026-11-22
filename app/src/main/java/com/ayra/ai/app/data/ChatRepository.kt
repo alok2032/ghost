@@ -1,7 +1,11 @@
 package com.ayra.ai.app.data
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Single Source of Truth repository managing Room chat sessions and scoped message history.
@@ -12,6 +16,7 @@ class ChatRepository(
     private val chatDao: ChatDao,
     private val sessionDao: ChatSessionDao
 ) {
+    private val sessionInitMutex = Mutex()
 
     fun observeSessions(): Flow<List<ChatSession>> = sessionDao.getAllSessions()
 
@@ -24,22 +29,24 @@ class ChatRepository(
     suspend fun getRecentMessages(sessionId: Long, limit: Int = 15): List<ChatMessage> =
         chatDao.getRecentMessagesForSession(sessionId, limit)
 
-    suspend fun ensureActiveSession(): ChatSession {
-        val preferredId = AyraPreferences.getLastActiveSessionId(context)
-        val existingPreferred = sessionDao.getSessionById(preferredId)
-        if (existingPreferred != null) {
-            return existingPreferred
+    suspend fun ensureActiveSession(): ChatSession = withContext(Dispatchers.IO) {
+        sessionInitMutex.withLock {
+            val preferredId = AyraPreferences.getLastActiveSessionId(context)
+            val existingPreferred = sessionDao.getSessionById(preferredId)
+            if (existingPreferred != null) {
+                return@withLock existingPreferred
+            }
+            val mostRecent = sessionDao.getMostRecentSession()
+            if (mostRecent != null) {
+                AyraPreferences.setLastActiveSessionId(context, mostRecent.id)
+                return@withLock mostRecent
+            }
+            return@withLock createNewSession(
+                title = "Ayra Main Chat",
+                personaMode = AyraPreferences.getSavedPersona(context),
+                modelTier = AyraPreferences.getSavedModelTier(context)
+            )
         }
-        val mostRecent = sessionDao.getMostRecentSession()
-        if (mostRecent != null) {
-            AyraPreferences.setLastActiveSessionId(context, mostRecent.id)
-            return mostRecent
-        }
-        return createNewSession(
-            title = "Ayra Main Chat",
-            personaMode = AyraPreferences.getSavedPersona(context),
-            modelTier = AyraPreferences.getSavedModelTier(context)
-        )
     }
 
     suspend fun createNewSession(

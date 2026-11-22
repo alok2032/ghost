@@ -260,7 +260,7 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_LLAMA_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
-            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MINIMAX_MODEL)
+            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ModelCatalog.defaultModelFor(AiProviderType.NVIDIA_NIM)?.id ?: ExternalAiProviders.NVIDIA_LLAMA_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_QWEN_MODEL)
             configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_MINI_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
@@ -310,7 +310,7 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_LLAMA_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, "openai")
-            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MINIMAX_MODEL)
+            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ModelCatalog.defaultModelFor(AiProviderType.NVIDIA_NIM)?.id ?: ExternalAiProviders.NVIDIA_LLAMA_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_LITE_MODEL)
         }
         AiRoutingMode.OPEN_WEIGHTS -> when {

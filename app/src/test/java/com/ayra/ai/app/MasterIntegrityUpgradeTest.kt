@@ -12,7 +12,13 @@ import com.ayra.ai.app.ai.agents.AgentDomain
 import com.ayra.ai.app.ai.agents.AyraAgentOrchestrator
 import com.ayra.ai.app.ai.code.GeneratedProjectFile
 import com.ayra.ai.app.ai.code.ProjectWorkspaceManager
+import com.ayra.ai.app.ai.FirebaseAiEngine
+import com.ayra.ai.app.ai.providers.AiProviderType
+import com.ayra.ai.app.ai.providers.AyraError
+import com.ayra.ai.app.ai.providers.AyraStreamEvent
 import com.ayra.ai.app.ai.providers.ChatRequest
+import com.ayra.ai.app.ai.providers.ExternalAiProviders
+import com.ayra.ai.app.ai.providers.ModelCatalog
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.openmodel.OpenModelEngine
 import com.ayra.ai.app.ai.rag.DocumentRagEngine
@@ -21,6 +27,7 @@ import com.ayra.ai.app.data.ChatDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -334,5 +341,183 @@ class MasterIntegrityUpgradeTest {
             AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
             AyraPreferences.setExternalAiConsent(context, true)
         }
+    }
+
+    @Test
+    fun testProviderPoolRespectsRoutingModePrivacyLocalAndFast() = runBlocking {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+        AyraPreferences.setAllowLanEndpointsEnabled(context, true)
+        AyraPreferences.setCustomEndpointUrl(context, server.url("/v1/").toString())
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"choices":[{"message":{"role":"assistant","content":"Local Ollama routing verified"}}]}""")
+        )
+        // Second response in case streaming hits SSE or fallback
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"choices":[{"message":{"role":"assistant","content":"Groq fast routing verified"}}]}""")
+        )
+
+        val ext = com.ayra.ai.app.ai.providers.ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(
+                com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA to server.url("/local/").toString(),
+                com.ayra.ai.app.ai.providers.AiProviderType.OPENAI to server.url("/openai/").toString(),
+                com.ayra.ai.app.ai.providers.AiProviderType.GROQ to server.url("/groq/").toString()
+            ),
+            customHttpClient = okhttp3.OkHttpClient(),
+            channelKeyOverrides = mapOf(
+                "local_ollama" to "local",
+                com.ayra.ai.app.ai.providers.AiProviderType.OPENAI.id to "sk-test",
+                com.ayra.ai.app.ai.providers.AiProviderType.GROQ.id to "gsk-test"
+            )
+        )
+        val pool = ProviderPool(context, ext)
+
+        val localResp = pool.executeSync(
+            ChatRequest(
+                prompt = "Summarize architecture principles in depth",
+                routingMode = com.ayra.ai.app.ai.providers.AiRoutingMode.PRIVACY_LOCAL
+            )
+        )
+        assertEquals(com.ayra.ai.app.ai.providers.AiProviderType.LOCAL_OLLAMA, localResp.provider)
+        assertTrue(localResp.text.contains("Local Ollama routing verified"))
+
+        val fastResp = pool.executeSync(
+            ChatRequest(
+                prompt = "Explain binary search vs linear search with complexity analysis",
+                routingMode = com.ayra.ai.app.ai.providers.AiRoutingMode.FAST
+            )
+        )
+        assertEquals(com.ayra.ai.app.ai.providers.AiProviderType.GROQ, fastResp.provider)
+        assertTrue(fastResp.text.contains("Groq fast routing verified"))
+    }
+
+    @Test
+    fun testChatRepositoryEnsureActiveSessionIsRaceFreeUnderConcurrency() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, ChatDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val repo = com.ayra.ai.app.data.ChatRepository(context, db.chatDao(), db.chatSessionDao())
+            val first = async { repo.ensureActiveSession() }
+            val second = async { repo.ensureActiveSession() }
+            val s1 = first.await()
+            val s2 = second.await()
+            assertEquals(s1.id, s2.id)
+            assertEquals(1, db.chatSessionDao().getAllSessionsOnce().size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun testFirebaseAiEngineSelectModelForTaskHonorsExplicitTiersAndSafeDefault() {
+        val fb = FirebaseAiEngine(context)
+        assertEquals(FirebaseAiEngine.MODEL_PRO_REASONING, fb.selectModelForTask("gemini_pro", "Prove Fermat", preferReasoning = true))
+        assertEquals(FirebaseAiEngine.MODEL_PRO_REASONING, fb.selectModelForTask("reasoning", "Design distributed lock", preferReasoning = true))
+        assertEquals(FirebaseAiEngine.MODEL_PRO_REASONING, fb.selectModelForTask("quality", "Audit crypto", preferReasoning = false))
+        assertEquals(FirebaseAiEngine.MODEL_FAST_LITE, fb.selectModelForTask("fast", "hi", preferReasoning = false))
+        assertEquals(FirebaseAiEngine.MODEL_FLASH, fb.selectModelForTask("auto", "hi", preferReasoning = false))
+    }
+
+    @Test
+    fun testStreamChatResponseFallsBackOn404AndRecordsSuccess() = runBlocking {
+        ModelCatalog.clearRuntimeHealth()
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, true)
+        AyraPreferences.setGroqKey(context, "gsk-stream-404-test")
+
+        server.enqueue(MockResponse().setResponseCode(404).setBody("""{"error":{"message":"model not found"}}"""))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"Streamed \"}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"Qwen OK\"}}]}\n\n" +
+                        "data: [DONE]\n\n"
+                )
+        )
+
+        val ext = ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(AiProviderType.GROQ to server.url("/groq/").toString()),
+            customHttpClient = okhttp3.OkHttpClient()
+        )
+        val chunks = ext.streamChatResponse(
+            prompt = "Hello stream",
+            systemPrompt = "Be concise",
+            preferredProvider = AiProviderType.GROQ,
+            preferredModelId = ExternalAiProviders.GROQ_LLAMA_MODEL
+        ).toList()
+
+        val fullText = chunks.joinToString("")
+        assertTrue("Expected failover notice in stream: $fullText", fullText.contains("Model Notice:"))
+        assertTrue("Expected streamed fallback tokens: $fullText", fullText.contains("Streamed Qwen OK"))
+        assertTrue(ModelCatalog.isModelTemporarilyUnavailable(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL))
+        ModelCatalog.clearRuntimeHealth()
+    }
+
+    @Test
+    fun testLocalOllamaHostActivationAndApiTagsDiscovery() = runBlocking {
+        ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
+        AyraPreferences.setAllowLanEndpointsEnabled(context, true)
+        val ollamaBase = server.url("/").toString().trimEnd('/')
+        AyraPreferences.setOllamaHost(context, ollamaBase)
+
+        val ext = ExternalAiProviders(
+            context = context,
+            baseUrlOverrides = mapOf(AiProviderType.LOCAL_OLLAMA to "$ollamaBase/v1/"),
+            customHttpClient = okhttp3.OkHttpClient()
+        )
+        val channels = ext.getActiveChannels()
+        assertTrue("Expected LOCAL_OLLAMA channel when explicit Ollama host is configured", channels.any { it.provider == AiProviderType.LOCAL_OLLAMA })
+
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"models":[{"name":"qwen2.5:14b"},{"name":"llama3.3"}]}""")
+        )
+        val discovered = ext.discoverDynamicModels(AiProviderType.LOCAL_OLLAMA)
+        assertTrue(discovered.any { it.id == "qwen2.5:14b" && it.provider == AiProviderType.LOCAL_OLLAMA })
+        assertTrue(discovered.any { it.id == "llama3.3" && it.provider == AiProviderType.LOCAL_OLLAMA })
+        ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+    }
+
+    @Test
+    fun testGetActiveChannelsFiltersWhenConsentFalseAndProviderPoolEmitsConsentRequiredError() = runBlocking {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+        AyraPreferences.setGroqKey(context, "gsk-saved-but-no-consent")
+
+        val ext = ExternalAiProviders(context)
+        assertTrue(
+            "Saved key without consent must not appear in getActiveChannels()",
+            ext.getActiveChannels().isEmpty()
+        )
+        assertTrue(
+            "Saved key without consent must be detected by getSavedKeyProvidersIgnoringConsent()",
+            ext.getSavedKeyProvidersIgnoringConsent().contains(AiProviderType.GROQ)
+        )
+
+        val events = ProviderPool(context, ext).streamChat(ChatRequest(prompt = "Hello")).toList()
+        val err = events.filterIsInstance<AyraStreamEvent.Error>().firstOrNull()?.error
+        assertTrue("Expected consent-specific ProviderDown error, got $err", err is AyraError.ProviderDown)
+        assertTrue(
+            "Expected consent guidance in error message: ${err?.userFriendlyMessage}",
+            err?.userFriendlyMessage?.contains("Consent", ignoreCase = true) == true
+        )
     }
 }

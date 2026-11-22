@@ -225,18 +225,56 @@ class ProviderPool @JvmOverloads constructor(
                 com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, p).allowed
         }
 
+        val isStrictLocalRouting = request.routingMode == AiRoutingMode.PRIVACY_LOCAL &&
+            channels.any { it.provider == AiProviderType.LOCAL_OLLAMA }
+        val routedChannels = prioritizeChannelsForRoutingMode(channels, request.routingMode)
+        val routedProviders = if (isStrictLocalRouting) {
+            availableProviders.filter { it == AiProviderType.LOCAL_OLLAMA }.ifEmpty { availableProviders }
+        } else {
+            availableProviders
+        }
+
         val isFirebaseAiReady = !isLocalOnlyMode &&
+            !isStrictLocalRouting &&
             externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
 
-        if (channels.isEmpty() && availableProviders.isEmpty() && !isFirebaseAiReady) {
-            emit(AyraStreamEvent.Error(AyraError.NoProviderConfigured))
+        if (routedChannels.isEmpty() && routedProviders.isEmpty() && !isFirebaseAiReady) {
+            val savedIgnoringConsent = if (!externalProviders.isTestHarnessMode && context != null) {
+                externalProviders.getSavedKeyProvidersIgnoringConsent()
+            } else {
+                emptyList()
+            }
+            if (isLocalOnlyMode && savedIgnoringConsent.isNotEmpty() && savedIgnoringConsent.none { it == AiProviderType.LOCAL_OLLAMA }) {
+                emit(
+                    AyraStreamEvent.Error(
+                        AyraError.ProviderDown(
+                            savedIgnoringConsent.first(),
+                            403,
+                            "Local-Only Privacy Mode is active. Configure Local Ollama or disable Local-Only Mode in Security Center to use cloud AI."
+                        )
+                    )
+                )
+            } else if (context != null && !AyraPreferences.hasExternalAiConsent(context) && savedIgnoringConsent.isNotEmpty()) {
+                val names = savedIgnoringConsent.take(3).joinToString(", ") { it.displayName }
+                emit(
+                    AyraStreamEvent.Error(
+                        AyraError.ProviderDown(
+                            savedIgnoringConsent.first(),
+                            403,
+                            "API keys are saved ($names), but External Cloud AI Consent is OFF. Enable External Cloud AI Consent in Settings -> AI Providers or Security Center."
+                        )
+                    )
+                )
+            } else {
+                emit(AyraStreamEvent.Error(AyraError.NoProviderConfigured))
+            }
             return@flow
         }
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
         val shouldGroundWiki = !isLocalOnlyMode &&
-            request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
+            !isStrictLocalRouting &&
             externalProviders.allowExternalWikiGrounding &&
             request.imageBase64 == null &&
             request.documentText == null &&
@@ -259,60 +297,43 @@ class ProviderPool @JvmOverloads constructor(
             val complexity = classifyTaskComplexity(request)
             val effectiveMode = when {
                 request.mode != ProviderPoolMode.AUTO -> request.mode
-                effectiveThinkingMode == "fast" || request.routingMode == AiRoutingMode.FAST -> ProviderPoolMode.FAST
-                effectiveThinkingMode in setOf("deep_analysis", "reasoning", "research") -> ProviderPoolMode.BEST
-                request.routingMode in setOf(
-                    AiRoutingMode.BEST_QUALITY,
-                    AiRoutingMode.REASONING,
-                    AiRoutingMode.CODING,
-                    AiRoutingMode.OPEN_WEIGHTS
-                ) && complexity != TaskComplexity.TRIVIAL -> ProviderPoolMode.BEST
                 complexity == TaskComplexity.TRIVIAL -> ProviderPoolMode.FAST
+                request.routingMode == AiRoutingMode.FAST -> ProviderPoolMode.FAST
+                request.routingMode == AiRoutingMode.BEST_QUALITY ||
+                    request.routingMode == AiRoutingMode.REASONING ||
+                    request.routingMode == AiRoutingMode.CODING -> ProviderPoolMode.BEST
+                effectiveThinkingMode == "fast" -> ProviderPoolMode.FAST
+                effectiveThinkingMode in setOf("deep_analysis", "reasoning", "research") -> ProviderPoolMode.BEST
                 complexity == TaskComplexity.COMPLEX -> ProviderPoolMode.BEST
                 else -> ProviderPoolMode.AUTO
             }
             val effectiveRequest = if (effectiveMode != request.mode) request.copy(mode = effectiveMode) else request
-            val rankedChannels = prioritizeChannelsForRoutingMode(channels, effectiveRequest.routingMode)
 
             // 3. Explicit provider/model override uses focused single-channel execution with fallback
             if (effectiveRequest.preferredProvider != null && effectiveRequest.preferredProvider != AiProviderType.OMNI_ROUTE) {
-                val filtered = rankedChannels.filter { it.provider == effectiveRequest.preferredProvider } +
-                    rankedChannels.filter { it.provider != effectiveRequest.preferredProvider }
-                executeChannelFallback(effectiveRequest, filtered, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                val filtered = routedChannels.filter { it.provider == effectiveRequest.preferredProvider } +
+                    routedChannels.filter { it.provider != effectiveRequest.preferredProvider }
+                executeChannelFallback(effectiveRequest, filtered, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
                 return@supervisorScope
             }
 
-            // 3b. Privacy Local routing keeps traffic on configured local LAN/Ollama endpoints
-            if (effectiveRequest.routingMode == AiRoutingMode.PRIVACY_LOCAL) {
-                val localChannels = rankedChannels.filter { it.provider == AiProviderType.LOCAL_OLLAMA }
-                if (localChannels.isNotEmpty()) {
-                    executeChannelFallback(
-                        effectiveRequest,
-                        localChannels,
-                        listOf(AiProviderType.LOCAL_OLLAMA),
-                        cacheKey,
-                        domain,
-                        wikiDeferred,
-                        this@flow
-                    )
-                    return@supervisorScope
-                }
-            }
-
-            // 4. Trivial greeting or explicit FAST mode -> ultra-fast streaming single specialist
-            if (effectiveRequest.mode == ProviderPoolMode.FAST || (effectiveRequest.mode == ProviderPoolMode.AUTO && isTrivialGreeting(effectiveRequest.prompt))) {
-                executeChannelFallback(effectiveRequest, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+            // 4. Trivial greeting, explicit FAST mode, or strict local Ollama privacy mode -> focused streaming specialist
+            if (effectiveRequest.mode == ProviderPoolMode.FAST ||
+                isStrictLocalRouting ||
+                (effectiveRequest.mode == ProviderPoolMode.AUTO && isTrivialGreeting(effectiveRequest.prompt))
+            ) {
+                executeChannelFallback(effectiveRequest, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
                 return@supervisorScope
             }
 
             // 5. Real Question in AUTO or BEST -> Quorum-Accelerated Multi-AI Parallel Ensemble!
             val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 5 else 4
-            val ensembleChannels = selectDiverseEnsembleChannels(rankedChannels, maxCount = targetMax)
+            val ensembleChannels = selectDiverseEnsembleChannels(routedChannels, maxCount = targetMax)
             val totalEnsembleWorkers = ensembleChannels.size + if (isFirebaseAiReady) 1 else 0
             if (totalEnsembleWorkers >= 2 && (ensembleChannels.isNotEmpty() || isFirebaseAiReady)) {
-                executeMultiAiEnsemble(effectiveRequest, ensembleChannels, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                executeMultiAiEnsemble(effectiveRequest, ensembleChannels, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
             } else {
-                executeChannelFallback(effectiveRequest, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                executeChannelFallback(effectiveRequest, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -321,34 +342,92 @@ class ProviderPool @JvmOverloads constructor(
         channels: List<AiModelChannel>,
         routingMode: AiRoutingMode
     ): List<AiModelChannel> {
-        if (routingMode == AiRoutingMode.AUTO || channels.size <= 1) return channels
-        val preferredPredicate: (AiModelChannel) -> Boolean = when (routingMode) {
-            AiRoutingMode.FAST -> { ch ->
-                "fast" in ch.specialties || ch.provider in setOf(AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.GEMINI)
+        if (channels.isEmpty() || routingMode == AiRoutingMode.AUTO) return channels
+        return when (routingMode) {
+            AiRoutingMode.AUTO -> channels
+            AiRoutingMode.PRIVACY_LOCAL -> {
+                val localOnly = channels.filter { it.provider == AiProviderType.LOCAL_OLLAMA }
+                localOnly.ifEmpty {
+                    channels.sortedByDescending { ch ->
+                        when (ch.provider) {
+                            AiProviderType.LOCAL_OLLAMA -> 10
+                            AiProviderType.DEEPSEEK, AiProviderType.OPENROUTER -> 4
+                            else -> 0
+                        }
+                    }
+                }
             }
-            AiRoutingMode.BEST_QUALITY -> { ch ->
-                ch.isReasoning || ch.provider in setOf(AiProviderType.GEMINI, AiProviderType.ANTHROPIC, AiProviderType.OPENAI, AiProviderType.DEEPSEEK)
+            AiRoutingMode.FAST -> channels.sortedByDescending { ch ->
+                var score = if (ch.specialties.contains("fast")) 6 else 0
+                score += when (ch.provider) {
+                    AiProviderType.GROQ, AiProviderType.CEREBRAS -> 8
+                    AiProviderType.GEMINI -> if (ch.id.contains("flash")) 7 else 2
+                    AiProviderType.NVIDIA_NIM, AiProviderType.SAMBANOVA -> 5
+                    AiProviderType.OPENAI -> if (ch.modelId.contains("luna") || ch.modelId.contains("mini")) 4 else 1
+                    else -> 0
+                }
+                score
             }
-            AiRoutingMode.REASONING -> { ch ->
-                ch.isReasoning || "reasoning" in ch.specialties || "math" in ch.specialties
+            AiRoutingMode.BEST_QUALITY -> channels.sortedByDescending { ch ->
+                var score = if (ch.isReasoning) 5 else 0
+                score += when (ch.provider) {
+                    AiProviderType.GEMINI -> if (ch.id.contains("argon") || ch.id.contains("pro")) 9 else 5
+                    AiProviderType.ANTHROPIC, AiProviderType.OPENAI, AiProviderType.DEEPSEEK -> 8
+                    AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM -> 6
+                    AiProviderType.POLLINATIONS_FREE -> -4
+                    else -> 3
+                }
+                score
             }
-            AiRoutingMode.CODING -> { ch ->
-                "coding" in ch.specialties || ch.provider in setOf(AiProviderType.ANTHROPIC, AiProviderType.MISTRAL, AiProviderType.DEEPSEEK)
+            AiRoutingMode.REASONING -> channels.sortedByDescending { ch ->
+                var score = 0
+                if (ch.isReasoning) score += 8
+                if (ch.specialties.contains("reasoning")) score += 5
+                if (ch.specialties.contains("math")) score += 3
+                if (ch.provider == AiProviderType.DEEPSEEK || ch.provider == AiProviderType.SAMBANOVA) score += 4
+                score
             }
-            AiRoutingMode.PRIVACY_LOCAL -> { ch ->
-                ch.provider == AiProviderType.LOCAL_OLLAMA
+            AiRoutingMode.CODING -> channels.sortedByDescending { ch ->
+                var score = if (ch.specialties.contains("coding")) 10 else 0
+                if (ch.provider == AiProviderType.ANTHROPIC || ch.provider == AiProviderType.DEEPSEEK || ch.provider == AiProviderType.MISTRAL) score += 3
+                score
             }
-            AiRoutingMode.COST_EFFICIENT -> { ch ->
-                ch.provider in setOf(AiProviderType.POLLINATIONS_FREE, AiProviderType.OPENROUTER, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA, AiProviderType.GEMINI)
+            AiRoutingMode.COST_EFFICIENT -> channels.sortedByDescending { ch ->
+                when (ch.provider) {
+                    AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
+                    AiProviderType.HUGGINGFACE, AiProviderType.OPENROUTER -> 8
+                    AiProviderType.GEMINI -> if (ch.id.contains("flash")) 9 else 4
+                    AiProviderType.POLLINATIONS_FREE -> 7
+                    AiProviderType.NVIDIA_NIM -> 6
+                    AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.XAI, AiProviderType.PERPLEXITY -> -2
+                    else -> 2
+                }
             }
-            AiRoutingMode.OPEN_WEIGHTS -> { ch ->
-                ch.provider in setOf(AiProviderType.LOCAL_OLLAMA, AiProviderType.OPENROUTER, AiProviderType.HUGGINGFACE, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA)
+            AiRoutingMode.OPEN_WEIGHTS -> channels.sortedByDescending { ch ->
+                val modelLower = ch.modelId.lowercase()
+                val isOpenWeightsFamily = ch.provider in setOf(
+                    AiProviderType.LOCAL_OLLAMA,
+                    AiProviderType.OPENROUTER,
+                    AiProviderType.HUGGINGFACE,
+                    AiProviderType.GROQ,
+                    AiProviderType.CEREBRAS,
+                    AiProviderType.SAMBANOVA,
+                    AiProviderType.DEEPSEEK
+                ) || modelLower.contains("gemma") ||
+                    modelLower.contains("qwen") ||
+                    modelLower.contains("llama") ||
+                    modelLower.contains("deepseek") ||
+                    modelLower.contains("gpt-oss") ||
+                    modelLower.contains("glm") ||
+                    modelLower.contains("minimax") ||
+                    modelLower.contains("muse")
+                when {
+                    ch.provider == AiProviderType.LOCAL_OLLAMA -> 12
+                    isOpenWeightsFamily -> 8
+                    else -> 0
+                }
             }
-            AiRoutingMode.AUTO -> { _ -> true }
         }
-        val preferred = channels.filter(preferredPredicate)
-        val remainder = channels.filterNot(preferredPredicate)
-        return preferred + remainder
     }
 
     /**
@@ -430,7 +509,9 @@ class ProviderPool @JvmOverloads constructor(
             val fbModel = firebaseAiEngine.selectModelForTask(
                 modelTier = request.mode.name.lowercase(),
                 prompt = request.prompt,
-                preferReasoning = request.mode == ProviderPoolMode.BEST
+                preferReasoning = request.mode == ProviderPoolMode.BEST ||
+                    request.routingMode == AiRoutingMode.REASONING ||
+                    request.routingMode == AiRoutingMode.BEST_QUALITY
             )
             collector.emit(AyraStreamEvent.Thinking("Firebase Gemini ($fbModel) 🌐"))
             val fbStreamed = StringBuilder()
@@ -477,6 +558,7 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val firebaseCanHandlePrimary = externalProviders.allowExternalWikiGrounding &&
+            request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
             (request.preferredProvider == null || request.preferredProvider == AiProviderType.GEMINI || candidateList.isEmpty())
 
@@ -556,6 +638,7 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         if (!triedFirebaseAi &&
+            request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
             externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
             tryFirebaseAiLogic()
@@ -612,9 +695,11 @@ class ProviderPool @JvmOverloads constructor(
         try {
             if (firebaseEnsembleActive) {
                 val fbModelName = firebaseAiEngine.selectModelForTask(
-                    modelTier = "auto",
+                    modelTier = if (request.routingMode == AiRoutingMode.FAST) "fast" else "auto",
                     prompt = safePrompt,
-                    preferReasoning = false
+                    preferReasoning = isBestMode ||
+                        request.routingMode == AiRoutingMode.BEST_QUALITY ||
+                        request.routingMode == AiRoutingMode.REASONING
                 )
                 val fbChannel = AiModelChannel(
                     id = "firebase_ai_$fbModelName",

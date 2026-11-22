@@ -135,7 +135,7 @@ class ChatViewModel(
         if (repository === chatRepository) return
         repository = chatRepository
         _repositoryFlow.value = chatRepository
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val active = chatRepository.ensureActiveSession()
             _activeSessionId.value = active.id
         }

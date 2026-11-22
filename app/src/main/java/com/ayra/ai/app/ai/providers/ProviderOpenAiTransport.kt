@@ -391,22 +391,18 @@ internal object ProviderOpenAiTransport {
     ) {
         val baseUrl = getBaseUrlForProvider(provider, context, baseUrlOverrides)
         validateEndpointIfLocal(provider, context, baseUrl, baseUrlOverrides.isNotEmpty())
-        val reqBuilder = Request.Builder().url("${baseUrl}models")
-        if (shouldAttachBearerHeader(provider, context, key)) {
-            reqBuilder.addHeader("Authorization", "Bearer $key")
-        }
-        client.newCall(reqBuilder.get().build()).execute().use { resp ->
-            if (!resp.isSuccessful) return
-            val bodyStr = resp.readBounded().trim()
+
+        fun parseModelArray(bodyStr: String) {
             if (bodyStr.isBlank()) return
             val root = runCatching { JSONObject(bodyStr) }.getOrNull() ?: return
             val data = root.optJSONArray("data") ?: root.optJSONArray("models") ?: JSONArray()
+            val seenIds = out.map { it.id }.toMutableSet()
             for (i in 0 until data.length()) {
                 val obj = data.optJSONObject(i) ?: continue
                 val modelId = obj.optString("id", obj.optString("name", "")).trim()
-                if (modelId.isNotBlank() && !shouldSkipDiscoveredModel(modelId)) {
+                if (modelId.isNotBlank() && !shouldSkipDiscoveredModel(modelId) && seenIds.add(modelId)) {
                     val lower = modelId.lowercase()
-                    val isVision = lower.contains("vision") || lower.contains("4o") || lower.contains("pixtral") || lower.contains("minimax") || lower.contains("gpt-6") || lower.contains("gemma")
+                    val isVision = lower.contains("vision") || lower.contains("4o") || lower.contains("pixtral") || lower.contains("minimax") || lower.contains("gpt-6") || lower.contains("gemma") || lower.contains("llava")
                     val isReasoning = lower.contains("r1") || lower.contains("o1") || lower.contains("o3") || lower.contains("reasoner") || lower.contains("glm") || lower.contains("gemma") || lower.contains("astra") || lower.contains("v4-pro")
                     out.add(
                         AiModelInfo(
@@ -421,6 +417,39 @@ internal object ProviderOpenAiTransport {
                         )
                     )
                 }
+            }
+        }
+
+        val reqBuilder = Request.Builder().url("${baseUrl}models")
+        if (shouldAttachBearerHeader(provider, context, key)) {
+            reqBuilder.addHeader("Authorization", "Bearer $key")
+        }
+        if (provider == AiProviderType.OPENROUTER) {
+            reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
+            reqBuilder.addHeader("X-Title", "Ayra AI Mobile")
+        }
+        client.newCall(reqBuilder.get().build()).execute().use { resp ->
+            if (resp.isSuccessful) {
+                parseModelArray(resp.readBounded().trim())
+            }
+        }
+
+        if (provider == AiProviderType.LOCAL_OLLAMA && out.none { it.provider == AiProviderType.LOCAL_OLLAMA }) {
+            val rootBase = baseUrl.removeSuffix("v1/").let { if (it.endsWith("/")) it else "$it/" }
+            val tagsBuilder = Request.Builder().url("${rootBase}api/tags")
+            if (shouldAttachBearerHeader(provider, context, key)) {
+                tagsBuilder.addHeader("Authorization", "Bearer $key")
+            }
+            try {
+                client.newCall(tagsBuilder.get().build()).execute().use { tagsResp ->
+                    if (tagsResp.isSuccessful) {
+                        parseModelArray(tagsResp.readBounded().trim())
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ProviderOpenAi", "Ollama /api/tags fallback failed: ${e.message}")
             }
         }
     }

@@ -112,28 +112,8 @@ Direct source inspection identified and permanently repaired the following resid
 | **P3-09** | **LOW** | `AyraDiagnosticsEngine.kt`, `AyraDiagnosticsSection.kt`, `DiagnosticsToolsScreen.kt`: No unified in-app latency/p95/error telemetry with secret-safe export. | Latency regressions and provider failures hard to inspect without exposing keys in logs/exports. | Added bounded ring-buffer telemetry with p95/mean calculation and regex redaction surfaced in Workspace Diagnostics. | `Phase3HardeningAndRegressionTest.knowledgeLruCacheBoundsMemoryAndDiagnosticsEngineRedactsSecretsAndComputesP95`. |
 
 **Verified Post-Phase-3 Totals (18 Nov 2026):**
-- Historical baseline updated below in Phase 4 (`2026-11-21`). See `docs/FACTS.md` for live generated metrics.
+- Android + Auth/Firestore Emulators: **`212 / 212` passed across `34` suites** (`0` failed, `0` errors, `0` skipped)
+- Zero-Trust Node/TS Backend: **`15 / 15` passed** (`npm --prefix backend run build && npm --prefix backend test`)
+- Firestore Rules Emulator Tests: **`9 / 9` passed** + live rules deployed (`DeployRules` RPC)
+- APKs: Debug (`52,608,939` bytes, `19` DEX) & R8 Release (`26,711,215` bytes, `1` DEX, zero debug App Check classes, zero `CALL_PHONE`/`SEND_SMS`)
 
----
-
-## 5. Phase 4 — Model Catalog Renewal, Fail-Closed Consent, Gateway Routing & Scheduler Integrity (20–21 Nov 2026)
-
-Comprehensive audit and regression repair pass (`H1`–`H4`, `M1`–`M7`, `Phase 12`):
-
-| ID | Severity | Finding & Root Cause | Permanent Remediation & Guard |
-|---|---|---|---|
-| **H1** | **HIGH** | Container policy locks `app/build.gradle.kts` `signingConfigs.release` to `debug.keystore`; external CI/Play pipelines need strict non-debug enforcement and Firebase fingerprint docs. | Preserved `ValidateProductionReleaseSigningTask` (`-PayraRequireProductionSigning=true` verified failing closed), `scripts/preflight.sh` Section 2 WARN/guard, and documented upload + Play App Signing SHA-1/SHA-256 registration in `RELEASE_SIGNING.md` (**UNVERIFIED** for live Play upload `.jks` in container). |
-| **H2** | **HIGH** | `backend/src/middleware/rateLimit.ts` `createUserWindowLimiter` incremented global counter before per-user check, allowing one tenant to cause global 429s; lacked pre-auth per-IP limit. | Reordered per-user check before global increment + added pre-auth per-IP limiter; regression-tested (`backend/test/security.test.mjs` Subtest 16). |
-| **H3** | **HIGH** | `AgentToolRegistry.reminderScheduleTool` had `requiresConfirmation = false` while delegating to `scheduleTaskFromPrompt`, allowing tainted prompts to schedule CALL/SMS/WhatsApp tasks. | Split `AyraTaskScheduler.scheduleReminderOnly` (`REMINDER`-only), wired `reminder_schedule` strictly to it, gated tainted `reminder_schedule` behind `ProposedAction.ExecuteExternalTool` in `AgentCore.kt`, and added `scripts/preflight.sh` Section 14 + `SecurityAndModelUpgradeRegressionTest`. |
-| **H4** | **HIGH** | Retired/sunsetting model IDs lingered across transports & engines; `GITHUB_MODELS` Azure endpoint shut down `2026-07-30`; HTTP `410` wasn't tracked as `RETIRED`; swaps omitted notices; unprobed Blaze models reported `OPERATIONAL`. | Upgraded Android & backend catalogs to `2026-11-20` active baseline (`gemini-3.8-flash`, `gemini-4-argon`, `gpt-6.2-sol`/`astra`/`gpt-6-luna`, `claude-*-5-5`, `deepseek-v4-pro`/`flash`, `grok-4.7`, `qwen/qwen3.8-27b`, `openrouter/free`), retired `GITHUB_MODELS`, surfaced visible `[Model Notice: ...]`, marked unprobed Blaze models `UNKNOWN`; enforced via `config/dead-models.txt` + `scripts/preflight.sh` Section 4 + `.github/workflows/model-health.yml` + `SecurityAndModelUpgradeRegressionTest`. |
-| **M1 / M2 / M7** | **MEDIUM** | `ScheduledTaskReceiver` dropped `targetPhone` digits in `wa.me` URIs, missed `TIME_SET`/`TIMEZONE_CHANGED` broadcasts, and didn't split overdue catch-up (`> 15m`) into `MISSED`. | Preserved sanitized WhatsApp digits in `buildWhatsAppUri`, added `TIME_CHANGED`/`TIMEZONE_CHANGED` actions, split `rearmAllPendingTasks` on `OVERDUE_CATCHUP_WINDOW_MS = 15m` (`FIRED` vs `MISSED` + notification); verified in `SecurityAndModelUpgradeRegressionTest`. |
-| **M3 / M4** | **MEDIUM** | Backend Redis window script needed atomic settlement & `Redis >= 7` documentation, plus strict `TRUST_PROXY_HOPS` config validation. | Implemented atomic Lua/pipeline scripts in `backend/src/middleware/rateLimit.ts`, strict proxy config in `backend/src/config.ts`, documented `Redis >= 7` in `README.md`; verified in `backend/test/security.test.mjs` Subtest 17. |
-| **M5** | **MEDIUM** | `ExternalAiProviders` never routed through `SecureAiGatewayClient.callAuthenticatedBackendAiProxy` (Route B), `ProviderPool.streamChat` lacked `evaluateProviderAccess`, and Pollinations null-context fallback returned `true`. | Wired Route B proxy path in `ExternalAiProviders.generateChatResponse`, enforced `evaluateProviderAccess` in `ProviderPool.streamChat`, changed Pollinations null-context fallbacks to `?: false`; verified via MockWebServer in `SecurityAndModelUpgradeRegressionTest`. |
-| **Phase 12** | **HIGH** | External consent (`hasExternalAiConsent`), `isFreeAiPoolEnabled`, `hasFreePoolConsent`, `isCloudSyncEnabled`, and `isOnboardingCompleted` defaulted to `true`, and `saveApiKey` implicitly toggled consent on. | Flipped all 5 privacy/consent flags to fail-closed `false`, decoupled consent from `saveApiKey`, and required explicit opt-in via Onboarding & Security Center; verified in `AutoConnectBestAnswerTest` & `SecurityAndModelUpgradeRegressionTest`. |
-
-**Verified Post-Phase-4 Totals (`2026-11-21`):**
-- Android + Auth/Firestore Emulators: **`40` suites, `252 / 252` tests passed** (`0` failed, `0` errors, `0` skipped)
-- Zero-Trust Node/TS Backend: **`17 / 17` passed** (`npm --prefix backend ci && build && test`)
-- Firestore Rules Emulator Tests: **`9 / 9` passed** (`node --test firestore.test.js`)
-- Preflight & Facts SSOT: `scripts/gen-facts.sh --check` + `scripts/preflight.sh` clean (`0 FAIL`, `2` container `signingConfigs` WARN)
-- Artifacts: Debug APK (`52,399,992` bytes) & R8 Release APK (`26,662,661` bytes) & Release AAB (`20,544,690` bytes) + fail-closed `-PayraRequireProductionSigning=true` gate verified

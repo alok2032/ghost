@@ -1,13 +1,10 @@
 package com.ayra.ai.app.ui.components
 
 import android.content.Context
-import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,18 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,10 +41,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import com.ayra.ai.app.ai.providers.ModelTier
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,30 +55,22 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ayra.ai.app.ai.FirebaseAiEngine
 import com.ayra.ai.app.ai.providers.AiProviderType
-import com.ayra.ai.app.ai.providers.AiRoutingMode
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.search.TavilySearchEngine
 import com.ayra.ai.app.security.AndroidHardeningHelper
-import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.voice.ElevenLabsVoiceEngine
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 @Composable
 fun ProviderKeysSection(
     context: Context,
     modifier: Modifier = Modifier,
-    editsLocked: Boolean = false
+    onActivationChanged: () -> Unit = {}
 ) {
     val providers = remember {
         listOf(
@@ -102,22 +85,18 @@ fun ProviderKeysSection(
             Triple(AiProviderType.OPENROUTER, "OpenRouter (All Models)", "https://openrouter.ai/keys"),
             Triple(AiProviderType.XAI, "xAI Console", "https://console.x.ai/"),
             Triple(AiProviderType.MISTRAL, "Mistral Console", "https://console.mistral.ai/api-keys/"),
-            Triple(AiProviderType.PERPLEXITY, "Perplexity AI", "https://www.perplexity.ai/settings/api")
+            Triple(AiProviderType.PERPLEXITY, "Perplexity AI", "https://www.perplexity.ai/settings/api"),
+            Triple(AiProviderType.GITHUB_MODELS, "GitHub Models (Retired 2026-07-30)", "https://github.com/settings/tokens")
         )
     }
 
-    var refreshTick by remember { mutableIntStateOf(0) }
-    var externalConsent by remember(refreshTick) { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
-    var preferByok by remember(refreshTick) { mutableStateOf(AyraPreferences.isByokPreferred(context)) }
-    val isLocalOnly = AyraPreferences.isLocalOnlyAiModeEnabled(context)
+    var activationRevision by remember { mutableStateOf(0) }
+    var hasExternalConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
+    val isLocalOnly = remember(activationRevision) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
 
-    val scope = rememberCoroutineScope()
-    var isTestingAll by remember { mutableStateOf(false) }
-    var batchTestSummary by remember { mutableStateOf<String?>(null) }
-
-    val configuredCount = remember(refreshTick, externalConsent, isLocalOnly) {
-        ExternalAiProviders(context).getActiveConfiguredProviders().size +
-            if (FirebaseAiEngine.isAvailable(context)) 1 else 0
+    val notifyActivationChanged = {
+        activationRevision++
+        onActivationChanged()
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -127,212 +106,31 @@ fun ProviderKeysSection(
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "All API keys are encrypted on-device via Android Keystore (AES-256-GCM). They are never sent to telemetry servers or stored in plaintext.",
+            text = "All API keys are encrypted on-device via Android Keystore (AES-256-GCM). Saved cloud keys remain inactive until External Cloud AI Consent is enabled.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        if (editsLocked) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
-                    .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
-                Text(
-                    text = "Safe Edit Lock is ON — AI keys, consent, and routing cannot be modified accidentally. Connection tests remain available.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+        AiActivationAndConsentCard(
+            context = context,
+            hasExternalConsent = hasExternalConsent,
+            isLocalOnly = isLocalOnly,
+            activationRevision = activationRevision,
+            onConsentChanged = { enabled ->
+                hasExternalConsent = enabled
+                AyraPreferences.setExternalAiConsent(context, enabled)
+                ExternalAiProviders.clearDynamicModelCache(null)
+                com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                notifyActivationChanged()
+            },
+            onSynced = {
+                notifyActivationChanged()
             }
-        }
-
-        // Cloud Consent & Routing Policy Strip
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    1.dp,
-                    if (isLocalOnly) MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
-                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                    RoundedCornerShape(16.dp)
-                ),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                        Text(
-                            text = "Active AI Engines Ready: $configuredCount",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (configuredCount > 0) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = when {
-                                isLocalOnly -> "Local-Only Privacy Mode is active (cloud providers paused)."
-                                !externalConsent -> "Cloud consent is OFF. Save your keys and enable External Cloud AI Consent below to send requests."
-                                else -> "Outbound Cloud AI consent active. Multi-AI Best-Answer auto-selection enabled."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isLocalOnly || !externalConsent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                isTestingAll = true
-                                batchTestSummary = null
-                                val engine = ExternalAiProviders(context)
-                                val report = StringBuilder()
-                                val llmTypes = listOf(
-                                    AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
-                                    AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM, AiProviderType.HUGGINGFACE,
-                                    AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.DEEPSEEK,
-                                    AiProviderType.OPENROUTER, AiProviderType.XAI, AiProviderType.MISTRAL,
-                                    AiProviderType.PERPLEXITY, AiProviderType.LOCAL_OLLAMA
-                                )
-                                var passed = 0
-                                var failed = 0
-                                for (prov in llmTypes) {
-                                    val key = engine.getProviderKey(prov)
-                                    val configured = if (prov == AiProviderType.LOCAL_OLLAMA) {
-                                        AyraPreferences.getCustomEndpointUrl(context).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(context)
-                                    } else {
-                                        key.isNotBlank()
-                                    }
-                                    if (!configured) continue
-                                    try {
-                                        val ms = engine.testProviderConnection(prov)
-                                        passed++
-                                        report.appendLine("✓ ${prov.displayName}: ${ms}ms")
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Exception) {
-                                        failed++
-                                        report.appendLine("✗ ${prov.displayName}: ${e.message ?: "Error"}")
-                                    }
-                                }
-                                if (AyraPreferences.getTavilySearchKey(context).isNotBlank()) {
-                                    try {
-                                        val ms = TavilySearchEngine(context).testConnection()
-                                        passed++
-                                        report.appendLine("✓ Tavily Search: ${ms}ms")
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Exception) {
-                                        failed++
-                                        report.appendLine("✗ Tavily Search: ${e.message}")
-                                    }
-                                }
-                                if (AyraPreferences.getElevenLabsKey(context).isNotBlank()) {
-                                    try {
-                                        val ms = ElevenLabsVoiceEngine(context).testConnection()
-                                        passed++
-                                        report.appendLine("✓ ElevenLabs Voice: ${ms}ms")
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Exception) {
-                                        failed++
-                                        report.appendLine("✗ ElevenLabs Voice: ${e.message}")
-                                    }
-                                }
-                                batchTestSummary = if (passed == 0 && failed == 0) {
-                                    "No configured provider keys or local endpoints found to test yet."
-                                } else {
-                                    "Batch Check Complete ($passed passed, $failed failed):\n${report.toString().trim()}"
-                                }
-                                isTestingAll = false
-                            }
-                        },
-                        enabled = !isTestingAll,
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("test_all_providers_button")
-                    ) {
-                        if (isTestingAll) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Testing...", fontSize = 11.5.sp)
-                        } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Test All Active", fontSize = 11.5.sp)
-                        }
-                    }
-                }
-
-                AnimatedVisibility(visible = batchTestSummary != null) {
-                    Text(
-                        text = batchTestSummary ?: "",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                        Text("External Cloud AI Consent", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text(
-                            "Required opt-in before sending prompts to external cloud AI keys.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = !isLocalOnly && externalConsent,
-                        enabled = !editsLocked && !isLocalOnly,
-                        onCheckedChange = { enable ->
-                            AyraPreferences.setExternalAiConsent(context, enable)
-                            externalConsent = AyraPreferences.hasExternalAiConsent(context)
-                            refreshTick++
-                        },
-                        modifier = Modifier.testTag("provider_consent_switch")
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                        Text("Prefer Direct BYOK Keys Over Proxy", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text(
-                            "Uses your on-device API keys directly when available instead of routing through the backend proxy.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = preferByok,
-                        enabled = !editsLocked,
-                        onCheckedChange = { enable ->
-                            AyraPreferences.setByokPreferred(context, enable)
-                            preferByok = AyraPreferences.isByokPreferred(context)
-                            refreshTick++
-                        },
-                        modifier = Modifier.testTag("provider_byok_switch")
-                    )
-                }
-            }
-        }
+        )
 
         // Intelligent Routing & AI Memory Control
-        AiRoutingAndMemoryCard(context = context, editsLocked = editsLocked)
+        AiRoutingAndMemoryCard(context = context)
 
         Text(
             text = "Core LLM Providers",
@@ -347,8 +145,9 @@ fun ProviderKeysSection(
                 provider = provider,
                 portalLabel = label,
                 portalUrl = portalUrl,
-                editsLocked = editsLocked,
-                onKeyUpdated = { refreshTick++ }
+                hasExternalConsent = hasExternalConsent,
+                isLocalOnly = isLocalOnly,
+                onKeyChanged = notifyActivationChanged
             )
         }
 
@@ -361,20 +160,60 @@ fun ProviderKeysSection(
 
         NvidiaNimMultiKeySection(
             context = context,
-            editsLocked = editsLocked,
-            onKeyUpdated = { refreshTick++ }
+            hasExternalConsent = hasExternalConsent,
+            isLocalOnly = isLocalOnly,
+            onKeyChanged = notifyActivationChanged
         )
         FreeAiPoolCard(
             context = context,
-            editsLocked = editsLocked,
-            onPoolChanged = { refreshTick++ }
+            hasExternalConsent = hasExternalConsent,
+            isLocalOnly = isLocalOnly,
+            onChanged = notifyActivationChanged
         )
 
         Text(
-            text = "Search, Voice, Local & Backend Integrations",
+            text = "Local Models, Search & Voice Integrations",
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(top = 8.dp)
+        )
+
+        // Local Ollama / LM Studio Host
+        SpecializedIntegrationKeyCard(
+            context = context,
+            title = "Local Ollama / LM Studio Host",
+            description = "Zero-cloud local LLM endpoint on LAN or emulator host (auto-discovers /api/tags & /v1/models).",
+            portalLabel = "Ollama Local Server",
+            portalUrl = "http://10.0.2.2:11434",
+            icon = Icons.Default.AutoAwesome,
+            initialKey = if (AyraPreferences.hasExplicitOllamaHost(context)) AyraPreferences.getOllamaHost(context) else "",
+            placeholder = "http://10.0.2.2:11434",
+            testTagPrefix = "local_ollama",
+            statusBadgeOverride = if (AyraPreferences.hasExplicitOllamaHost(context)) "Local Ready ✓" else null,
+            onSave = { endpoint ->
+                AyraPreferences.setOllamaHost(context, endpoint)
+                ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+                com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                notifyActivationChanged()
+            },
+            onClear = {
+                AyraPreferences.setOllamaHost(context, "")
+                ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+                com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                notifyActivationChanged()
+            },
+            onTest = { endpoint ->
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                if (!urlCheck.allowed) {
+                    throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe Ollama endpoint URL.")
+                }
+                val latency = com.ayra.ai.app.ai.openmodel.OpenModelEngine(context).testConnection(endpoint)
+                ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+                runCatching { ExternalAiProviders(context).discoverDynamicModels(AiProviderType.LOCAL_OLLAMA) }
+                latency
+            }
         )
 
         // Tavily Live Web Search
@@ -387,16 +226,8 @@ fun ProviderKeysSection(
             icon = Icons.Default.Language,
             initialKey = AyraPreferences.getTavilySearchKey(context),
             placeholder = "tvly-...",
-            editsLocked = editsLocked,
-            tagPrefix = "tavily",
-            onSave = {
-                AyraPreferences.setTavilySearchKey(context, it)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setTavilySearchKey(context, "")
-                refreshTick++
-            },
+            onSave = { AyraPreferences.setTavilySearchKey(context, it); notifyActivationChanged() },
+            onClear = { AyraPreferences.setTavilySearchKey(context, ""); notifyActivationChanged() },
             onTest = { key -> TavilySearchEngine(context).testConnection(key) }
         )
 
@@ -410,119 +241,55 @@ fun ProviderKeysSection(
             icon = Icons.Default.RecordVoiceOver,
             initialKey = AyraPreferences.getElevenLabsKey(context),
             placeholder = "sk_...",
-            editsLocked = editsLocked,
-            tagPrefix = "elevenlabs",
-            onSave = {
-                AyraPreferences.setElevenLabsKey(context, it)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setElevenLabsKey(context, "")
-                refreshTick++
-            },
+            onSave = { AyraPreferences.setElevenLabsKey(context, it); notifyActivationChanged() },
+            onClear = { AyraPreferences.setElevenLabsKey(context, ""); notifyActivationChanged() },
             onTest = { key -> ElevenLabsVoiceEngine(context).testConnection(key) }
         )
 
-        // Local Ollama / LM Studio Server URL
+        // Custom Proxy / LAN Gateway
         SpecializedIntegrationKeyCard(
             context = context,
-            title = "Local Ollama / LM Studio URL",
-            description = "Offline private LLM host (probes /api/tags & /v1/models). Used automatically in Private / Local LAN mode.",
-            portalLabel = "Ollama Local Server",
-            portalUrl = "http://10.0.2.2:11434",
-            icon = Icons.Default.Computer,
-            initialKey = if (AyraPreferences.hasExplicitOllamaHost(context)) AyraPreferences.getOllamaHost(context) else "",
-            placeholder = "http://10.0.2.2:11434",
-            editsLocked = editsLocked,
-            tagPrefix = "local_ollama_host",
-            maskInputByDefault = false,
-            onSave = { url ->
-                AyraPreferences.setOllamaHost(context, url)
-                ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.LOCAL_OLLAMA)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setOllamaHost(context, "")
-                refreshTick++
-            },
-            onTest = { endpoint ->
-                val clean = endpoint.trim().trimEnd('/')
-                val urlCheck = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, clean)
-                if (!urlCheck.allowed) {
-                    throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe Ollama URL.")
-                }
-                val start = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    val client = NetworkSecurityHelper.localLanClient.newBuilder()
-                        .connectTimeout(3, TimeUnit.SECONDS)
-                        .readTimeout(4, TimeUnit.SECONDS)
-                        .build()
-                    val base = clean.removeSuffix("/v1")
-                    var verified = false
-                    var lastCode = 0
-                    for (probeUrl in listOf("$base/api/tags", "$base/v1/models")) {
-                        val req = Request.Builder().url(probeUrl).get().build()
-                        val code = runCatching { client.newCall(req).execute().use { it.code } }.getOrDefault(0)
-                        if (code in 200..299 || ((code == 401 || code == 403) && probeUrl.endsWith("/v1/models"))) {
-                            verified = true
-                            break
-                        }
-                        if (code > 0) lastCode = code
-                    }
-                    if (!verified) {
-                        throw IllegalStateException(
-                            if (lastCode > 0) "Ollama probe failed (HTTP $lastCode)" else "Ollama host unreachable"
-                        )
-                    }
-                }
-                (System.currentTimeMillis() - start).coerceAtLeast(1L)
-            }
-        )
-
-        // Custom Proxy / LAN Gateway URL
-        SpecializedIntegrationKeyCard(
-            context = context,
-            title = "Custom Proxy / LAN Gateway URL",
+            title = "Custom Proxy / LAN Gateway",
             description = "Custom OpenAI-compatible HTTP inference proxy or gateway endpoint for local network servers.",
             portalLabel = "Local Gateway",
             portalUrl = "http://10.0.2.2:8000",
             icon = Icons.Default.AutoAwesome,
             initialKey = AyraPreferences.getCustomEndpointUrl(context),
             placeholder = "http://10.0.2.2:8000/v1",
-            editsLocked = editsLocked,
-            tagPrefix = "custom_proxy_url",
-            maskInputByDefault = false,
-            onSave = { url ->
-                AyraPreferences.setCustomEndpointUrl(context, url)
-                ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.LOCAL_OLLAMA)
-                refreshTick++
+            onSave = {
+                AyraPreferences.setCustomEndpointUrl(context, it)
+                ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+                com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                notifyActivationChanged()
             },
             onClear = {
                 AyraPreferences.setCustomEndpointUrl(context, "")
-                refreshTick++
+                ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
+                com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                notifyActivationChanged()
             },
             onTest = { endpoint ->
-                val urlCheck = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                 }
                 val start = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    val client = NetworkSecurityHelper.localLanClient.newBuilder()
-                        .connectTimeout(3, TimeUnit.SECONDS)
-                        .readTimeout(3, TimeUnit.SECONDS)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient.newBuilder()
+                        .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
                     val clean = endpoint.trim().trimEnd('/')
                     val base = clean.removeSuffix("/v1")
-                    val bearerKey = AyraPreferences.getCustomEndpointKey(context)
                     val probes = listOf("$base/v1/models", "$base/api/tags", "$clean/", clean).distinct()
                     var verified = false
                     var lastCode = 0
                     for (probeUrl in probes) {
-                        val reqBuilder = Request.Builder().url(probeUrl).get()
-                        if (bearerKey.isNotBlank()) reqBuilder.header("Authorization", "Bearer $bearerKey")
+                        val req = okhttp3.Request.Builder().url(probeUrl).get().build()
                         val code = runCatching {
-                            client.newCall(reqBuilder.build()).execute().use { resp -> resp.code }
+                            client.newCall(req).execute().use { resp -> resp.code }
                         }.getOrDefault(0)
                         if (code in 200..299 || ((code == 401 || code == 403) && probeUrl.endsWith("/v1/models"))) {
                             verified = true
@@ -540,94 +307,6 @@ fun ProviderKeysSection(
             }
         )
 
-        // Custom Proxy / LAN Gateway Bearer API Key
-        SpecializedIntegrationKeyCard(
-            context = context,
-            title = "Custom Proxy / LAN Bearer API Key",
-            description = "Optional Bearer token sent when authenticating against your Custom Proxy / vLLM / LiteLLM LAN endpoint.",
-            portalLabel = "Proxy Token (Local Keystore)",
-            portalUrl = "Bearer Token",
-            icon = Icons.Default.Key,
-            initialKey = AyraPreferences.getCustomEndpointKey(context),
-            placeholder = "sk-proxy-... (optional)",
-            editsLocked = editsLocked,
-            tagPrefix = "custom_proxy_key",
-            onSave = { token ->
-                AyraPreferences.setCustomEndpointKey(context, token)
-                ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.LOCAL_OLLAMA)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setCustomEndpointKey(context, "")
-                refreshTick++
-            },
-            onTest = { token ->
-                val targetUrl = AyraPreferences.getCustomEndpointUrl(context)
-                    .ifBlank { if (AyraPreferences.hasExplicitOllamaHost(context)) AyraPreferences.getOllamaHost(context) else "" }
-                if (targetUrl.isBlank()) {
-                    throw IllegalStateException("Save a Custom Proxy URL or Ollama Host above before testing the token.")
-                }
-                val urlCheck = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, targetUrl)
-                if (!urlCheck.allowed) {
-                    throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
-                }
-                val start = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    val clean = targetUrl.trim().trimEnd('/').removeSuffix("/v1")
-                    val req = Request.Builder()
-                        .url("$clean/v1/models")
-                        .header("Authorization", "Bearer $token")
-                        .get()
-                        .build()
-                    val code = NetworkSecurityHelper.localLanClient.newCall(req).execute().use { it.code }
-                    if (code !in 200..299) {
-                        throw IllegalStateException("Bearer token rejected (HTTP $code)")
-                    }
-                }
-                (System.currentTimeMillis() - start).coerceAtLeast(1L)
-            }
-        )
-
-        // Zero-Trust Backend AI Gateway URL (Route B)
-        SpecializedIntegrationKeyCard(
-            context = context,
-            title = "Ayra Zero-Trust Backend Gateway (Route B)",
-            description = "HTTPS backend gateway URL authenticated with Firebase ID Token & App Check. Active when Direct BYOK preference is OFF.",
-            portalLabel = "Zero-Trust HTTPS Server",
-            portalUrl = "https://your-gateway.example.com",
-            icon = Icons.Default.Cloud,
-            initialKey = AyraPreferences.getBackendGatewayUrl(context),
-            placeholder = "https://your-ayra-backend.example.com",
-            editsLocked = editsLocked,
-            tagPrefix = "backend_gateway_url",
-            maskInputByDefault = false,
-            onSave = { url ->
-                AyraPreferences.setBackendGatewayUrl(context, url)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setBackendGatewayUrl(context, "")
-                refreshTick++
-            },
-            onTest = { url ->
-                val clean = url.trim().trimEnd('/')
-                val urlCheck = NetworkSecurityHelper.validatePublicHttpsUrl(clean)
-                if (!urlCheck.allowed) {
-                    throw IllegalArgumentException(urlCheck.reason ?: "Backend Gateway URL must be a valid public HTTPS endpoint.")
-                }
-                val start = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    val req = Request.Builder().url("$clean/health").get().build()
-                    NetworkSecurityHelper.hardenedPooledClient.newCall(req).execute().use { resp ->
-                        if (!resp.isSuccessful) {
-                            throw IllegalStateException("Backend /health returned HTTP ${resp.code}")
-                        }
-                    }
-                }
-                (System.currentTimeMillis() - start).coerceAtLeast(1L)
-            }
-        )
-
         // Self-hosted ComfyUI Image / Video Workflow Server
         SpecializedIntegrationKeyCard(
             context = context,
@@ -635,33 +314,24 @@ fun ProviderKeysSection(
             description = "Connect a local/LAN or cloud ComfyUI server for real Flux/SDXL/Wan image & video workflows.",
             portalLabel = "ComfyUI Endpoint",
             portalUrl = "http://10.0.2.2:8188",
-            icon = Icons.Default.Security,
+            icon = Icons.Default.AutoAwesome,
             initialKey = AyraPreferences.getComfyUiUrl(context),
             placeholder = "http://10.0.2.2:8188",
-            editsLocked = editsLocked,
-            tagPrefix = "comfyui_url",
-            maskInputByDefault = false,
-            onSave = {
-                AyraPreferences.setComfyUiUrl(context, it)
-                refreshTick++
-            },
-            onClear = {
-                AyraPreferences.setComfyUiUrl(context, "")
-                refreshTick++
-            },
+            onSave = { AyraPreferences.setComfyUiUrl(context, it); notifyActivationChanged() },
+            onClear = { AyraPreferences.setComfyUiUrl(context, ""); notifyActivationChanged() },
             onTest = { endpoint ->
-                val urlCheck = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe ComfyUI URL.")
                 }
                 val start = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    val client = NetworkSecurityHelper.localLanClient.newBuilder()
-                        .connectTimeout(4, TimeUnit.SECONDS)
-                        .readTimeout(4, TimeUnit.SECONDS)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient.newBuilder()
+                        .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
                     val clean = endpoint.trimEnd('/')
-                    val req = Request.Builder().url("$clean/system_stats").build()
+                    val req = okhttp3.Request.Builder().url("$clean/system_stats").build()
                     client.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
                     }
@@ -673,21 +343,179 @@ fun ProviderKeysSection(
 }
 
 @Composable
-fun AiRoutingAndMemoryCard(
+private fun AiActivationAndConsentCard(
     context: Context,
-    editsLocked: Boolean = false
+    hasExternalConsent: Boolean,
+    isLocalOnly: Boolean,
+    activationRevision: Int,
+    onConsentChanged: (Boolean) -> Unit,
+    onSynced: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    var isSyncingAll by remember { mutableStateOf(false) }
+    var syncSummary by remember { mutableStateOf<String?>(null) }
+    var syncIsError by remember { mutableStateOf(false) }
+
+    val snapshot = remember(hasExternalConsent, isLocalOnly, activationRevision) {
+        val ext = ExternalAiProviders(context)
+        val activeProviders = ext.getActiveConfiguredProviders()
+        val activeChannels = ext.getActiveChannels()
+        val savedAny = ext.getSavedKeyProvidersIgnoringConsent()
+        val fbReady = com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
+        Triple(activeProviders.size, activeChannels.size + if (fbReady) 1 else 0, savedAny.size)
+    }
+    val (activeProvidersCount, activeEnginesCount, savedCount) = snapshot
+
+    val borderColor = when {
+        activeEnginesCount > 0 -> Color(0xFF10B981).copy(alpha = 0.45f)
+        savedCount > 0 && !hasExternalConsent -> Color(0xFFF59E0B).copy(alpha = 0.55f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("provider_activation_consent_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(borderColor)
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                    Text(
+                        text = when {
+                            isLocalOnly -> "Local-Only Privacy Mode ON ($activeProvidersCount local)"
+                            activeEnginesCount > 0 -> "$activeEnginesCount Active AI Engines ($activeProvidersCount Providers)"
+                            savedCount > 0 && !hasExternalConsent -> "$savedCount Key(s) Saved • Consent Required"
+                            else -> "No Active AI Engines Configured"
+                        },
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = when {
+                            activeEnginesCount > 0 -> Color(0xFF10B981)
+                            savedCount > 0 && !hasExternalConsent -> Color(0xFFF59E0B)
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                    Text(
+                        text = "External Cloud AI Consent enables saved cloud API keys (Gemini, Groq, NIM, OpenAI, Claude, etc.) and live /models discovery.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Switch(
+                    checked = hasExternalConsent,
+                    onCheckedChange = onConsentChanged,
+                    modifier = Modifier.testTag("external_cloud_consent_switch"),
+                    colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            isSyncingAll = true
+                            syncSummary = null
+                            syncIsError = false
+                            try {
+                                val ext = ExternalAiProviders(context)
+                                ExternalAiProviders.clearDynamicModelCache(null)
+                                val targets = ext.getActiveConfiguredProviders()
+                                    .filter { it != AiProviderType.POLLINATIONS_FREE && it != AiProviderType.OMNI_ROUTE }
+                                if (targets.isEmpty()) {
+                                    syncSummary = if (savedCount > 0 && !hasExternalConsent) {
+                                        "Enable External Cloud AI Consent above to test & activate your saved keys."
+                                    } else {
+                                        "Save at least one API key or Local Ollama host first."
+                                    }
+                                    syncIsError = true
+                                } else {
+                                    val results = mutableListOf<String>()
+                                    var okCount = 0
+                                    for (p in targets) {
+                                        val res = runCatching { ext.testProviderConnection(p) }
+                                        if (res.isSuccess) {
+                                            okCount++
+                                            results.add("✓ ${p.displayName} (${res.getOrNull()}ms)")
+                                        } else {
+                                            results.add("✗ ${p.displayName}: ${res.exceptionOrNull()?.message ?: "failed"}")
+                                        }
+                                    }
+                                    val added = runCatching {
+                                        com.ayra.ai.app.ai.providers.AiModelRegistry.discoverAndMergeLiveModels(context)
+                                    }.getOrDefault(0)
+                                    syncSummary = "$okCount/${targets.size} active • Synced +$added live models\n" + results.joinToString(" • ")
+                                    syncIsError = okCount == 0
+                                    onSynced()
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                syncSummary = "Verification error: ${e.message}"
+                                syncIsError = true
+                            } finally {
+                                isSyncingAll = false
+                            }
+                        }
+                    },
+                    enabled = !isSyncingAll,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("verify_all_providers_button")
+                ) {
+                    if (isSyncingAll) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Verifying & Syncing /models…", style = MaterialTheme.typography.labelMedium)
+                    } else {
+                        Text("Verify Active Providers & Sync Live /models", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            if (syncSummary != null) {
+                Text(
+                    text = syncSummary.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (syncIsError) Color(0xFFF59E0B) else Color(0xFF10B981)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AiRoutingAndMemoryCard(context: Context) {
     var selectedMode by remember { mutableStateOf(AyraPreferences.getRoutingMode(context)) }
     var isMemoryEnabled by remember { mutableStateOf(AyraPreferences.isMemoryEnabled(context)) }
     var userInstructions by remember { mutableStateOf(AyraPreferences.getUserCustomInstructions(context)) }
-    var rememberedFactsCount by remember { mutableIntStateOf(AyraPreferences.getRememberedFacts(context).size) }
+    var rememberedFactsCount by remember { mutableStateOf(AyraPreferences.getRememberedFacts(context).size) }
     var statusMessage by remember { mutableStateOf("") }
-    var showWipeConfirm by remember { mutableStateOf(false) }
 
     val routingModes = remember {
-        AiRoutingMode.entries.map { mode ->
-            Triple(mode.id, "${mode.title} ${mode.icon}", mode.description)
-        }
+        listOf(
+            Triple(ModelTier.AUTO.id, "Auto ⚡", "Adaptive selection"),
+            Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 5.5"),
+            Triple("fast", "Ultra Fast 🚀", "Gemini 3.8 Flash / Groq"),
+            Triple(ModelTier.OPEN_WEIGHTS.id, "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
+            Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek V4 Pro / GPT-6.2 Astra"),
+            Triple("coding", "Coding & STEM 💻", "GLM 5.3 / Codestral"),
+            Triple("local", "Private LAN 🏠", "Local Ollama / LM Studio")
+        )
     }
 
     Card(
@@ -708,40 +536,44 @@ fun AiRoutingAndMemoryCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                routingModes.chunked(2).forEach { rowModes ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                routingModes.take(3).forEach { (id, label, _) ->
+                    val isSelected = selectedMode == id
+                    OutlinedButton(
+                        onClick = {
+                            selectedMode = id
+                            AyraPreferences.setRoutingMode(context, id)
+                            statusMessage = "Routing set to $label ✓"
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = if (isSelected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.outlinedButtonColors(),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        rowModes.forEach { (id, label, desc) ->
-                            val isSelected = selectedMode == id
-                            OutlinedButton(
-                                onClick = {
-                                    selectedMode = id
-                                    AyraPreferences.setRoutingMode(context, id)
-                                    statusMessage = "Routing set to $label ✓ ($desc)"
-                                },
-                                enabled = !editsLocked,
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                colors = if (isSelected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.outlinedButtonColors(),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .testTag("routing_mode_btn_$id")
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 11.5.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        if (rowModes.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        Text(label, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                routingModes.drop(3).forEach { (id, label, _) ->
+                    val isSelected = selectedMode == id
+                    OutlinedButton(
+                        onClick = {
+                            selectedMode = id
+                            AyraPreferences.setRoutingMode(context, id)
+                            statusMessage = "Routing set to $label ✓"
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = if (isSelected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.outlinedButtonColors(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(label, fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }
@@ -754,7 +586,7 @@ fun AiRoutingAndMemoryCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Column {
                     Text(
                         text = "🧠 Autonomous AI Memory",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -767,15 +599,14 @@ fun AiRoutingAndMemoryCard(
                     )
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (rememberedFactsCount > 0) {
                         TextButton(
-                            onClick = { showWipeConfirm = true },
-                            enabled = !editsLocked,
-                            modifier = Modifier.heightIn(min = 48.dp)
+                            onClick = {
+                                AyraPreferences.clearAllMemory(context)
+                                rememberedFactsCount = 0
+                                statusMessage = "All AI memory wiped clean ✓"
+                            }
                         ) {
                             Text("Wipe", color = Color(0xFFFF5252), fontSize = 11.sp)
                         }
@@ -787,13 +618,10 @@ fun AiRoutingAndMemoryCard(
                             AyraPreferences.setMemoryEnabled(context, isMemoryEnabled)
                             statusMessage = if (isMemoryEnabled) "AI Memory Enabled ✓" else "AI Memory Disabled ✓"
                         },
-                        enabled = !editsLocked,
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isMemoryEnabled) MaterialTheme.colorScheme.primary else Color.Gray
-                        ),
-                        modifier = Modifier.heightIn(min = 48.dp)
+                        )
                     ) {
                         Text(if (isMemoryEnabled) "Enabled" else "Disabled", fontSize = 11.sp)
                     }
@@ -807,7 +635,6 @@ fun AiRoutingAndMemoryCard(
                     userInstructions = it
                     AyraPreferences.setUserCustomInstructions(context, it)
                 },
-                enabled = !editsLocked,
                 label = { Text("Custom Instructions for Ayra AI (optional)", fontSize = 11.sp) },
                 placeholder = { Text("e.g. Always respond in Bengali; prioritize concise code", fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth(),
@@ -824,31 +651,6 @@ fun AiRoutingAndMemoryCard(
             }
         }
     }
-
-    if (showWipeConfirm) {
-        AlertDialog(
-            onDismissRequest = { showWipeConfirm = false },
-            title = { Text("Wipe All AI Memory Facts?") },
-            text = { Text("This will permanently erase all $rememberedFactsCount remembered preferences and profile facts from encrypted storage.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        AyraPreferences.clearAllMemory(context)
-                        rememberedFactsCount = 0
-                        statusMessage = "All AI memory wiped clean ✓"
-                        showWipeConfirm = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) { Text("Wipe Memory") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWipeConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -857,8 +659,9 @@ fun SingleProviderKeyCard(
     provider: AiProviderType,
     portalLabel: String,
     portalUrl: String,
-    editsLocked: Boolean = false,
-    onKeyUpdated: () -> Unit = {}
+    hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
+    isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    onKeyChanged: () -> Unit = {}
 ) {
     val providersEngine = remember { ExternalAiProviders(context) }
     val scope = rememberCoroutineScope()
@@ -870,9 +673,18 @@ fun SingleProviderKeyCard(
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
-    var showClearConfirm by remember { mutableStateOf(false) }
 
-    val isConfigured = keyInput.isNotBlank()
+    val isRetired = provider == AiProviderType.GITHUB_MODELS
+    val isConfigured = keyInput.isNotBlank() && !isRetired
+    val isActiveReady = isConfigured && !isLocalOnly && hasExternalConsent
+
+    val (badgeLabel, badgeColor) = when {
+        isRetired -> "Retired 2026-07-30" to Color(0xFFEF4444)
+        !isConfigured -> "Not set" to MaterialTheme.colorScheme.onSurfaceVariant
+        isLocalOnly -> "Local-Only Blocked" to Color(0xFFF59E0B)
+        !hasExternalConsent -> "Enable Consent" to Color(0xFFF59E0B)
+        else -> "Active ✓" to Color(0xFF10B981)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -880,6 +692,249 @@ fun SingleProviderKeyCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(
+                when {
+                    isActiveReady -> Color(0xFF10B981).copy(alpha = 0.45f)
+                    isConfigured -> Color(0xFFF59E0B).copy(alpha = 0.45f)
+                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                }
+            )
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = null,
+                        tint = if (isActiveReady) Color(0xFF10B981) else if (isConfigured) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = provider.displayName,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (badgeColor == MaterialTheme.colorScheme.onSurfaceVariant) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        badgeColor.copy(alpha = 0.15f)
+                    }
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .testTag("provider_status_badge_${provider.id}"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = badgeColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = keyInput,
+                onValueChange = { keyInput = it },
+                modifier = Modifier.fillMaxWidth().testTag("provider_key_input_${provider.id}"),
+                placeholder = {
+                    Text(
+                        "Enter ${provider.displayName} API Key",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                },
+                singleLine = true,
+                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(
+                        onClick = { isPasswordVisible = !isPasswordVisible },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = "Toggle visibility",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                ),
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+            )
+
+            Text(
+                text = if (isRetired) {
+                    "Notice: Azure GitHub Models endpoint shut down 2026-07-30 and cannot run inference."
+                } else {
+                    "Get key at: $portalLabel ($portalUrl)"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+            )
+
+            AnimatedVisibility(visible = testResult != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .background(
+                            if (isError) Color(0xFFEF4444).copy(alpha = 0.1f) else Color(0xFF10B981).copy(alpha = 0.1f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isError) Color(0xFFEF4444) else Color(0xFF10B981),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = testResult ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isError) Color(0xFFEF4444) else Color(0xFF10B981)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = {
+                        AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
+                            if (it.isNotBlank()) keyInput = it.trim()
+                        }
+                    }
+                ) {
+                    Text("Paste", style = MaterialTheme.typography.labelMedium)
+                }
+
+                if (keyInput.isNotBlank()) {
+                    TextButton(
+                        onClick = {
+                            keyInput = ""
+                            saveKey(context, provider, "")
+                            onKeyChanged()
+                            testResult = null
+                        }
+                    ) {
+                        Text("Clear", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            isTesting = true
+                            testResult = null
+                            isError = false
+                            try {
+                                val latency = providersEngine.testProviderConnection(provider, keyInput.trim())
+                                val discoveredCount = runCatching {
+                                    providersEngine.discoverDynamicModels(provider).size
+                                }.getOrDefault(0)
+                                testResult = "✓ Connected in ${latency}ms ($discoveredCount models)"
+                                isError = false
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                testResult = "Connection failed: ${e.message}"
+                                isError = true
+                            } finally {
+                                isTesting = false
+                            }
+                        }
+                    },
+                    enabled = !isTesting && keyInput.isNotBlank() && !isRetired,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_test_${provider.id}")
+                ) {
+                    if (isTesting) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("Test", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Button(
+                    onClick = {
+                        saveKey(context, provider, keyInput.trim())
+                        onKeyChanged()
+                        testResult = if (hasExternalConsent) {
+                            "Key saved securely to Android Keystore ✓"
+                        } else {
+                            "Key saved securely. Enable External Cloud AI Consent above to activate."
+                        }
+                        isError = false
+                    },
+                    enabled = !isRetired,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_save_${provider.id}")
+                ) {
+                    Text("Save", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SpecializedIntegrationKeyCard(
+    context: Context,
+    title: String,
+    description: String,
+    portalLabel: String,
+    portalUrl: String,
+    icon: ImageVector,
+    initialKey: String,
+    placeholder: String,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit,
+    onTest: suspend (String) -> Long,
+    testTagPrefix: String? = null,
+    statusBadgeOverride: String? = null
+) {
+    val scope = rememberCoroutineScope()
+
+    var keyInput by remember { mutableStateOf(initialKey) }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    val isConfigured = keyInput.isNotBlank()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         border = CardDefaults.outlinedCardBorder().copy(
             brush = androidx.compose.ui.graphics.SolidColor(
                 if (isConfigured) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
@@ -892,23 +947,18 @@ fun SingleProviderKeyCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Key,
+                        imageVector = icon,
                         contentDescription = null,
                         tint = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = provider.displayName,
+                        text = title,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -917,7 +967,7 @@ fun SingleProviderKeyCard(
                     color = if (isConfigured) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Text(
-                        text = if (isConfigured) "Configured ✓" else "Not set",
+                        text = statusBadgeOverride ?: if (isConfigured) "Configured ✓" else "Not set",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -925,19 +975,23 @@ fun SingleProviderKeyCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = keyInput,
                 onValueChange = { keyInput = it },
-                enabled = !editsLocked,
-                modifier = Modifier.fillMaxWidth().testTag("provider_key_input_${provider.id}"),
-                placeholder = {
-                    Text(
-                        "Enter ${provider.displayName} API Key",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .let { if (testTagPrefix != null) it.testTag("${testTagPrefix}_input") else it },
+                placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall) },
                 singleLine = true,
                 visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
@@ -1006,282 +1060,18 @@ fun SingleProviderKeyCard(
                         AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
                             if (it.isNotBlank()) keyInput = it.trim()
                         }
-                    },
-                    enabled = !editsLocked,
-                    modifier = Modifier.heightIn(min = 48.dp)
+                    }
                 ) {
                     Text("Paste", style = MaterialTheme.typography.labelMedium)
                 }
 
                 if (keyInput.isNotBlank()) {
                     TextButton(
-                        onClick = { showClearConfirm = true },
-                        enabled = !editsLocked,
-                        modifier = Modifier.heightIn(min = 48.dp)
-                    ) {
-                        Text("Clear", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            isTesting = true
+                        onClick = {
+                            keyInput = ""
+                            onClear()
                             testResult = null
-                            isError = false
-                            try {
-                                val latency = providersEngine.testProviderConnection(provider, keyInput.trim())
-                                testResult = "✓ Connected successfully in ${latency}ms!"
-                                isError = false
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                testResult = "Connection failed: ${e.message}"
-                                isError = true
-                            } finally {
-                                isTesting = false
-                            }
                         }
-                    },
-                    enabled = !isTesting && keyInput.isNotBlank(),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_test_${provider.id}")
-                ) {
-                    if (isTesting) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-                    Text("Test", style = MaterialTheme.typography.labelMedium)
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Button(
-                    onClick = {
-                        saveKey(context, provider, keyInput.trim())
-                        onKeyUpdated()
-                        testResult = if (!AyraPreferences.hasExternalAiConsent(context)) {
-                            "Key saved securely ✓ Enable 'External Cloud AI Consent' above to allow requests."
-                        } else {
-                            "Key saved securely to Android Keystore ✓"
-                        }
-                        isError = false
-                    },
-                    enabled = !editsLocked,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_save_${provider.id}")
-                ) {
-                    Text("Save", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-    }
-
-    if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("Remove ${provider.displayName} Key?") },
-            text = { Text("This clears the stored API key from Android Keystore.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        keyInput = ""
-                        saveKey(context, provider, "")
-                        onKeyUpdated()
-                        testResult = null
-                        showClearConfirm = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) { Text("Clear Key") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun SpecializedIntegrationKeyCard(
-    context: Context,
-    title: String,
-    description: String,
-    portalLabel: String,
-    portalUrl: String,
-    icon: ImageVector,
-    initialKey: String,
-    placeholder: String,
-    onSave: (String) -> Unit,
-    onClear: () -> Unit,
-    onTest: suspend (String) -> Long,
-    editsLocked: Boolean = false,
-    tagPrefix: String? = null,
-    maskInputByDefault: Boolean = true
-) {
-    val scope = rememberCoroutineScope()
-
-    var keyInput by remember { mutableStateOf(initialKey) }
-    var isPasswordVisible by remember { mutableStateOf(!maskInputByDefault) }
-    var isTesting by remember { mutableStateOf(false) }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
-    var showClearConfirm by remember { mutableStateOf(false) }
-
-    val isConfigured = keyInput.isNotBlank()
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(
-                if (isConfigured) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-            )
-        )
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isConfigured) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = if (isConfigured) "Configured ✓" else "Not set",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (isConfigured) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = keyInput,
-                onValueChange = { keyInput = it },
-                enabled = !editsLocked,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (tagPrefix != null) Modifier.testTag("integration_input_$tagPrefix") else Modifier),
-                placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall) },
-                singleLine = true,
-                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(
-                        onClick = { isPasswordVisible = !isPasswordVisible },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle visibility",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                ),
-                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-            )
-
-            Text(
-                text = "Endpoint / Portal: $portalLabel ($portalUrl)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 4.dp, start = 4.dp)
-            )
-
-            AnimatedVisibility(visible = testResult != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .background(
-                            if (isError) Color(0xFFEF4444).copy(alpha = 0.1f) else Color(0xFF10B981).copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = if (isError) Color(0xFFEF4444) else Color(0xFF10B981),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = testResult ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isError) Color(0xFFEF4444) else Color(0xFF10B981)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = {
-                        AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
-                            if (it.isNotBlank()) keyInput = it.trim()
-                        }
-                    },
-                    enabled = !editsLocked,
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Paste", style = MaterialTheme.typography.labelMedium)
-                }
-
-                if (keyInput.isNotBlank()) {
-                    TextButton(
-                        onClick = { showClearConfirm = true },
-                        enabled = !editsLocked,
-                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text("Clear", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
@@ -1313,7 +1103,7 @@ fun SpecializedIntegrationKeyCard(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .heightIn(min = 48.dp)
-                        .then(if (tagPrefix != null) Modifier.testTag("integration_test_$tagPrefix") else Modifier)
+                        .let { if (testTagPrefix != null) it.testTag("${testTagPrefix}_test") else it }
                 ) {
                     if (isTesting) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -1327,58 +1117,72 @@ fun SpecializedIntegrationKeyCard(
                 Button(
                     onClick = {
                         onSave(keyInput.trim())
-                        testResult = "Saved securely to Android Keystore ✓"
+                        testResult = "Key saved securely to Android Keystore ✓"
                         isError = false
                     },
-                    enabled = !editsLocked,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .heightIn(min = 48.dp)
-                        .then(if (tagPrefix != null) Modifier.testTag("integration_save_$tagPrefix") else Modifier)
+                        .let { if (testTagPrefix != null) it.testTag("${testTagPrefix}_save") else it }
                 ) {
                     Text("Save", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
     }
+}
 
-    if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear $title?") },
-            text = { Text("This clears the stored configuration from encrypted device storage.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        keyInput = ""
-                        onClear()
-                        testResult = null
-                        showClearConfirm = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) { Text("Clear") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+private fun invalidateNvidiaNim(context: Context, onKeyChanged: () -> Unit) {
+    ExternalAiProviders.clearDynamicModelCache(AiProviderType.NVIDIA_NIM)
+    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+    runCatching { ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.NVIDIA_NIM) }
+    onKeyChanged()
 }
 
 @Composable
 fun NvidiaNimMultiKeySection(
     context: Context,
-    editsLocked: Boolean = false,
-    onKeyUpdated: () -> Unit = {}
+    hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
+    isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    onKeyChanged: () -> Unit = {}
 ) {
-    val resetNimBreaker = {
-        ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.NVIDIA_NIM)
+    fun nimStatusBadge(key: String): String? = when {
+        key.isBlank() -> "Not set"
+        isLocalOnly -> "Local-Only Blocked"
+        !hasExternalConsent -> "Enable Consent"
+        else -> "Active ✓"
     }
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SpecializedIntegrationKeyCard(
+            context = context,
+            title = "NVIDIA • Llama 3.3 70B Instruct (Verified Default)",
+            description = "Verified NVIDIA NIM default model (meta/llama-3.3-70b-instruct) for general chat, coding & multilingual tasks.",
+            portalLabel = "NVIDIA Build",
+            portalUrl = "https://build.nvidia.com",
+            icon = Icons.Default.Key,
+            initialKey = AyraPreferences.getNvidiaKey(context),
+            placeholder = "nvapi-...",
+            testTagPrefix = "nim_llama",
+            statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaKey(context)),
+            onSave = {
+                AyraPreferences.setNvidiaKey(context, it)
+                invalidateNvidiaNim(context, onKeyChanged)
+            },
+            onClear = {
+                AyraPreferences.setNvidiaKey(context, "")
+                invalidateNvidiaNim(context, onKeyChanged)
+            },
+            onTest = { key ->
+                ExternalAiProviders(context).testProviderConnection(
+                    AiProviderType.NVIDIA_NIM,
+                    customKey = key,
+                    customModel = ExternalAiProviders.NVIDIA_LLAMA_MODEL
+                )
+            }
+        )
         SpecializedIntegrationKeyCard(
             context = context,
             title = "NVIDIA • MiniMax M3.1 Flash (Vision + Fast)",
@@ -1388,20 +1192,19 @@ fun NvidiaNimMultiKeySection(
             icon = Icons.Default.Key,
             initialKey = AyraPreferences.getNvidiaMinimaxKey(context),
             placeholder = "nvapi-...",
-            editsLocked = editsLocked,
-            tagPrefix = "nvidia_minimax",
+            testTagPrefix = "nim_minimax",
+            statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaMinimaxKey(context)),
             onSave = {
                 AyraPreferences.setNvidiaMinimaxKey(context, it)
-                resetNimBreaker()
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onClear = {
                 AyraPreferences.setNvidiaMinimaxKey(context, "")
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onTest = { key ->
                 ExternalAiProviders(context).testProviderConnection(
-                    provider = AiProviderType.NVIDIA_NIM,
+                    AiProviderType.NVIDIA_NIM,
                     customKey = key,
                     customModel = ExternalAiProviders.NVIDIA_MINIMAX_MODEL
                 )
@@ -1416,20 +1219,19 @@ fun NvidiaNimMultiKeySection(
             icon = Icons.Default.Key,
             initialKey = AyraPreferences.getNvidiaGlmKey(context),
             placeholder = "nvapi-...",
-            editsLocked = editsLocked,
-            tagPrefix = "nvidia_glm",
+            testTagPrefix = "nim_glm",
+            statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaGlmKey(context)),
             onSave = {
                 AyraPreferences.setNvidiaGlmKey(context, it)
-                resetNimBreaker()
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onClear = {
                 AyraPreferences.setNvidiaGlmKey(context, "")
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onTest = { key ->
                 ExternalAiProviders(context).testProviderConnection(
-                    provider = AiProviderType.NVIDIA_NIM,
+                    AiProviderType.NVIDIA_NIM,
                     customKey = key,
                     customModel = ExternalAiProviders.NVIDIA_GLM_MODEL
                 )
@@ -1444,20 +1246,19 @@ fun NvidiaNimMultiKeySection(
             icon = Icons.Default.Key,
             initialKey = AyraPreferences.getNvidiaMuseKey(context),
             placeholder = "nvapi-...",
-            editsLocked = editsLocked,
-            tagPrefix = "nvidia_muse",
+            testTagPrefix = "nim_muse",
+            statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaMuseKey(context)),
             onSave = {
                 AyraPreferences.setNvidiaMuseKey(context, it)
-                resetNimBreaker()
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onClear = {
                 AyraPreferences.setNvidiaMuseKey(context, "")
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onTest = { key ->
                 ExternalAiProviders(context).testProviderConnection(
-                    provider = AiProviderType.NVIDIA_NIM,
+                    AiProviderType.NVIDIA_NIM,
                     customKey = key,
                     customModel = ExternalAiProviders.NVIDIA_MUSE_MODEL
                 )
@@ -1472,20 +1273,19 @@ fun NvidiaNimMultiKeySection(
             icon = Icons.Default.Key,
             initialKey = AyraPreferences.getNvidiaGemmaKey(context),
             placeholder = "nvapi-...",
-            editsLocked = editsLocked,
-            tagPrefix = "nvidia_gemma",
+            testTagPrefix = "nim_gemma",
+            statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaGemmaKey(context)),
             onSave = {
                 AyraPreferences.setNvidiaGemmaKey(context, it)
-                resetNimBreaker()
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onClear = {
                 AyraPreferences.setNvidiaGemmaKey(context, "")
-                onKeyUpdated()
+                invalidateNvidiaNim(context, onKeyChanged)
             },
             onTest = { key ->
                 ExternalAiProviders(context).testProviderConnection(
-                    provider = AiProviderType.NVIDIA_NIM,
+                    AiProviderType.NVIDIA_NIM,
                     customKey = key,
                     customModel = ExternalAiProviders.NVIDIA_GEMMA_MODEL
                 )
@@ -1497,13 +1297,11 @@ fun NvidiaNimMultiKeySection(
 @Composable
 fun FreeAiPoolCard(
     context: Context,
-    editsLocked: Boolean = false,
-    onPoolChanged: () -> Unit = {}
+    hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
+    isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    onChanged: () -> Unit = {}
 ) {
-    val isLocalOnly = AyraPreferences.isLocalOnlyAiModeEnabled(context)
     var freePoolEnabled by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
-    var showConsentPrompt by remember { mutableStateOf(false) }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1524,70 +1322,28 @@ fun FreeAiPoolCard(
                 )
                 Text(
                     text = when {
-                        isLocalOnly -> "Blocked while Local-Only Privacy Mode is active in Security Center."
-                        !AyraPreferences.hasExternalAiConsent(context) ->
-                            "External Cloud AI consent is currently off. Tap toggle to review & opt in explicitly."
-                        else -> "Optional community fallback models active when opted in."
+                        isLocalOnly && freePoolEnabled -> "Opted in, but Local-Only Privacy Mode blocks cloud requests."
+                        freePoolEnabled && !hasExternalConsent -> "Opted in — enable External Cloud AI Consent above to activate."
+                        freePoolEnabled -> "Active ✓ Optional community fallback models ready."
+                        else -> "Optional community fallback models when External Cloud AI consent is enabled."
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isLocalOnly) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Switch(
-                checked = !isLocalOnly && freePoolEnabled && AyraPreferences.hasExternalAiConsent(context),
-                enabled = !isLocalOnly && !editsLocked,
-                onCheckedChange = { enable ->
-                    if (!enable) {
-                        AyraPreferences.setFreeAiPoolEnabled(context, false)
-                        freePoolEnabled = false
-                        onPoolChanged()
-                    } else if (AyraPreferences.hasExternalAiConsent(context)) {
-                        AyraPreferences.setFreeAiPoolEnabled(context, true)
-                        freePoolEnabled = AyraPreferences.isFreeAiPoolEnabled(context)
-                        onPoolChanged()
-                    } else {
-                        showConsentPrompt = true
-                    }
+                checked = freePoolEnabled,
+                onCheckedChange = {
+                    freePoolEnabled = it
+                    AyraPreferences.setFreeAiPoolEnabled(context, it)
+                    ExternalAiProviders.clearDynamicModelCache(AiProviderType.POLLINATIONS_FREE)
+                    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                    onChanged()
                 },
-                colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary),
-                modifier = Modifier.testTag("free_ai_pool_card_switch")
+                colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
             )
         }
-    }
-
-    if (showConsentPrompt) {
-        AlertDialog(
-            onDismissRequest = { showConsentPrompt = false },
-            title = { Text("Enable External Cloud AI & Free Pool?") },
-            text = {
-                Text(
-                    "Using the Global Free AI Pool sends prompts to external community AI endpoints. Confirm explicit opt-in to enable External Cloud AI Provider Consent and the Free AI Pool.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        AyraPreferences.setExternalAiConsent(context, true)
-                        AyraPreferences.setFreeAiPoolEnabled(context, true)
-                        freePoolEnabled = AyraPreferences.isFreeAiPoolEnabled(context)
-                        onPoolChanged()
-                        showConsentPrompt = false
-                    },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_free_pool_consent_button")
-                ) {
-                    Text("Enable Both")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showConsentPrompt = false },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Keep Disabled")
-                }
-            }
-        )
     }
 }
 
@@ -1599,7 +1355,7 @@ private fun saveKey(context: Context, provider: AiProviderType, key: String) {
         AiProviderType.CEREBRAS -> AyraPreferences.setCerebrasKey(context, key)
         AiProviderType.SAMBANOVA -> AyraPreferences.setSambaNovaKey(context, key)
         AiProviderType.HUGGINGFACE -> AyraPreferences.setHuggingFaceKey(context, key)
-        AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, "")
+        AiProviderType.GITHUB_MODELS -> AyraPreferences.setGitHubModelsKey(context, key)
         AiProviderType.POLLINATIONS_FREE -> {}
         AiProviderType.OPENAI -> AyraPreferences.setOpenAiKey(context, key)
         AiProviderType.ANTHROPIC -> AyraPreferences.setAnthropicKey(context, key)
@@ -1611,9 +1367,12 @@ private fun saveKey(context: Context, provider: AiProviderType, key: String) {
         AiProviderType.LOCAL_OLLAMA -> AyraPreferences.setCustomEndpointUrl(context, key)
         AiProviderType.OMNI_ROUTE -> {}
     }
+    ExternalAiProviders.clearDynamicModelCache(provider)
+    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
     try {
         ExternalAiProviders(context).circuitBreaker.resetProvider(provider)
     } catch (e: Exception) {
-        Log.w("ProviderKeysSection", "Failed resetting circuit breaker for ${provider.id}", e)
+        android.util.Log.w("ProviderKeysSection", "Circuit reset failed for ${provider.id}: ${e.message}")
     }
 }
