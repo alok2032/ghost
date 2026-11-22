@@ -149,18 +149,26 @@ fun VideoPlayerCard(
 
     var isPlaying by remember { mutableStateOf(true) }
     var currentSeconds by remember { mutableIntStateOf(0) }
-    val activeFrameUrl = remember(keyframeUrls, previewUrl, currentSeconds) {
+    var activeKeyframeIndex by remember(keyframeUrls) { mutableIntStateOf(0) }
+    val activeFrameUrl = remember(keyframeUrls, previewUrl, activeKeyframeIndex) {
         if (keyframeUrls.isNotEmpty()) {
-            val idx = (currentSeconds / 5) % keyframeUrls.size
-            keyframeUrls[idx]
+            keyframeUrls[activeKeyframeIndex % keyframeUrls.size]
         } else previewUrl
     }
 
-    // Live running timecode counter when playing
-    LaunchedEffect(isPlaying, durationTotalSeconds) {
-        while (isPlaying) {
-            delay(1000L)
-            currentSeconds = (currentSeconds + 1) % (durationTotalSeconds + 1)
+    // Track timecode only for real MP4 streams; advance storyboard keyframes honestly when multi-frame
+    LaunchedEffect(isPlaying, playableVideoUri, durationTotalSeconds, keyframeUrls.size) {
+        if (!isPlaying) return@LaunchedEffect
+        if (playableVideoUri != null) {
+            while (isPlaying) {
+                delay(1000L)
+                currentSeconds = (currentSeconds + 1) % (durationTotalSeconds.coerceAtLeast(1) + 1)
+            }
+        } else if (keyframeUrls.size > 1) {
+            while (isPlaying) {
+                delay(4000L)
+                activeKeyframeIndex = (activeKeyframeIndex + 1) % keyframeUrls.size
+            }
         }
     }
 
@@ -245,7 +253,12 @@ fun VideoPlayerCard(
                         .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = if (isPortraitAspect) "Storyboard 9:16" else "Storyboard 16:9",
+                        text = when {
+                            playableVideoUri != null && isPortraitAspect -> "MP4 9:16"
+                            playableVideoUri != null -> "MP4 16:9"
+                            isPortraitAspect -> "Storyboard 9:16"
+                            else -> "Storyboard 16:9"
+                        },
                         color = NeonGreen,
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold
@@ -427,7 +440,11 @@ fun VideoPlayerCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (isPlaying) "▶ PREVIEW" else "PAUSED",
+                            text = when {
+                                !isPlaying -> "PAUSED"
+                                playableVideoUri != null -> "▶ MP4 LIVE"
+                                else -> "STORYBOARD"
+                            },
                             color = Color.White,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
@@ -455,8 +472,14 @@ fun VideoPlayerCard(
                 }
             }
 
-            // Timeline Scrub & Controls Bar
-            val progress = (currentSeconds.toFloat() / durationTotalSeconds.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+            // Timeline Scrub & Controls Bar (honest MP4 timecode vs Storyboard keyframe indicator)
+            val progress = if (playableVideoUri != null) {
+                (currentSeconds.toFloat() / durationTotalSeconds.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+            } else if (keyframeUrls.size > 1) {
+                ((activeKeyframeIndex + 1).toFloat() / keyframeUrls.size.toFloat()).coerceIn(0f, 1f)
+            } else {
+                1f
+            }
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier
@@ -490,10 +513,17 @@ fun VideoPlayerCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    val curStr = String.format(Locale.US, "0:%02d", currentSeconds)
-                    val totStr = String.format(Locale.US, "0:%02d", durationTotalSeconds)
+                    val statusOrTimeLabel = if (playableVideoUri != null) {
+                        val curStr = String.format(Locale.US, "%d:%02d", currentSeconds / 60, currentSeconds % 60)
+                        val totStr = String.format(Locale.US, "%d:%02d", durationTotalSeconds / 60, durationTotalSeconds % 60)
+                        "$curStr / $totStr"
+                    } else if (keyframeUrls.size > 1) {
+                        "Keyframe ${(activeKeyframeIndex % keyframeUrls.size) + 1}/${keyframeUrls.size}"
+                    } else {
+                        "Storyboard • No MP4 stream"
+                    }
                     Text(
-                        text = "$curStr / $totStr",
+                        text = statusOrTimeLabel,
                         color = TextSecondary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
@@ -501,7 +531,7 @@ fun VideoPlayerCard(
                 }
 
                 Text(
-                    text = "Tap video to play/pause",
+                    text = if (playableVideoUri != null) "Tap video to play/pause" else "Tap to toggle storyboard motion",
                     color = TextSecondary,
                     fontSize = 10.sp
                 )

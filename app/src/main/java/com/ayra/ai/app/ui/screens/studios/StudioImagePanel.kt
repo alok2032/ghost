@@ -82,6 +82,7 @@ fun ImageStudioPanel(context: Context) {
     var generatedFile by remember { mutableStateOf<File?>(null) }
     var generatedUrl by remember { mutableStateOf<String?>(null) }
     var statusLabel by remember { mutableStateOf<String?>(null) }
+    var lastFailedRemoteUrl by remember { mutableStateOf<String?>(null) }
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -153,6 +154,7 @@ fun ImageStudioPanel(context: Context) {
                     statusLabel = "Generating image..."
                     generatedFile = null
                     generatedUrl = null
+                    lastFailedRemoteUrl = null
 
                     scope.launch {
                         val refBase64 = pickedPhotoUri?.let { uri ->
@@ -239,11 +241,22 @@ fun ImageStudioPanel(context: Context) {
                             isBusy = false
                             return@launch
                         }
-                        val url = withContext(Dispatchers.IO) {
-                            AiMediaPromptSynthesizer.buildImageUrl(clean, context = context, aspectRatio = imageAspect)
+                        val downloaded = withContext(Dispatchers.IO) {
+                            val url = AiMediaPromptSynthesizer.buildImageUrl(clean, context = context, aspectRatio = imageAspect)
+                            url to AiMediaPromptSynthesizer.downloadAndVerifyImageToLocalFile(context, url)
                         }
-                        generatedUrl = url
-                        statusLabel = "Loading preview via Pollinations Flux..."
+                        val remoteUrl = downloaded.first
+                        downloaded.second.onSuccess { localFile ->
+                            generatedFile = localFile
+                            generatedUrl = null
+                            lastFailedRemoteUrl = null
+                            statusLabel = "Generated & verified via Pollinations Flux (Saved PNG)"
+                        }.onFailure { err ->
+                            generatedFile = null
+                            generatedUrl = null
+                            lastFailedRemoteUrl = remoteUrl
+                            statusLabel = "Pollinations download failed: ${err.message ?: "Invalid or unreachable image"}"
+                        }
                         isBusy = false
                     }
                 },
@@ -262,6 +275,33 @@ fun ImageStudioPanel(context: Context) {
 
         statusLabel?.let {
             Text(text = it, color = TextSecondary, fontSize = 11.sp)
+        }
+
+        lastFailedRemoteUrl?.takeIf { generatedFile == null && !isBusy }?.let { retryUrl ->
+            OutlinedButton(
+                onClick = {
+                    isBusy = true
+                    statusLabel = "Retrying image download..."
+                    scope.launch {
+                        val retryRes = withContext(Dispatchers.IO) {
+                            AiMediaPromptSynthesizer.downloadAndVerifyImageToLocalFile(context, retryUrl)
+                        }
+                        retryRes.onSuccess { localFile ->
+                            generatedFile = localFile
+                            lastFailedRemoteUrl = null
+                            statusLabel = "Generated & verified via Pollinations Flux (Saved PNG)"
+                        }.onFailure { err ->
+                            statusLabel = "Retry failed: ${err.message ?: "Invalid or unreachable image"}"
+                        }
+                        isBusy = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("studio_retry_image_download_button")
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Retry Image Download")
+            }
         }
 
         var imageRetryNonce by remember(generatedFile, generatedUrl) { mutableIntStateOf(0) }

@@ -163,16 +163,12 @@ fun ChatScreen(
     var dispatchPromptRef by remember { mutableStateOf<((String) -> Unit)?>(null) }
 
     LaunchedEffect(Unit) {
-        val (savedPersona, savedTier, hasProvider) = withContext(Dispatchers.IO) {
+        val (savedPersona, savedTier) = withContext(Dispatchers.IO) {
             AyraApplication.ensureActiveAiKeysSeeded(context)
-            val persona = AyraPreferences.getSavedPersona(context)
-            val tier = AyraPreferences.getSavedModelTier(context)
-            val configured = ExternalAiProviders(context).hasAnyConfiguredProvider() || FirebaseAiEngine.isAvailable(context)
-            Triple(persona, tier, configured)
+            AyraPreferences.getSavedPersona(context) to AyraPreferences.getSavedModelTier(context)
         }
         viewModel.setPersona(savedPersona)
         viewModel.setModelTier(savedTier)
-        if (!hasProvider) viewModel.setShowKeyOnboarding(true)
         aiEngine.currentPersona = savedPersona
         aiEngine.selectedModelTier = savedTier
     }
@@ -368,12 +364,13 @@ fun ChatScreen(
         if (trimmed.isBlank() && selectedImageUri == null && selectedDocumentUri == null) return
 
         val hasCloudSensitiveAttachment = selectedImageUri != null || selectedDocumentUri != null
-        if (hasCloudSensitiveAttachment &&
-            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
-            !AyraPreferences.hasExternalAiConsent(context)
-        ) {
+        val canAnalyzeAttachmentBuiltInOrConsented = FirebaseAiEngine.isAvailable(context) ||
+            AyraPreferences.isLocalOnlyAiModeEnabled(context) ||
+            AyraPreferences.hasExternalAiConsent(context) ||
+            externalAiProviders.hasAnyConfiguredProvider()
+        if (hasCloudSensitiveAttachment && !canAnalyzeAttachmentBuiltInOrConsented) {
             rationaleTitle = "Cloud AI Consent Required for Attachments"
-            rationaleBody = "You attached a photo or document while External Cloud AI consent is disabled. Allow External Cloud AI to analyze it, or enable Local-Only mode in Security Center."
+            rationaleBody = "You attached a photo or document while built-in Firebase AI is offline and External Cloud AI consent is disabled. Allow External Cloud AI to analyze it, or enable Local-Only mode in Security Center."
             rationaleActionLabel = "Allow Cloud AI"
             rationaleOnConfirm = {
                 AyraPreferences.setExternalAiConsent(context, true)

@@ -236,7 +236,6 @@ class ProviderPool @JvmOverloads constructor(
 
         val isFirebaseAiReady = !isLocalOnlyMode &&
             !isStrictLocalRouting &&
-            externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
 
         if (routedChannels.isEmpty() && routedProviders.isEmpty() && !isFirebaseAiReady) {
@@ -557,8 +556,7 @@ class ProviderPool @JvmOverloads constructor(
             }
         }
 
-        val firebaseCanHandlePrimary = externalProviders.allowExternalWikiGrounding &&
-            request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
+        val firebaseCanHandlePrimary = request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
             (request.preferredProvider == null || request.preferredProvider == AiProviderType.GEMINI || candidateList.isEmpty())
 
@@ -639,10 +637,32 @@ class ProviderPool @JvmOverloads constructor(
 
         if (!triedFirebaseAi &&
             request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
-            externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
             tryFirebaseAiLogic()
         ) {
+            return
+        }
+
+        val savedWithoutConsent = if (!externalProviders.isTestHarnessMode &&
+            context != null &&
+            !AyraPreferences.hasExternalAiConsent(context)
+        ) {
+            externalProviders.getSavedKeyProvidersIgnoringConsent()
+        } else {
+            emptyList()
+        }
+        if (candidateList.isEmpty() && savedWithoutConsent.isNotEmpty()) {
+            val names = savedWithoutConsent.take(3).joinToString(", ") { it.displayName }
+            val fbNote = lastError?.userFriendlyMessage?.let { " (Built-in Firebase AI: $it)" }.orEmpty()
+            collector.emit(
+                AyraStreamEvent.Error(
+                    AyraError.ProviderDown(
+                        savedWithoutConsent.first(),
+                        403,
+                        "API keys are saved ($names), but External Cloud AI Consent is OFF. Enable External Cloud AI Consent in Settings -> AI Providers or Security Center.$fbNote"
+                    )
+                )
+            )
             return
         }
 

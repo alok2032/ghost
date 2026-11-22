@@ -12,7 +12,7 @@
 | Compose BOM / Firebase BOM | `2025.05.00` / `34.17.0` | `gradle/libs.versions.toml` |
 | Room / SQLCipher / OkHttp | `2.7.1` / `4.6.1` / `4.12.0` | `gradle/libs.versions.toml` |
 | Kotlin Main Source Files | `164` | `app/src/main` |
-| Android Unit Test Files / `@Test` Cases | `41` files / `260` tests | `app/src/test` |
+| Android Unit Test Files / `@Test` Cases | `42` files / `264` tests | `app/src/test` |
 | Backend Node Tests | `17` | `backend/test/security.test.mjs` |
 | Firestore Rules Emulator Tests | `10` | `firestore.test.js` |
 | Swallowed `catch (_)` Count (`app/src/main`) | `114` | `.ci/swallowed-baseline.txt` |

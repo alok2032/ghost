@@ -212,7 +212,7 @@ internal fun GlassMessageBubble(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                if (message.craftType == "VIDEO" && !message.craftPayload.isNullOrBlank()) {
+                if ((message.craftType == "VIDEO" || message.craftType == "STORYBOARD") && !message.craftPayload.isNullOrBlank()) {
                     VideoPlayerCard(jsonPayload = message.craftPayload, onExpand = onImageClick)
                     Spacer(modifier = Modifier.height(8.dp))
                 }

@@ -332,7 +332,7 @@ class AyraAutomationAndAiStressTest {
                 personaMode = "PROFESSIONAL",
                 modelTier = "auto"
             )
-            assertEquals("VIDEO", vidRes1.craftType)
+            assertEquals("STORYBOARD", vidRes1.craftType)
 
             // "video banano"
             val vidRes2 = aiEngine.generateUnifiedResponse(
@@ -340,7 +340,7 @@ class AyraAutomationAndAiStressTest {
                 personaMode = "GF_COMPANION",
                 modelTier = "auto"
             )
-            assertEquals("VIDEO", vidRes2.craftType)
+            assertEquals("STORYBOARD", vidRes2.craftType)
 
             // "ভিডিও বানাও"
             val vidRes3 = aiEngine.generateUnifiedResponse(
@@ -348,7 +348,7 @@ class AyraAutomationAndAiStressTest {
                 personaMode = "GF_COMPANION",
                 modelTier = "auto"
             )
-            assertEquals("VIDEO", vidRes3.craftType)
+            assertEquals("STORYBOARD", vidRes3.craftType)
         }
     }
 
@@ -461,7 +461,7 @@ class AyraAutomationAndAiStressTest {
                 personaMode = "GF_COMPANION",
                 modelTier = "auto"
             )
-            assertEquals("VIDEO", vidRes.craftType)
+            assertEquals("STORYBOARD", vidRes.craftType)
             assertTrue(vidRes.modelUsed!!.contains("Motion Storyboard"))
         }
     }

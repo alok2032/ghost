@@ -109,7 +109,7 @@ object SecureAiGatewayClient {
         context: Context,
         backendBaseUrl: String,
         prompt: String,
-        model: String = "gemini-3.8-flash",
+        model: String = com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_FLASH,
         provider: String = "gemini",
         appCheckToken: String? = null,
         systemPrompt: String = "",

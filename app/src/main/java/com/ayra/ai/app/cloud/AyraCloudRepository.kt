@@ -939,7 +939,7 @@ class AyraCloudRepository(
         const val CHUNK_MARKER_PREFIX = "__AYRA_CHUNKED_V1__:"
 
         private val ALLOWED_PLUGIN_TYPES = setOf("SKILL_PACK", "OPENAPI_PLUGIN", "MCP_SERVER", "WEB_TOOL", "CODE_PLUGIN")
-        private val ALLOWED_CREATION_TYPES = setOf("IMAGE", "VIDEO", "SONG", "3D", "PDF")
+        private val ALLOWED_CREATION_TYPES = setOf("IMAGE", "VIDEO", "STORYBOARD", "SONG", "3D", "PDF")
 
         fun create(context: Context): AyraCloudRepository {
             val appCtx = context.applicationContext

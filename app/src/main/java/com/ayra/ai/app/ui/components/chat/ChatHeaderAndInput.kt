@@ -494,9 +494,15 @@ internal fun EmptyCosmicState(
             val totalEngines = extCount + if (fbReady) 1 else 0
             when {
                 localOnly -> "Local-Only Privacy Active ($extCount local engines)" to NeonCyan
-                totalEngines > 0 -> "$totalEngines AI Engines Active • Best-Answer Ensemble Ready" to NeonGreen
+                totalEngines > 0 -> {
+                    if (fbReady && extCount == 0) {
+                        "Built-in Ayra AI Active (Firebase AI Logic)" to NeonGreen
+                    } else {
+                        "$totalEngines AI Engines Active • Ensemble Ready" to NeonGreen
+                    }
+                }
                 savedCount > 0 && !hasConsent -> "$savedCount Key(s) Saved • Tap to enable Cloud Consent" to Color(0xFFF59E0B)
-                else -> "Offline Mode • Tap to add API key or Local Ollama" to NeonRose
+                else -> "Offline Mode • Tap to configure Local Ollama or Keys" to NeonRose
             }
         }
 

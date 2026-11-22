@@ -85,8 +85,7 @@ fun ProviderKeysSection(
             Triple(AiProviderType.OPENROUTER, "OpenRouter (All Models)", "https://openrouter.ai/keys"),
             Triple(AiProviderType.XAI, "xAI Console", "https://console.x.ai/"),
             Triple(AiProviderType.MISTRAL, "Mistral Console", "https://console.mistral.ai/api-keys/"),
-            Triple(AiProviderType.PERPLEXITY, "Perplexity AI", "https://www.perplexity.ai/settings/api"),
-            Triple(AiProviderType.GITHUB_MODELS, "GitHub Models (Retired 2026-07-30)", "https://github.com/settings/tokens")
+            Triple(AiProviderType.PERPLEXITY, "Perplexity AI", "https://www.perplexity.ai/settings/api")
         )
     }
 
@@ -392,9 +391,9 @@ private fun AiActivationAndConsentCard(
                     Text(
                         text = when {
                             isLocalOnly -> "Local-Only Privacy Mode ON ($activeProvidersCount local)"
-                            activeEnginesCount > 0 -> "$activeEnginesCount Active AI Engines ($activeProvidersCount Providers)"
+                            activeEnginesCount > 0 -> "$activeEnginesCount Active AI Engines (${if (activeProvidersCount > 0) "$activeProvidersCount BYOK/Local + Built-in" else "Built-in Platform AI"})"
                             savedCount > 0 && !hasExternalConsent -> "$savedCount Key(s) Saved • Consent Required"
-                            else -> "No Active AI Engines Configured"
+                            else -> "No External or Built-In Engines Active"
                         },
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = when {
@@ -404,7 +403,7 @@ private fun AiActivationAndConsentCard(
                         }
                     )
                     Text(
-                        text = "External Cloud AI Consent enables saved cloud API keys (Gemini, Groq, NIM, OpenAI, Claude, etc.) and live /models discovery.",
+                        text = "Built-in Firebase AI works automatically unless Local-Only Mode is ON. Enable External Cloud AI Consent for optional third-party BYOK keys (Groq, NIM, OpenAI, Claude, etc.).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

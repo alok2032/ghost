@@ -136,19 +136,24 @@ fun VideoStoryboardPanel(context: Context) {
                             is ComfyUiResult.VideoSuccess -> {
                                 val realDuration = withContext(Dispatchers.IO) {
                                     readStudioVideoDurationText(res.file)
-                                } ?: "MP4"
-                                videoPayloadJson = JSONObject().apply {
-                                    put("title", clean.take(44))
-                                    put("prompt", clean)
-                                    put("aspectRatio", aspectRatio)
-                                    put("localVideoPath", res.file.absolutePath)
-                                    put("duration", realDuration)
-                                    put("isStoryboardOnly", false)
-                                    put("cameraMotion", "Wan 2.1 ComfyUI MP4")
-                                }.toString()
-                                statusNote = "Rendered MP4 via ComfyUI Wan 2.1 (${res.elapsedMs}ms)"
-                                isBusy = false
-                                return@launch
+                                }
+                                if (realDuration != null) {
+                                    videoPayloadJson = JSONObject().apply {
+                                        put("title", clean.take(44))
+                                        put("prompt", clean)
+                                        put("aspectRatio", aspectRatio)
+                                        put("localVideoPath", res.file.absolutePath)
+                                        put("duration", realDuration)
+                                        put("isStoryboardOnly", false)
+                                        put("cameraMotion", "Wan 2.1 ComfyUI MP4")
+                                    }.toString()
+                                    statusNote = "Rendered MP4 via ComfyUI Wan 2.1 (${res.elapsedMs}ms)"
+                                    isBusy = false
+                                    return@launch
+                                } else {
+                                    withContext(Dispatchers.IO) { runCatching { res.file.delete() } }
+                                    statusNote = "ComfyUI output lacked readable video metadata; showing keyframe storyboard."
+                                }
                             }
                             is ComfyUiResult.Failure -> {
                                 statusNote = "ComfyUI video unavailable (${res.reason}); showing keyframe storyboard."

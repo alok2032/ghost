@@ -1,13 +1,20 @@
 package com.ayra.ai.app.ai
 
+import android.content.Context
+import android.graphics.BitmapFactory
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
+import com.ayra.ai.app.security.UrlValidationResult
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +27,14 @@ object AiMediaPromptSynthesizer {
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(4, TimeUnit.SECONDS)
             .callTimeout(2800, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
+    private val imageDownloadClient: OkHttpClient by lazy {
+        ExternalAiProviders.sharedFastWebClient.newBuilder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(22, TimeUnit.SECONDS)
+            .callTimeout(25, TimeUnit.SECONDS)
             .build()
     }
 
@@ -204,7 +219,7 @@ object AiMediaPromptSynthesizer {
                 "You are an expert prompt engineer for Flux.1 and photorealistic diffusion. Convert this visual request into a single sentence master photographic English prompt with subject details, lens, lighting, and textures. Output ONLY the English prompt in one line, no markdown, no quotes."
             }
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/${FirebaseAiEngine.MODEL_FLASH}:generateContent"
             val requestJson = JSONObject().apply {
                 put("contents", JSONArray().put(JSONObject().apply {
                     put("role", "user")
@@ -325,6 +340,59 @@ object AiMediaPromptSynthesizer {
             ""
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    /**
+     * Downloads a remote image URL into `filesDir/generated_images/` using bounded streaming + SSRF
+     * redirect validation and verifies actual raster image dimensions before reporting success.
+     */
+    @JvmOverloads
+    fun downloadAndVerifyImageToLocalFile(
+        context: Context,
+        imageUrl: String,
+        httpClient: OkHttpClient = imageDownloadClient,
+        urlValidator: (String) -> UrlValidationResult = {
+            NetworkSecurityHelper.validatePublicHttpsUrl(it)
+        }
+    ): Result<File> {
+        if (imageUrl.isBlank()) {
+            return Result.failure(IllegalArgumentException("Image URL is blank."))
+        }
+        val outDir = File(context.filesDir, "generated_images").apply { mkdirs() }
+        val destFile = File(outDir, "ayra_flux_${System.currentTimeMillis()}.png")
+        return try {
+            val request = Request.Builder().url(imageUrl).get().build()
+            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                client = httpClient,
+                initialRequest = request,
+                urlValidator = urlValidator
+            ).use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Image server returned HTTP ${response.code}")
+                }
+                val contentType = response.header("Content-Type")?.lowercase(Locale.ROOT).orEmpty()
+                if (contentType.startsWith("text/") || contentType.contains("html") || contentType.contains("json")) {
+                    throw IOException("Unexpected non-image Content-Type '$contentType'")
+                }
+                NetworkSecurityHelper.copyBoundedToFile(
+                    response = response,
+                    destFile = destFile,
+                    maxBytes = NetworkSecurityHelper.DEFAULT_MAX_MEDIA_BYTES
+                )
+            }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(destFile.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                throw IOException("Downloaded file is not a valid image.")
+            }
+            Result.success(destFile)
+        } catch (ce: CancellationException) {
+            runCatching { destFile.delete() }
+            throw ce
+        } catch (e: Exception) {
+            runCatching { destFile.delete() }
+            Result.failure(e)
         }
     }
 }

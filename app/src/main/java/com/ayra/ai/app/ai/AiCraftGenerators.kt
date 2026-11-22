@@ -13,6 +13,8 @@ import com.ayra.ai.app.ai.studios.ComfyUiClient
 import com.ayra.ai.app.ai.studios.ComfyUiResult
 import com.ayra.ai.app.data.AyraPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,7 +35,7 @@ internal class AiCraftGenerators(
     private fun hasCloudOrFirebaseAi(): Boolean =
         context != null && (
             externalAiProviders.hasAnyConfiguredProvider() ||
-                (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context))
+                FirebaseAiEngine.isAvailable(context)
             )
 
     fun extractSubject(prompt: String, type: String): String {
@@ -89,22 +91,24 @@ internal class AiCraftGenerators(
             )
             if (comfyVid is ComfyUiResult.VideoSuccess) {
                 val measuredDuration = readVideoDurationText(comfyVid.file)
-                finalJsonPayload = runCatching {
-                    JSONObject(higgsfieldPayload.jsonPayload).apply {
-                        put("localVideoPath", comfyVid.file.absolutePath)
-                        put("isStoryboardOnly", false)
-                        if (measuredDuration != null) put("duration", measuredDuration) else remove("duration")
-                        put("cameraMotion", "Wan 2.1 ComfyUI MP4")
-                    }.toString()
-                }.getOrDefault(higgsfieldPayload.jsonPayload)
-                modelLabel = "ComfyUI Wan 2.1 Neural Video MP4 🎬"
-                hasRenderedVideo = true
+                if (measuredDuration != null) {
+                    finalJsonPayload = runCatching {
+                        JSONObject(higgsfieldPayload.jsonPayload).apply {
+                            put("localVideoPath", comfyVid.file.absolutePath)
+                            put("isStoryboardOnly", false)
+                            put("duration", measuredDuration)
+                            put("cameraMotion", "Wan 2.1 ComfyUI MP4")
+                        }.toString()
+                    }.getOrDefault(higgsfieldPayload.jsonPayload)
+                    modelLabel = "ComfyUI Wan 2.1 Neural Video MP4 🎬"
+                    hasRenderedVideo = true
+                } else {
+                    runCatching { comfyVid.file.delete() }
+                }
             }
         }
 
         val canUseFirebaseImage = context != null &&
-            !AyraPreferences.isLocalOnlyAiModeEnabled(context) &&
-            AyraPreferences.hasExternalAiConsent(context) &&
             FirebaseAiEngine.isAvailable(context)
 
         if (!hasRenderedVideo && canUseFirebaseImage) {
@@ -172,7 +176,7 @@ internal class AiCraftGenerators(
 
         return AiResponse(
             text = replyText,
-            craftType = "VIDEO",
+            craftType = if (hasRenderedVideo) "VIDEO" else "STORYBOARD",
             craftPayload = finalJsonPayload,
             modelUsed = modelLabel
         )
@@ -193,7 +197,7 @@ internal class AiCraftGenerators(
         }
 
         var firebaseFailureReason: String? = null
-        if (context != null && FirebaseAiEngine.isAvailable(context) && externalAiProviders.allowExternalWikiGrounding) {
+        if (context != null && FirebaseAiEngine.isAvailable(context)) {
             when (val fbRes = firebaseAiEngine.generateOrEditImage(prompt, attachedImageBase64, aspectRatio)) {
                 is FirebaseImageResult.Success -> {
                     val fileUri = Uri.fromFile(fbRes.file).toString()
@@ -310,6 +314,27 @@ internal class AiCraftGenerators(
             aspectRatio = aspectRatio
         )
 
+        val verifiedResult = withContext(Dispatchers.IO) {
+            AiMediaPromptSynthesizer.downloadAndVerifyImageToLocalFile(context, imageUrl)
+        }
+        val verifiedFile = verifiedResult.getOrNull()
+        if (verifiedFile == null) {
+            val dlReason = verifiedResult.exceptionOrNull()?.message ?: "Image download or validation failed"
+            val fbNote = firebaseFailureReason?.let { "\nNano Banana status: $it" }.orEmpty()
+            val errText = if (isBengali) {
+                "⚠️ **ছবি ডাউনলোড ও যাচাই করা যায়নি (Flux.1)**\n\nকারণ: $dlReason$fbNote"
+            } else {
+                "⚠️ **Could Not Download or Verify Image (Flux.1)**\n\nReason: $dlReason$fbNote"
+            }
+            return AiResponse(
+                text = errText,
+                craftType = null,
+                craftPayload = null,
+                modelUsed = "Offline Status"
+            )
+        }
+        val verifiedFileUri = Uri.fromFile(verifiedFile).toString()
+
         val fallbackNote = if (!firebaseFailureReason.isNullOrBlank()) {
             if (isBengali) "\n*(Nano Banana নোট: $firebaseFailureReason — Flux.1 ইঞ্জিন ব্যবহার করা হয়েছে)*"
             else "\n*(Nano Banana note: $firebaseFailureReason — rendered via Flux.1)*"
@@ -332,7 +357,7 @@ internal class AiCraftGenerators(
         return AiResponse(
             text = replyText,
             craftType = "IMAGE",
-            craftPayload = imageUrl,
+            craftPayload = verifiedFileUri,
             modelUsed = "Flux.1 Neural Image Studio 🎨"
         )
     }

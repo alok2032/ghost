@@ -373,7 +373,7 @@ class ChatViewModel(
                                     runCatching {
                                         repo.syncMessageToCloud(assistantMsg.copy(id = insertedAssistantId))
                                         val cType = event.response.craftType
-                                        if (cType in listOf("IMAGE", "VIDEO", "SONG", "3D", "PDF_DOWNLOAD")) {
+                                        if (cType in listOf("IMAGE", "VIDEO", "STORYBOARD", "SONG", "3D", "PDF_DOWNLOAD")) {
                                             repo.logCreation(
                                                 creationType = if (cType == "PDF_DOWNLOAD") "PDF" else cType!!,
                                                 title = prompt.take(120),
@@ -395,9 +395,6 @@ class ChatViewModel(
                                     content = "⚠️ ${event.error.userFriendlyMessage}"
                                 )
                             )
-                            if (event.error is AyraError.NoProviderConfigured) {
-                                _showKeyOnboarding.value = true
-                            }
                         }
                     }
                 }

@@ -48,7 +48,7 @@ class GeminiCliEngine(private val context: Context? = null) {
             } catch (_: Exception) {}
         }
 
-        if (FirebaseAiEngine.isAvailable(context) && externalProviders.allowExternalWikiGrounding) {
+        if (FirebaseAiEngine.isAvailable(context)) {
             val fbRes = try {
                 FirebaseAiEngine(context).generateText(
                     prompt = prompt,

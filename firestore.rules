@@ -160,7 +160,7 @@ service cloud.firestore {
           'summary', 'modelUsed', 'e2ee', 'createdAt', 'updatedAt'
         ])
         && data.userId == userId
-        && data.creationType in ['IMAGE', 'VIDEO', 'SONG', '3D', 'PDF']
+        && data.creationType in ['IMAGE', 'VIDEO', 'STORYBOARD', 'SONG', '3D', 'PDF']
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
         && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 20000
         && data.summary is string && data.summary.size() <= 50000

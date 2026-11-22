@@ -205,7 +205,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
     private fun hasCloudOrFirebaseAi(): Boolean =
         context != null && (
             externalAiProviders.hasAnyConfiguredProvider() ||
-                (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context))
+                FirebaseAiEngine.isAvailable(context)
             )
 
     private val geminiApiKey: String
@@ -402,7 +402,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
 
         val activeProviders = externalAiProviders.getActiveConfiguredProviders()
         var poolFailureMessage: String? = null
-        if (context != null && (activeProviders.isNotEmpty() || (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context)))) {
+        if (context != null && (activeProviders.isNotEmpty() || FirebaseAiEngine.isAvailable(context))) {
             try {
                 val isMemoryOn = AyraPreferences.isMemoryEnabled(context)
                 val wsCtx = WorkspaceContextBuilder.resolve(context, currentPersona, selectedModelTier)

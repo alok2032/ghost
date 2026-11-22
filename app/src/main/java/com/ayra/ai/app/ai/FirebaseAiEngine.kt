@@ -57,6 +57,7 @@ class FirebaseAiEngine(private val context: Context?) {
         const val MODEL_FAST_LITE = "gemini-3.5-flash-lite"
         const val MODEL_PRO_REASONING = "gemini-4-argon"
         const val MODEL_IMAGE_NANO_BANANA = "gemini-nano-banana-2.1"
+        const val MODEL_TTS = "gemini-3.1-flash-tts-preview"
 
         private const val STREAM_SEARCH_TIMEOUT_MS = 25_000L
         private const val TEXT_TIMEOUT_MS = 45_000L
@@ -65,7 +66,6 @@ class FirebaseAiEngine(private val context: Context?) {
         fun isAvailable(context: Context?): Boolean {
             if (context == null) return false
             if (com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)) return false
-            if (!com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)) return false
             return runCatching {
                 FirebaseApp.getApps(context.applicationContext).isNotEmpty()
             }.getOrDefault(false)

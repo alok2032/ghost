@@ -33,7 +33,7 @@ internal class AiSpecializedExecutors(
     private fun hasCloudOrFirebaseAi(): Boolean =
         context != null && (
             externalAiProviders.hasAnyConfiguredProvider() ||
-                (externalAiProviders.allowExternalWikiGrounding && FirebaseAiEngine.isAvailable(context))
+                FirebaseAiEngine.isAvailable(context)
             )
 
     private val geminiApiKey: String
@@ -111,7 +111,7 @@ internal class AiSpecializedExecutors(
             } catch (_: Exception) {}
         } else if (geminiApiKey.isNotBlank()) {
             try {
-                val res = queryGeminiModel("gemini-3.8-flash", enrichedPrompt, imageBase64, currentPersona)
+                val res = queryGeminiModel(FirebaseAiEngine.MODEL_FLASH, enrichedPrompt, imageBase64, currentPersona)
                 if (res.isNotBlank()) {
                     val fullText = if (citationsBlock.isNotBlank() && !res.contains("### 📚 Grounded Web Sources")) {
                         res + "\n\n### 📚 Grounded Web Sources" + citationsBlock
@@ -180,7 +180,7 @@ internal class AiSpecializedExecutors(
             } catch (_: Exception) {}
         } else if (geminiApiKey.isNotBlank()) {
             try {
-                val res = queryGeminiModel("gemini-4-argon", "$systemPrompt\n\nUser Task:\n$effectivePrompt", imageBase64, currentPersona)
+                val res = queryGeminiModel(FirebaseAiEngine.MODEL_PRO_REASONING, "$systemPrompt\n\nUser Task:\n$effectivePrompt", imageBase64, currentPersona)
                 if (res.isNotBlank()) {
                     return AiResponse(
                         text = res,
@@ -300,7 +300,7 @@ internal class AiSpecializedExecutors(
     }
 
     fun queryGeminiFlash(prompt: String, imageBase64: String?, currentPersona: String): String {
-        val models = listOf("gemini-3.8-flash", "gemini-4-argon", "gemini-3.5-flash-lite")
+        val models = listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_PRO_REASONING, FirebaseAiEngine.MODEL_FAST_LITE)
         for (m in models) {
             try {
                 val ans = queryGeminiModel(m, prompt, imageBase64, currentPersona, withSearchGrounding = false)
@@ -319,7 +319,7 @@ internal class AiSpecializedExecutors(
     }
 
     fun queryGeminiPro(prompt: String, imageBase64: String?, currentPersona: String): String {
-        val models = listOf("gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite")
+        val models = listOf(FirebaseAiEngine.MODEL_PRO_REASONING, FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_FAST_LITE)
         for (m in models) {
             try {
                 val ans = queryGeminiModel(m, prompt, imageBase64, currentPersona, withSearchGrounding = false)
