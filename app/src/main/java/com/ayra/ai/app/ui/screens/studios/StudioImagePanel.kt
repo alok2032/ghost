@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -123,7 +124,8 @@ fun ImageStudioPanel(context: Context) {
                 FilterChip(
                     selected = imageAspect == ratio,
                     onClick = { imageAspect = ratio },
-                    label = { Text(ratio, fontSize = 11.5.sp) }
+                    label = { Text(ratio, fontSize = 11.5.sp) },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -136,7 +138,7 @@ fun ImageStudioPanel(context: Context) {
                 onClick = {
                     photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
-                modifier = Modifier.weight(1f).testTag("studio_pick_photo_button")
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("studio_pick_photo_button")
             ) {
                 Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
@@ -246,7 +248,7 @@ fun ImageStudioPanel(context: Context) {
                     }
                 },
                 enabled = prompt.isNotBlank() && !isBusy,
-                modifier = Modifier.weight(1f).testTag("studio_generate_image_button")
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("studio_generate_image_button")
             ) {
                 if (isBusy) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

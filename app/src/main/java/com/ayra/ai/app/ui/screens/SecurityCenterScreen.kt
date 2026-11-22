@@ -405,6 +405,8 @@ fun SecurityCenterScreen(
                         onCheckedChange = {
                             localOnlyAi = it
                             AyraPreferences.setLocalOnlyAiModeEnabled(context, it)
+                            freePoolConsent = AyraPreferences.isFreeAiPoolEnabled(context)
+                            cloudSyncEnabled = AyraPreferences.isCloudSyncEnabled(context)
                             SecurityAuditLogger.log(context, SecurityAuditCategory.AI_POLICY, SecurityAuditSeverity.INFO, "Local-Only AI Mode set to $it")
                         }
                     )
@@ -426,26 +428,45 @@ fun SecurityCenterScreen(
                         onCheckedChange = {
                             externalAiConsent = it
                             AyraPreferences.setExternalAiConsent(context, it)
+                            freePoolConsent = AyraPreferences.isFreeAiPoolEnabled(context)
                         }
                     )
                     SecurityToggleItem(
                         title = "Public Free AI Pool (Opt-In)",
-                        subtitle = "Off by default; uses keyless community fallback specialists only when explicitly enabled",
-                        checked = freePoolConsent,
+                        subtitle = when {
+                            localOnlyAi -> "Blocked while Local-Only AI Mode is active"
+                            !externalAiConsent -> "Requires External Cloud AI Provider Consent above"
+                            else -> "Off by default; uses keyless community fallback specialists only when explicitly enabled"
+                        },
+                        checked = !localOnlyAi && externalAiConsent && freePoolConsent,
                         tag = "toggle_free_pool_consent",
-                        onCheckedChange = {
-                            freePoolConsent = it
-                            AyraPreferences.setFreeAiPoolEnabled(context, it)
+                        onCheckedChange = { wantEnable ->
+                            when {
+                                wantEnable && localOnlyAi -> {
+                                    Toast.makeText(context, "Turn off Local-Only AI Mode first.", Toast.LENGTH_SHORT).show()
+                                }
+                                wantEnable && !externalAiConsent -> {
+                                    Toast.makeText(context, "Enable External Cloud AI Provider Consent first.", Toast.LENGTH_SHORT).show()
+                                }
+                                else -> {
+                                    AyraPreferences.setFreeAiPoolEnabled(context, wantEnable)
+                                    freePoolConsent = AyraPreferences.isFreeAiPoolEnabled(context)
+                                }
+                            }
                         }
                     )
                     SecurityToggleItem(
                         title = "Opt-In Cloud Sync (Firestore)",
-                        subtitle = "Off by default; explicitly enables syncing chats & plugins to your signed-in account",
-                        checked = cloudSyncEnabled,
+                        subtitle = if (localOnlyAi) "Blocked while Local-Only AI Mode is active" else "Off by default; explicitly enables syncing chats & plugins to your signed-in account",
+                        checked = !localOnlyAi && cloudSyncEnabled,
                         tag = "toggle_cloud_sync_consent",
-                        onCheckedChange = {
-                            cloudSyncEnabled = it
-                            AyraPreferences.setCloudSyncEnabled(context, it)
+                        onCheckedChange = { wantEnable ->
+                            if (wantEnable && localOnlyAi) {
+                                Toast.makeText(context, "Turn off Local-Only AI Mode first.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                AyraPreferences.setCloudSyncEnabled(context, wantEnable)
+                                cloudSyncEnabled = AyraPreferences.isCloudSyncEnabled(context)
+                            }
                         }
                     )
                     SecurityToggleItem(

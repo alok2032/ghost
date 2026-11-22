@@ -436,6 +436,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     baseSystemPrompt = sysPrompt
                 ) ?: sysPrompt
 
+                val routingMode = com.ayra.ai.app.ai.providers.AiRoutingMode.fromId(wsCtx.effectiveRoutingMode)
                 val poolResp = com.ayra.ai.app.ai.providers.ProviderPool(context, externalAiProviders).executeSync(
                     com.ayra.ai.app.ai.providers.ChatRequest(
                         prompt = effectivePrompt,
@@ -448,7 +449,8 @@ class UnifiedAiEngine @JvmOverloads constructor(
                         preferredProvider = preferredProvider,
                         preferredModelId = preferredModel,
                         thinkingMode = wsCtx.effectiveThinkingMode,
-                        workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null }
+                        workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null },
+                        routingMode = routingMode
                     )
                 )
                 if (poolResp.text.isNotBlank()) {

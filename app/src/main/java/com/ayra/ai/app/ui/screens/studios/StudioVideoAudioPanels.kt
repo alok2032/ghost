@@ -4,11 +4,14 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -92,18 +95,20 @@ fun VideoStoryboardPanel(context: Context) {
             singleLine = true
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("16:9", "9:16").forEach { ratio ->
                 FilterChip(
                     selected = aspectRatio == ratio,
                     onClick = { aspectRatio = ratio },
-                    label = { Text(if (ratio == "16:9") "16:9 Cinema" else "9:16 Portrait") }
+                    label = { Text(if (ratio == "16:9") "16:9 Cinema" else "9:16 Portrait") },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
             FilterChip(
                 selected = preferComfyWanVideo,
                 onClick = { preferComfyWanVideo = !preferComfyWanVideo },
-                label = { Text(if (preferComfyWanVideo) "ComfyUI Wan 2.1 + Fallback" else "Storyboard Only", fontSize = 11.sp) }
+                label = { Text(if (preferComfyWanVideo) "ComfyUI Wan 2.1 + Fallback" else "Storyboard Only", fontSize = 11.sp) },
+                modifier = Modifier.heightIn(min = 48.dp)
             )
         }
 
@@ -162,7 +167,7 @@ fun VideoStoryboardPanel(context: Context) {
                 }
             },
             enabled = prompt.isNotBlank() && !isBusy,
-            modifier = Modifier.fillMaxWidth().testTag("studio_generate_video_button")
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("studio_generate_video_button")
         ) {
             Text(if (isBusy) "Rendering Video..." else "Generate Video / Storyboard")
         }
@@ -212,12 +217,13 @@ fun MusicStudioPanel(context: Context) {
             maxLines = 3
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(90, 112, 128, 145).forEach { targetBpm ->
                 FilterChip(
                     selected = bpm == targetBpm,
                     onClick = { bpm = targetBpm },
-                    label = { Text("$targetBpm BPM") }
+                    label = { Text("$targetBpm BPM") },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -269,7 +275,7 @@ fun MusicStudioPanel(context: Context) {
                 }
             },
             enabled = prompt.isNotBlank() && !isBusy,
-            modifier = Modifier.fillMaxWidth().testTag("studio_compose_song_button")
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("studio_compose_song_button")
         ) {
             Text(if (isBusy) "Composing..." else "Compose Lyrics & Synth Preview")
         }

@@ -126,6 +126,9 @@ class ProviderCircuitBreaker(
      */
     fun resetProvider(provider: AiProviderType) {
         providerStates.remove(provider)
+        DefaultAiChannelRegistry.buildAllDefinitions("GENERAL_ASSISTANT", emptyMap())
+            .filter { it.provider == provider }
+            .forEach { channelStates.remove(it.id) }
     }
 
     fun resetChannel(channelId: String) {

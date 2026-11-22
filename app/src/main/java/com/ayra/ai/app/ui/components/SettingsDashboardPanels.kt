@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -76,12 +77,14 @@ import kotlin.math.roundToInt
 fun PersonalizationAndMemoryPanel(
     context: Context,
     onPersonaStyleSelected: (String) -> Unit,
-    onOpenMemoryVault: () -> Unit = {}
+    onOpenMemoryVault: () -> Unit = {},
+    editsLocked: Boolean = false
 ) {
     val uiConfig = LocalAyraUiConfig.current
     val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsStateWithLifecycle()
     var activePersona by remember { mutableStateOf(AyraPreferences.getSavedPersona(context)) }
     var showCompanionAgeGate by remember { mutableStateOf(false) }
+    var showClearAllFactsConfirm by remember { mutableStateOf(false) }
     var formality by remember { mutableFloatStateOf(AyraPreferences.getFormalityLevel(context).toFloat()) }
     var detail by remember { mutableFloatStateOf(AyraPreferences.getDetailLevel(context).toFloat()) }
     var techDepth by remember { mutableFloatStateOf(AyraPreferences.getTechnicalDepth(context).toFloat()) }
@@ -119,8 +122,9 @@ fun PersonalizationAndMemoryPanel(
                 FilterChip(
                     selected = thinkingMode == id,
                     onClick = { AyraPreferences.setThinkingMode(context, id) },
+                    enabled = !editsLocked,
                     label = { Text(label, fontSize = 11.sp) },
-                    modifier = Modifier.testTag("thinking_mode_$id")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("thinking_mode_$id")
                 )
             }
         }
@@ -134,6 +138,7 @@ fun PersonalizationAndMemoryPanel(
             ).forEach { style ->
                 FilterChip(
                     selected = activePersona == style,
+                    enabled = !editsLocked,
                     onClick = {
                         if (style == "GF_COMPANION" && !AyraPreferences.isCompanionAgeVerified(context)) {
                             showCompanionAgeGate = true
@@ -148,7 +153,8 @@ fun PersonalizationAndMemoryPanel(
                             text = if (style == "GF_COMPANION") "COMPANION (18+)" else style.replace("_", " "),
                             fontSize = 10.sp
                         )
-                    }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -159,16 +165,19 @@ fun PersonalizationAndMemoryPanel(
                 title = { Text("18+ Companion Persona Confirmation", fontWeight = FontWeight.Bold) },
                 text = { Text("Companion Mode uses affectionate, personal conversational tones intended only for adults (18+). Confirm you are 18+ to enable this optional mode.") },
                 confirmButton = {
-                    Button(onClick = {
-                        AyraPreferences.setCompanionAgeVerified(context, true)
-                        activePersona = "GF_COMPANION"
-                        AyraPreferences.savePersona(context, "GF_COMPANION")
-                        onPersonaStyleSelected("GF_COMPANION")
-                        showCompanionAgeGate = false
-                    }) { Text("Confirm 18+ & Enable") }
+                    Button(
+                        onClick = {
+                            AyraPreferences.setCompanionAgeVerified(context, true)
+                            activePersona = "GF_COMPANION"
+                            AyraPreferences.savePersona(context, "GF_COMPANION")
+                            onPersonaStyleSelected("GF_COMPANION")
+                            showCompanionAgeGate = false
+                        },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) { Text("Confirm 18+ & Enable") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showCompanionAgeGate = false }) { Text("Cancel") }
+                    TextButton(onClick = { showCompanionAgeGate = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 }
             )
         }
@@ -177,43 +186,55 @@ fun PersonalizationAndMemoryPanel(
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Response Calibration", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text("Formality: ${listOf("Very Casual", "Casual", "Balanced", "Formal", "Academic")[formality.roundToInt()]}", fontSize = 12.sp)
-                Slider(value = formality, onValueChange = { formality = it; AyraPreferences.setFormalityLevel(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
+                Slider(value = formality, enabled = !editsLocked, onValueChange = { formality = it; AyraPreferences.setFormalityLevel(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
 
                 Text("Detail Level: ${listOf("Minimal", "Brief", "Balanced", "Detailed", "Exhaustive")[detail.roundToInt()]}", fontSize = 12.sp)
-                Slider(value = detail, onValueChange = { detail = it; AyraPreferences.setDetailLevel(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
+                Slider(value = detail, enabled = !editsLocked, onValueChange = { detail = it; AyraPreferences.setDetailLevel(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
 
                 Text("Technical Depth: ${listOf("Layperson", "Beginner", "Intermediate", "Advanced", "Expert")[techDepth.roundToInt()]}", fontSize = 12.sp)
-                Slider(value = techDepth, onValueChange = { techDepth = it; AyraPreferences.setTechnicalDepth(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
+                Slider(value = techDepth, enabled = !editsLocked, onValueChange = { techDepth = it; AyraPreferences.setTechnicalDepth(context, it.roundToInt()) }, valueRange = 0f..4f, steps = 3)
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Include Concrete Examples", fontSize = 12.sp)
-                    Switch(checked = useExamples, onCheckedChange = { useExamples = it; AyraPreferences.setUseExamples(context, it) })
+                    Switch(checked = useExamples, enabled = !editsLocked, onCheckedChange = { useExamples = it; AyraPreferences.setUseExamples(context, it) })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Structured Markdown & Tables", fontSize = 12.sp)
-                    Switch(checked = useStructured, onCheckedChange = { useStructured = it; AyraPreferences.setUseStructuredFormatting(context, it) })
+                    Switch(checked = useStructured, enabled = !editsLocked, onCheckedChange = { useStructured = it; AyraPreferences.setUseStructuredFormatting(context, it) })
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("none", "low", "moderate", "high").forEach { freq ->
-                        FilterChip(selected = emojiFreq == freq, onClick = { emojiFreq = freq; AyraPreferences.setEmojiFrequency(context, freq) }, label = { Text("Emoji: $freq", fontSize = 10.sp) })
+                        FilterChip(
+                            selected = emojiFreq == freq,
+                            enabled = !editsLocked,
+                            onClick = { emojiFreq = freq; AyraPreferences.setEmojiFrequency(context, freq) },
+                            label = { Text("Emoji: $freq", fontSize = 10.sp) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        )
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("short", "medium", "long", "comprehensive").forEach { len ->
-                        FilterChip(selected = respLength == len, onClick = { respLength = len; AyraPreferences.setResponseLength(context, len) }, label = { Text("Len: $len", fontSize = 10.sp) })
+                        FilterChip(
+                            selected = respLength == len,
+                            enabled = !editsLocked,
+                            onClick = { respLength = len; AyraPreferences.setResponseLength(context, len) },
+                            label = { Text("Len: $len", fontSize = 10.sp) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        )
                     }
                 }
             }
         }
 
         Text("Structured Custom Instructions (Encrypted)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra AI") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = aboutUser, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ayra AI Should Respond") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = outputFormat, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = restrictions, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = freeform, onValueChange = { freeform = it }, label = { Text("Additional Freeform Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = rolePrompt, enabled = !editsLocked, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra AI") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = aboutUser, enabled = !editsLocked, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = howRespond, enabled = !editsLocked, onValueChange = { howRespond = it }, label = { Text("How Ayra AI Should Respond") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = outputFormat, enabled = !editsLocked, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = interests, enabled = !editsLocked, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = restrictions, enabled = !editsLocked, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = freeform, enabled = !editsLocked, onValueChange = { freeform = it }, label = { Text("Additional Freeform Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
 
         Button(
             onClick = {
@@ -224,21 +245,22 @@ fun PersonalizationAndMemoryPanel(
                 )
                 Toast.makeText(context, "Encrypted personalization saved!", Toast.LENGTH_SHORT).show()
             },
-            modifier = Modifier.fillMaxWidth().testTag("save_personalization_button")
+            enabled = !editsLocked,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_personalization_button")
         ) { Text("Save Custom Instructions") }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Persistent Encrypted Memory", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Switch(checked = memoryEnabled, onCheckedChange = { memoryEnabled = it; AyraPreferences.setMemoryEnabled(context, it) })
+            Switch(checked = memoryEnabled, enabled = !editsLocked, onCheckedChange = { memoryEnabled = it; AyraPreferences.setMemoryEnabled(context, it) })
         }
 
         OutlinedButton(
             onClick = onOpenMemoryVault,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
         ) { Text("Open Encrypted Memory Vault (Manage / Search / Edit)") }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(value = newFact, onValueChange = { newFact = it }, label = { Text("Add memory fact...") }, modifier = Modifier.weight(1f), singleLine = true)
+            OutlinedTextField(value = newFact, enabled = !editsLocked, onValueChange = { newFact = it }, label = { Text("Add memory fact...") }, modifier = Modifier.weight(1f), singleLine = true)
             IconButton(
                 onClick = {
                     val clean = newFact.trim()
@@ -251,6 +273,7 @@ fun PersonalizationAndMemoryPanel(
                         }
                     }
                 },
+                enabled = !editsLocked,
                 modifier = Modifier.size(48.dp)
             ) { Icon(Icons.Default.Add, contentDescription = "Add Fact", tint = uiConfig.accentColor) }
         }
@@ -270,18 +293,40 @@ fun PersonalizationAndMemoryPanel(
                         AyraPreferences.removeRememberedFact(context, fact)
                         facts = AyraPreferences.getRememberedFacts(context).toList()
                     },
+                    enabled = !editsLocked,
                     modifier = Modifier.size(48.dp)
                 ) { Icon(Icons.Default.Delete, contentDescription = "Forget Fact", tint = MaterialTheme.colorScheme.error) }
             }
         }
         if (facts.isNotEmpty()) {
             OutlinedButton(
-                onClick = {
-                    AyraPreferences.clearAllMemory(context)
-                    facts = emptyList()
-                },
-                modifier = Modifier.fillMaxWidth()
+                onClick = { showClearAllFactsConfirm = true },
+                enabled = !editsLocked,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             ) { Text("Clear All Remembered Facts") }
+        }
+
+        if (showClearAllFactsConfirm) {
+            AlertDialog(
+                onDismissRequest = { showClearAllFactsConfirm = false },
+                title = { Text("Clear All Remembered Facts?") },
+                text = { Text("This permanently deletes all ${facts.size} stored memory facts from encrypted preferences.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            AyraPreferences.clearAllMemory(context)
+                            facts = emptyList()
+                            showClearAllFactsConfirm = false
+                        },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) { Text("Clear All") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearAllFactsConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -291,7 +336,8 @@ fun DeviceAndUsageDashboardPanel(
     context: Context,
     onOpenModels: () -> Unit,
     onOpenTools: () -> Unit,
-    onOpenSecurityCenter: () -> Unit
+    onOpenSecurityCenter: () -> Unit,
+    onOpenAiSettings: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val uiConfig = LocalAyraUiConfig.current
@@ -374,7 +420,7 @@ fun DeviceAndUsageDashboardPanel(
                                         return@runCatching (check.reason ?: "Blocked endpoint URL") to emptyList()
                                     }
                                     val req = Request.Builder().url("$base/api/tags").get().build()
-                                    NetworkSecurityHelper.newClient(allowLanCleartext = true).newCall(req).execute().use { resp ->
+                                    NetworkSecurityHelper.localLanClient.newCall(req).execute().use { resp ->
                                         if (!resp.isSuccessful) return@use "HTTP ${resp.code}" to emptyList()
                                         val json = JSONObject(resp.readBounded())
                                         val arr = json.optJSONArray("models") ?: return@use "Connected (0 models)" to emptyList()
@@ -389,7 +435,8 @@ fun DeviceAndUsageDashboardPanel(
                                 }
                             }
                         },
-                        enabled = !isProbingOllama
+                        enabled = !isProbingOllama,
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         if (isProbingOllama) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         else {
@@ -411,7 +458,10 @@ fun DeviceAndUsageDashboardPanel(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Recorded AI Provider Call Telemetry", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     if (usageMetrics.isNotEmpty()) {
-                        OutlinedButton(onClick = { AiUsageTracker.clearAll(context) }) { Text("Reset", fontSize = 11.sp) }
+                        OutlinedButton(
+                            onClick = { AiUsageTracker.clearAll(context) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) { Text("Reset", fontSize = 11.sp) }
                     }
                 }
                 Text(
@@ -442,11 +492,18 @@ fun DeviceAndUsageDashboardPanel(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = onOpenModels, modifier = Modifier.weight(1f)) { Text("Models & Keys Hub") }
-            OutlinedButton(onClick = onOpenTools, modifier = Modifier.weight(1f)) { Text("Tools & Plugins") }
+        if (onOpenAiSettings != null) {
+            Button(
+                onClick = onOpenAiSettings,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) { Text("Open AI Control & API Keys Hub") }
         }
-        OutlinedButton(onClick = onOpenSecurityCenter, modifier = Modifier.fillMaxWidth()) {
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onOpenModels, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Models & Keys Hub") }
+            OutlinedButton(onClick = onOpenTools, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Tools & Plugins") }
+        }
+        OutlinedButton(onClick = onOpenSecurityCenter, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Open Zero-Trust Security Vault")

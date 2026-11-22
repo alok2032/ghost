@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -43,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -138,42 +141,42 @@ fun DiagnosticsToolsScreen(
                 onClick = { activeTab = ToolsSubTab.SECURITY },
                 leadingIcon = { Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Security Vault", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_security")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_security")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.KEYS,
                 onClick = { activeTab = ToolsSubTab.KEYS },
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Keys", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_keys")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_keys")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.WORKSPACE,
                 onClick = { activeTab = ToolsSubTab.WORKSPACE },
                 leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Workspace", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_workspace")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_workspace")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.TERMINAL,
                 onClick = { activeTab = ToolsSubTab.TERMINAL },
                 leadingIcon = { Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Terminal", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_terminal")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_terminal")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.PLUGINS,
                 onClick = { activeTab = ToolsSubTab.PLUGINS },
                 leadingIcon = { Icon(Icons.Default.Extension, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("Plugins", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_plugins")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_plugins")
             )
             FilterChip(
                 selected = activeTab == ToolsSubTab.MCP,
                 onClick = { activeTab = ToolsSubTab.MCP },
                 leadingIcon = { Icon(Icons.Default.Hub, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text("MCP", fontSize = 12.sp) },
-                modifier = Modifier.testTag("tools_subtab_mcp")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_mcp")
             )
         }
 
@@ -254,7 +257,9 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
         initialValue = AyraPreferences.getThemeMode(context)
     )
     var searchGrounding by remember { mutableStateOf(AyraPreferences.isSearchGroundingEnabled(context)) }
+    val isLocalOnly = AyraPreferences.isLocalOnlyAiModeEnabled(context)
     var freePool by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
+    var showFreePoolConsentDialog by remember { mutableStateOf(false) }
     var memoryEnabled by remember { mutableStateOf(AyraPreferences.isMemoryEnabled(context)) }
     var artifacts by remember { mutableStateOf<List<WorkspaceArtifact>>(emptyList()) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
@@ -348,7 +353,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                         selected = themeMode == mode,
                         onClick = { AyraPreferences.setThemeMode(context, mode) },
                         label = { Text(label, fontSize = 12.sp) },
-                        modifier = Modifier.testTag("theme_mode_$mode")
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("theme_mode_$mode")
                     )
                 }
             }
@@ -377,17 +382,67 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Global Free AI Pool", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("Keyless community endpoints when personal keys aren't set", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text(
+                        text = when {
+                            isLocalOnly -> "Blocked while Local-Only AI Mode is enabled"
+                            !AyraPreferences.hasExternalAiConsent(context) -> "Requires External Cloud AI consent (tap to opt in)"
+                            else -> "Keyless community endpoints when personal keys aren't set"
+                        },
+                        color = if (isLocalOnly) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
                 }
                 Switch(
-                    checked = freePool,
-                    onCheckedChange = {
-                        freePool = it
-                        AyraPreferences.setFreeAiPoolEnabled(context, it)
+                    checked = !isLocalOnly && freePool && AyraPreferences.hasExternalAiConsent(context),
+                    enabled = !isLocalOnly,
+                    onCheckedChange = { enable ->
+                        if (!enable) {
+                            AyraPreferences.setFreeAiPoolEnabled(context, false)
+                            freePool = false
+                        } else if (AyraPreferences.hasExternalAiConsent(context)) {
+                            AyraPreferences.setFreeAiPoolEnabled(context, true)
+                            freePool = AyraPreferences.isFreeAiPoolEnabled(context)
+                        } else {
+                            showFreePoolConsentDialog = true
+                        }
                     },
                     modifier = Modifier.testTag("toggle_free_ai_pool")
+                )
+            }
+
+            if (showFreePoolConsentDialog) {
+                AlertDialog(
+                    onDismissRequest = { showFreePoolConsentDialog = false },
+                    title = { Text("Enable External Cloud AI & Free Pool?") },
+                    text = {
+                        Text(
+                            "Enabling the Global Free AI Pool grants External Cloud AI Provider Consent so prompts can use keyless community fallback endpoints.",
+                            fontSize = 12.5.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                AyraPreferences.setExternalAiConsent(context, true)
+                                AyraPreferences.setFreeAiPoolEnabled(context, true)
+                                freePool = AyraPreferences.isFreeAiPoolEnabled(context)
+                                showFreePoolConsentDialog = false
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Enable")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showFreePoolConsentDialog = false },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
 
@@ -438,7 +493,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
             ) {
                 Button(
                     onClick = { exportBackupLauncher.launch("ayra_workspace_backup.json") },
-                    modifier = Modifier.weight(1f).testTag("workspace_export_backup_button")
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("workspace_export_backup_button")
                 ) {
                     Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
@@ -446,7 +501,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                 }
                 OutlinedButton(
                     onClick = { importBackupLauncher.launch(arrayOf("application/json", "text/plain")) },
-                    modifier = Modifier.weight(1f).testTag("workspace_import_backup_button")
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("workspace_import_backup_button")
                 ) {
                     Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))

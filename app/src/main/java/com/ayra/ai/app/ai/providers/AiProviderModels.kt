@@ -60,10 +60,20 @@ enum class AiRoutingMode(val id: String, val title: String, val icon: String, va
 
     companion object {
         fun fromId(raw: String): AiRoutingMode {
-            val clean = ModelTier.canonicalizeId(raw)
-            return entries.firstOrNull { it.id.equals(clean, ignoreCase = true) }
-                ?: entries.firstOrNull { it.id.equals(raw, ignoreCase = true) }
-                ?: AUTO
+            val cleanRaw = raw.trim().lowercase(java.util.Locale.ROOT)
+            if (cleanRaw.isEmpty()) return AUTO
+            entries.firstOrNull { it.id.equals(cleanRaw, ignoreCase = true) }?.let { return it }
+            return when (cleanRaw) {
+                "balanced" -> AUTO
+                "best_quality", "gemini_pro" -> BEST_QUALITY
+                "gemini_flash" -> FAST
+                "privacy", "privacy_local" -> PRIVACY_LOCAL
+                "deepseek_harness", "deepseek_r1" -> REASONING
+                else -> {
+                    val cleanTier = ModelTier.canonicalizeId(cleanRaw)
+                    entries.firstOrNull { it.id.equals(cleanTier, ignoreCase = true) } ?: AUTO
+                }
+            }
         }
     }
 }
@@ -318,7 +328,8 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c ->
                 if (c == null) "" else {
                     val url = AyraPreferences.getCustomEndpointUrl(c).trim()
-                    if (url.isNotBlank()) AyraPreferences.getCustomEndpointKey(c).ifBlank { "local" } else ""
+                    val hasOllama = AyraPreferences.hasExplicitOllamaHost(c)
+                    if (url.isNotBlank() || hasOllama) AyraPreferences.getCustomEndpointKey(c).ifBlank { "local" } else ""
                 }
             }
         ),

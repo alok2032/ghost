@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.ai.AiComparisonEngine
@@ -122,14 +123,14 @@ fun ModelsArenaScreen(
                 onClick = { activeTab = ArenaTab.REGISTRY },
                 leadingIcon = { Icon(Icons.Default.HealthAndSafety, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text(ArenaTab.REGISTRY.label, fontSize = 12.sp) },
-                modifier = Modifier.testTag("arena_subtab_registry")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("arena_subtab_registry")
             )
             FilterChip(
                 selected = activeTab == ArenaTab.COMPARISON,
                 onClick = { activeTab = ArenaTab.COMPARISON },
                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 label = { Text(ArenaTab.COMPARISON.label, fontSize = 12.sp) },
-                modifier = Modifier.testTag("arena_subtab_comparison")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("arena_subtab_comparison")
             )
         }
 
@@ -245,11 +246,12 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                         text = "Local Provider Telemetry (${usageMetrics.sumOf { it.totalRequests }} calls)",
                         color = MaterialTheme.colorScheme.tertiary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp
+                        fontSize = 12.5.sp,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     OutlinedButton(
                         onClick = { AiUsageTracker.clearAll(context) },
-                        modifier = Modifier.testTag("telemetry_clear_button")
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("telemetry_clear_button")
                     ) {
                         Text("Reset", fontSize = 11.sp)
                     }
@@ -324,7 +326,9 @@ private fun RegistryHealthPanel(context: android.content.Context) {
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        modifier = Modifier.weight(1f)
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     Text(
                         text = buildString {
@@ -431,7 +435,12 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Cross-Model Debate & Verification", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp)
+            Text(
+                text = "Cross-Model Debate & Verification",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 12.5.sp,
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            )
             Switch(
                 checked = runDebate,
                 onCheckedChange = { runDebate = it },
@@ -509,9 +518,18 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(res.displayName, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(
+                            text = res.displayName,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
                         Text(
                             text = if (res.success) "${res.latencyMs}ms" else "Failed (${res.latencyMs}ms)",
                             color = if (res.success) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,

@@ -17,12 +17,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -51,9 +55,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.ai.agent.AgentCitation
@@ -201,7 +209,8 @@ internal fun GlassHeaderBar(
                 style = MaterialTheme.typography.bodySmall.copy(brush = animatedGradient),
                 fontSize = 10.5.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
@@ -244,107 +253,145 @@ internal fun GlassInputRow(
     onMicClick: () -> Unit,
     onAttachClick: () -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(GlassSurfaceDark)
+            .border(
+                width = 1.4.dp,
+                brush = Brush.linearGradient(
+                    if (isListening || isRecordingAudio) listOf(NeonRose, NeonPurple, NeonCyan)
+                    else listOf(NeonCyan.copy(alpha = 0.75f), NeonPurple.copy(alpha = 0.65f))
+                ),
+                shape = RoundedCornerShape(26.dp)
+            )
+            .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 6.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(Brush.radialGradient(listOf(Color(0xFF1E1035), GlassSurfaceDark)))
-                .border(1.4.dp, Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonRose)), CircleShape)
-                .clickable { onAttachClick() }
-                .testTag("bottom_attachment_hub_button"),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Attach & Super-App Tools Hub",
-                tint = NeonCyan,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-
-        OutlinedTextField(
-            value = text,
-            onValueChange = onTextChange,
-            placeholder = { Text("Ask Ayra AI, generate photo, open apps...", color = TextSecondary, fontSize = 13.sp) },
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(24.dp))
-                .background(GlassSurfaceDark)
-                .testTag("chat_input_text_field"),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = NeonCyan,
-                unfocusedBorderColor = Color(0x3300FFFF),
-                cursorColor = NeonCyan,
-                focusedContainerColor = GlassSurfaceDark,
-                unfocusedContainerColor = GlassSurfaceDark
-            ),
-            shape = RoundedCornerShape(24.dp),
-            maxLines = 4
-        )
-
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (isRecordingAudio) NeonRose else GlassSurfaceDark)
-                .border(1.2.dp, if (isRecordingAudio) NeonRose else NeonPurple, CircleShape)
-                .clickable { onAudioTranscribeClick() }
-                .testTag("gemini_audio_transcribe_button"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                contentDescription = "AI Audio Transcribe",
-                tint = if (isRecordingAudio) Color.Black else NeonPurple,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (isListening) NeonRose else GlassSurfaceDark)
-                .border(1.2.dp, if (isListening) NeonRose else NeonCyan, CircleShape)
-                .clickable { onMicClick() }
-                .testTag("voice_mic_button"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
-                contentDescription = "Voice",
-                tint = if (isListening) Color.Black else NeonCyan
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(
-                    if (isGenerating) Brush.linearGradient(listOf(Color(0xFFFF1744), Color(0xFFD50000)))
-                    else Brush.linearGradient(listOf(NeonCyan, NeonPurple))
+            if (text.isEmpty()) {
+                Text(
+                    text = "Ask Ayra AI, generate photo, open apps...",
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                .clickable {
-                    if (isGenerating) onStop()
-                    else if (text.isNotBlank()) onSend()
-                }
-                .testTag("chat_send_button"),
-            contentAlignment = Alignment.Center
+            }
+            BasicTextField(
+                value = text,
+                onValueChange = onTextChange,
+                textStyle = TextStyle(
+                    color = Color.White,
+                    fontSize = 14.5.sp,
+                    lineHeight = 20.sp
+                ),
+                cursorBrush = SolidColor(NeonCyan),
+                maxLines = 5,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = if (text.isNotBlank() && !isGenerating) ImeAction.Send else ImeAction.Default
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (text.isNotBlank() && !isGenerating) onSend()
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 32.dp)
+                    .testTag("chat_input_text_field")
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (isGenerating) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(22.dp))
-            } else {
-                Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(20.dp))
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Brush.radialGradient(listOf(Color(0xFF1E1035), Color(0xFF0E162B))))
+                    .border(1.2.dp, Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonRose)), CircleShape)
+                    .clickable { onAttachClick() }
+                    .testTag("bottom_attachment_hub_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Attach & Super-App Tools Hub",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (isRecordingAudio) NeonRose else Color(0xFF0E162B))
+                    .border(1.1.dp, if (isRecordingAudio) NeonRose else NeonPurple.copy(alpha = 0.85f), CircleShape)
+                    .clickable { onAudioTranscribeClick() }
+                    .testTag("gemini_audio_transcribe_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = "AI Audio Transcribe",
+                    tint = if (isRecordingAudio) Color.Black else NeonPurple,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (isListening) NeonRose else Color(0xFF0E162B))
+                    .border(1.1.dp, if (isListening) NeonRose else NeonCyan.copy(alpha = 0.85f), CircleShape)
+                    .clickable { onMicClick() }
+                    .testTag("voice_mic_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
+                    contentDescription = "Voice",
+                    tint = if (isListening) Color.Black else NeonCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isGenerating) Brush.linearGradient(listOf(Color(0xFFFF1744), Color(0xFFD50000)))
+                        else Brush.linearGradient(listOf(NeonCyan, NeonPurple))
+                    )
+                    .clickable {
+                        if (isGenerating) onStop()
+                        else if (text.isNotBlank()) onSend()
+                    }
+                    .testTag("chat_send_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isGenerating) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(21.dp))
+                } else {
+                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(19.dp))
+                }
             }
         }
     }

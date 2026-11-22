@@ -532,6 +532,7 @@ class AyraOrchestrator(private val context: Context) {
                     vectorContext.takeIf { it.isNotBlank() }
                 ).joinToString("\n\n").ifBlank { null }
 
+                val routingMode = com.ayra.ai.app.ai.providers.AiRoutingMode.fromId(wsCtx.effectiveRoutingMode)
                 val request = ChatRequest(
                     prompt = trimmed,
                     persona = effectivePersona,
@@ -545,7 +546,8 @@ class AyraOrchestrator(private val context: Context) {
                     activePluginContext = activePluginCtx?.systemPromptInjection,
                     activePluginNames = activePluginCtx?.activePluginNames ?: emptyList(),
                     thinkingMode = wsCtx.effectiveThinkingMode,
-                    workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null }
+                    workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null },
+                    routingMode = routingMode
                 )
 
                 var terminalEmitted = false

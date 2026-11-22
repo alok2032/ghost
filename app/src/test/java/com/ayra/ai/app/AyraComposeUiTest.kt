@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -25,8 +27,10 @@ import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.data.ChatRepository
 import com.ayra.ai.app.security.SecureKeyStore
 import com.ayra.ai.app.security.VaultDatabaseKeyManager
+import com.ayra.ai.app.ui.components.FreeAiPoolCard
 import com.ayra.ai.app.ui.components.McpServersSection
 import com.ayra.ai.app.ui.components.OnboardingOverlay
+import com.ayra.ai.app.ui.components.chat.GlassInputRow
 import com.ayra.ai.app.ui.screens.AyraWorkspaceHost
 import com.ayra.ai.app.ui.screens.SecurityCenterScreen
 import com.ayra.ai.app.ui.screens.VaultLockScreen
@@ -226,5 +230,135 @@ class AyraComposeUiTest {
         composeRule.onNodeWithTag("security_center_title").assertIsDisplayed()
         composeRule.onNodeWithTag("security_lock_now_button").assertIsDisplayed()
         assertEquals(1, composeRule.onAllNodesWithTag("security_center_title").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun glassInputRowIntegratesAttachSpeakerMicAndSendInsideMessageBox() {
+        var textState = ""
+        var sent = false
+        var micClicked = false
+        var audioClicked = false
+        var attachClicked = false
+
+        composeRule.setContent {
+            AyraTheme {
+                val inputState = androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf("")
+                }
+                GlassInputRow(
+                    text = inputState.value,
+                    onTextChange = {
+                        inputState.value = it
+                        textState = it
+                    },
+                    isListening = false,
+                    isRecordingAudio = false,
+                    isGenerating = false,
+                    onSend = { sent = true },
+                    onStop = {},
+                    onAudioTranscribeClick = { audioClicked = true },
+                    onMicClick = { micClicked = true },
+                    onAttachClick = { attachClicked = true }
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("chat_input_text_field").assertIsDisplayed()
+        composeRule.onNodeWithTag("bottom_attachment_hub_button").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("gemini_audio_transcribe_button").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("voice_mic_button").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("chat_input_text_field").performTextInput("Hello Ayra")
+        composeRule.onNodeWithTag("chat_send_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        assertEquals("Hello Ayra", textState)
+        assertTrue(attachClicked)
+        assertTrue(audioClicked)
+        assertTrue(micClicked)
+        assertTrue(sent)
+    }
+
+    @Test
+    fun freeAiPoolCardBlocksWhileLocalOnlyModeIsActive() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
+        composeRule.setContent {
+            AyraTheme {
+                Column {
+                    FreeAiPoolCard(context = context)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("free_ai_pool_card_switch").assertIsDisplayed().assertIsNotEnabled()
+    }
+
+    @Test
+    fun freeAiPoolCardRequiresExplicitConsentDialogAndPersistsOptIn() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        composeRule.setContent {
+            AyraTheme {
+                Column {
+                    FreeAiPoolCard(context = context)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("free_ai_pool_card_switch").assertIsEnabled().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("confirm_free_pool_consent_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
+    }
+
+    @Test
+    fun settingsAiButtonOpensProtectedAiHubAndSafeLockProtectsControls() {
+        var backCalled = false
+        composeRule.setContent {
+            AyraTheme {
+                com.ayra.ai.app.ui.screens.SettingsAppearanceScreen(
+                    onBack = { backCalled = true },
+                    onOpenModels = {},
+                    onOpenTools = {},
+                    onOpenSecurityCenter = {},
+                    onPersonaChanged = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Main Settings shows the dedicated "AI" button
+        composeRule.onNodeWithTag("settings_ai_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        // AI Control & API Keys Hub opens with lock guard & consent/tier controls
+        composeRule.onNodeWithTag("settings_ai_hub_title").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsDisplayed()
+        composeRule.onNodeWithTag("provider_consent_switch").performScrollTo().assertIsEnabled()
+
+        // Lock AI Settings against accidental edits
+        composeRule.onNodeWithTag("ai_settings_lock_switch").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("provider_consent_switch").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("provider_byok_switch").performScrollTo().assertIsNotEnabled()
+
+        // Testing remains available even when locked
+        composeRule.onNodeWithTag("test_all_providers_button").performScrollTo().assertIsEnabled()
+
+        // Unlock and verify controls become editable again
+        composeRule.onNodeWithTag("ai_settings_lock_switch").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("provider_consent_switch").performScrollTo().assertIsEnabled()
+
+        // Navigating back from AI Hub returns to main Settings without exiting Settings
+        composeRule.onNodeWithTag("settings_ai_back_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_ai_button").assertIsDisplayed()
+        assertEquals(false, backCalled)
     }
 }

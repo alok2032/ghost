@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -63,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.ai.AiComparisonEngine
@@ -191,7 +194,7 @@ fun PromptEngineeringScreen(
                     onClick = { activeTab = tab },
                     leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     label = { Text(tab.label, fontSize = 12.sp) },
-                    modifier = Modifier.testTag("prompt_tab_${tab.name.lowercase()}")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("prompt_tab_${tab.name.lowercase()}")
                 )
             }
         }
@@ -239,7 +242,7 @@ fun PromptEngineeringScreen(
                                 requirementsText, constraintsText, outputFormatText, validationText
                             )
                         },
-                        modifier = Modifier.weight(1f).testTag("compile_prompt_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("compile_prompt_button")
                     ) {
                         Text("Compile Prompt")
                     }
@@ -264,7 +267,7 @@ fun PromptEngineeringScreen(
                             }
                         },
                         enabled = !isEnhancing,
-                        modifier = Modifier.weight(1f).testTag("ai_enhance_prompt_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("ai_enhance_prompt_button")
                     ) {
                         if (isEnhancing) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -323,7 +326,7 @@ fun PromptEngineeringScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.weight(1f).testTag("save_prompt_template_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("save_prompt_template_button")
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -331,7 +334,7 @@ fun PromptEngineeringScreen(
                     }
                     OutlinedButton(
                         onClick = { if (compiledPrompt.isNotBlank()) copyText(compiledPrompt, "Prompt") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -342,7 +345,7 @@ fun PromptEngineeringScreen(
                             val ready = compiledPrompt.trim()
                             if (ready.isNotBlank()) onUsePromptInChat(ready)
                         },
-                        modifier = Modifier.weight(1f).testTag("use_prompt_in_chat_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("use_prompt_in_chat_button")
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -377,8 +380,8 @@ fun PromptEngineeringScreen(
                             color = uiConfig.accentColor
                         )
                         report.dimensions.forEach { dim ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(dim.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(dim.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(end = 8.dp))
                                 Text("${dim.score}/${dim.maxScore} (${dim.note})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -440,15 +443,15 @@ fun PromptEngineeringScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${tpl.title} (v${tpl.versionNumber})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                    Text("${tpl.title} (v${tpl.versionNumber})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
                                     Text(tpl.category, style = MaterialTheme.typography.labelSmall, color = uiConfig.accentColor)
                                 }
                                 if (tpl.tagsCsv.isNotBlank()) {
                                     Text("Tags: ${tpl.tagsCsv}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text(tpl.compiledPrompt.take(180), style = MaterialTheme.typography.bodySmall, maxLines = 3)
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    TextButton(onClick = { onUsePromptInChat(tpl.compiledPrompt) }) { Text("Run") }
+                                Text(tpl.compiledPrompt.take(180), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { onUsePromptInChat(tpl.compiledPrompt) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Run") }
                                     TextButton(onClick = {
                                         editingTemplate = tpl
                                         title = tpl.title
@@ -464,12 +467,12 @@ fun PromptEngineeringScreen(
                                         validationText = tpl.validationCriteriaText
                                         compiledPrompt = tpl.compiledPrompt
                                         activeTab = PromptCenterTab.BUILDER
-                                    }) {
+                                    }, modifier = Modifier.heightIn(min = 48.dp)) {
                                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(3.dp))
                                         Text("Edit")
                                     }
-                                    TextButton(onClick = { versionHistoryTarget = tpl }) {
+                                    TextButton(onClick = { versionHistoryTarget = tpl }, modifier = Modifier.heightIn(min = 48.dp)) {
                                         Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(3.dp))
                                         Text("Versions")
@@ -553,17 +556,21 @@ fun PromptEngineeringScreen(
                                     .padding(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("v${v.versionNumber} • ${v.changeNote}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("v${v.versionNumber} • ${v.changeNote}", fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
                                     Row(
-                                        modifier = Modifier.clickable {
-                                            compiledPrompt = v.compiledPrompt
-                                            scope.launch(Dispatchers.IO) {
-                                                dao.savePromptWithVersion(tpl.copy(compiledPrompt = v.compiledPrompt), "Reverted to v${v.versionNumber}")
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                compiledPrompt = v.compiledPrompt
+                                                scope.launch(Dispatchers.IO) {
+                                                    dao.savePromptWithVersion(tpl.copy(compiledPrompt = v.compiledPrompt), "Reverted to v${v.versionNumber}")
+                                                }
+                                                versionHistoryTarget = null
+                                                Toast.makeText(context, "Reverted to v${v.versionNumber}", Toast.LENGTH_SHORT).show()
                                             }
-                                            versionHistoryTarget = null
-                                            Toast.makeText(context, "Reverted to v${v.versionNumber}", Toast.LENGTH_SHORT).show()
-                                        },
+                                            .padding(horizontal = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(Icons.Default.Restore, contentDescription = "Revert", modifier = Modifier.size(14.dp), tint = uiConfig.accentColor)
@@ -578,7 +585,7 @@ fun PromptEngineeringScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { versionHistoryTarget = null }) { Text("Close") }
+                TextButton(onClick = { versionHistoryTarget = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Close") }
             }
         )
     }

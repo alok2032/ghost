@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -133,7 +134,7 @@ fun StudiosScreen(
                         Icon(mode.icon, contentDescription = null, modifier = Modifier.size(16.dp))
                     },
                     label = { Text(mode.label, fontSize = 12.sp) },
-                    modifier = Modifier.testTag("studio_tab_${mode.name.lowercase()}")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("studio_tab_${mode.name.lowercase()}")
                 )
             }
         }

@@ -23,7 +23,8 @@ object WorkspaceContextBuilder {
         val preferredLanguage: String = "Auto",
         val combinedPersonalization: String = "",
         val rememberedFacts: Set<String> = emptySet(),
-        val workspacePromptInjection: String = ""
+        val workspacePromptInjection: String = "",
+        val effectiveRoutingMode: String = "auto"
     )
 
     suspend fun resolve(
@@ -125,7 +126,8 @@ object WorkspaceContextBuilder {
             preferredLanguage = effectiveLang,
             combinedPersonalization = personalization,
             rememberedFacts = facts,
-            workspacePromptInjection = injection
+            workspacePromptInjection = injection,
+            effectiveRoutingMode = AyraPreferences.getRoutingMode(context)
         )
     }
 }

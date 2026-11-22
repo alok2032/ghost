@@ -128,6 +128,7 @@ internal fun ControlCenterPermissionsCard(
                 }
                 Box(
                     modifier = Modifier
+                        .defaultMinSize(minHeight = 48.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (granted) NeonGreen.copy(alpha = 0.16f) else Color(0xFF1A2236))
                         .border(
@@ -136,8 +137,9 @@ internal fun ControlCenterPermissionsCard(
                             RoundedCornerShape(8.dp)
                         )
                         .clickable(enabled = !granted) { onRequestSinglePermission(perm) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .testTag("jit_perm_${label.lowercase(Locale.ROOT)}")
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("jit_perm_${label.lowercase(Locale.ROOT)}"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = if (granted) "$label ✓" else "$label • Allow",
@@ -150,6 +152,7 @@ internal fun ControlCenterPermissionsCard(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Box(
                     modifier = Modifier
+                        .defaultMinSize(minHeight = 48.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (canScheduleExactAlarms) NeonGreen.copy(alpha = 0.16f) else NeonRose.copy(alpha = 0.18f))
                         .border(
@@ -158,8 +161,9 @@ internal fun ControlCenterPermissionsCard(
                             RoundedCornerShape(8.dp)
                         )
                         .clickable(enabled = !canScheduleExactAlarms) { onOpenExactAlarmSettings() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .testTag("jit_perm_exact_alarm")
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("jit_perm_exact_alarm"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = if (canScheduleExactAlarms) "Exact Alarms ✓" else "Exact Alarms • Fix",
@@ -386,7 +390,8 @@ internal fun ControlCenterInstantControlsSection(
             text = "Media Volume Adjustment",
             color = TextPrimary,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(
@@ -428,7 +433,8 @@ internal fun ControlCenterScheduledRoutinesSection(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
             color = NeonCyan,
-            fontSize = 13.sp
+            fontSize = 13.sp,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
         )
         Text(
             text = if (canScheduleExactAlarms) "AlarmManager RTC (Exact)" else "AlarmManager (Inexact Fallback)",
@@ -640,10 +646,10 @@ internal fun ControlCenterStorageSection(
                 fontSize = 10.5.sp
             )
         }
-        IconButton(onClick = onExportHistory, modifier = Modifier.testTag("export_history_in_settings")) {
+        IconButton(onClick = onExportHistory, modifier = Modifier.size(48.dp).testTag("export_history_in_settings")) {
             Icon(Icons.Default.ContentCopy, contentDescription = "Export History to Storage", tint = NeonCyan)
         }
-        IconButton(onClick = onClearHistory, modifier = Modifier.testTag("clear_history_in_settings")) {
+        IconButton(onClick = onClearHistory, modifier = Modifier.size(48.dp).testTag("clear_history_in_settings")) {
             Icon(Icons.Default.Delete, contentDescription = "Clear", tint = NeonRose)
         }
     }
@@ -777,7 +783,7 @@ internal fun ControlCenterHeader(onDismiss: () -> Unit) {
 
         IconButton(
             onClick = onDismiss,
-            modifier = Modifier.testTag("close_control_center_button")
+            modifier = Modifier.size(48.dp).testTag("close_control_center_button")
         ) {
             Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
         }

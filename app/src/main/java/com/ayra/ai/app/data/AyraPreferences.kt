@@ -612,11 +612,11 @@ object AyraPreferences {
 
     fun getRoutingMode(context: Context): String {
         val raw = getPrefs(context).getString(KEY_ROUTING_MODE, "auto") ?: "auto"
-        return com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(raw)
+        return com.ayra.ai.app.ai.providers.AiRoutingMode.fromId(raw).id
     }
 
     fun setRoutingMode(context: Context, mode: String) {
-        val clean = com.ayra.ai.app.ai.providers.ModelTier.canonicalizeId(mode)
+        val clean = com.ayra.ai.app.ai.providers.AiRoutingMode.fromId(mode).id
         getPrefs(context).edit().putString(KEY_ROUTING_MODE, clean).apply()
     }
 

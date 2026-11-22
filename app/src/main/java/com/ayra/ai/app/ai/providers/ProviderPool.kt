@@ -63,7 +63,8 @@ data class ChatRequest(
     val activePluginContext: String? = null,
     val activePluginNames: List<String> = emptyList(),
     val thinkingMode: String? = null,
-    val workspaceContext: String? = null
+    val workspaceContext: String? = null,
+    val routingMode: AiRoutingMode = AiRoutingMode.AUTO
 )
 
 sealed class AyraStreamEvent {
@@ -140,7 +141,7 @@ class ProviderPool @JvmOverloads constructor(
         val localOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
         val privacyOn = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } ?: true
         val thinking = request.thinkingMode ?: context?.let { AyraPreferences.getThinkingMode(it) } ?: "balanced"
-        val raw = "$prompt|${request.persona}|${request.mode}|$thinking|${request.preferredProvider?.id}|${request.preferredModelId}|$lang|$localOnly|$privacyOn|${request.systemPromptOverride.orEmpty()}|${request.workspaceContext.orEmpty()}"
+        val raw = "$prompt|${request.persona}|${request.mode}|${request.routingMode.id}|$thinking|${request.preferredProvider?.id}|${request.preferredModelId}|$lang|$localOnly|$privacyOn|${request.systemPromptOverride.orEmpty()}|${request.workspaceContext.orEmpty()}"
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
     }
@@ -235,6 +236,7 @@ class ProviderPool @JvmOverloads constructor(
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
         val shouldGroundWiki = !isLocalOnlyMode &&
+            request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
             externalProviders.allowExternalWikiGrounding &&
             request.imageBase64 == null &&
             request.documentText == null &&
@@ -257,39 +259,97 @@ class ProviderPool @JvmOverloads constructor(
             val complexity = classifyTaskComplexity(request)
             val effectiveMode = when {
                 request.mode != ProviderPoolMode.AUTO -> request.mode
-                effectiveThinkingMode == "fast" -> ProviderPoolMode.FAST
+                effectiveThinkingMode == "fast" || request.routingMode == AiRoutingMode.FAST -> ProviderPoolMode.FAST
                 effectiveThinkingMode in setOf("deep_analysis", "reasoning", "research") -> ProviderPoolMode.BEST
+                request.routingMode in setOf(
+                    AiRoutingMode.BEST_QUALITY,
+                    AiRoutingMode.REASONING,
+                    AiRoutingMode.CODING,
+                    AiRoutingMode.OPEN_WEIGHTS
+                ) && complexity != TaskComplexity.TRIVIAL -> ProviderPoolMode.BEST
                 complexity == TaskComplexity.TRIVIAL -> ProviderPoolMode.FAST
                 complexity == TaskComplexity.COMPLEX -> ProviderPoolMode.BEST
                 else -> ProviderPoolMode.AUTO
             }
             val effectiveRequest = if (effectiveMode != request.mode) request.copy(mode = effectiveMode) else request
+            val rankedChannels = prioritizeChannelsForRoutingMode(channels, effectiveRequest.routingMode)
 
             // 3. Explicit provider/model override uses focused single-channel execution with fallback
             if (effectiveRequest.preferredProvider != null && effectiveRequest.preferredProvider != AiProviderType.OMNI_ROUTE) {
-                val filtered = channels.filter { it.provider == effectiveRequest.preferredProvider } +
-                    channels.filter { it.provider != effectiveRequest.preferredProvider }
+                val filtered = rankedChannels.filter { it.provider == effectiveRequest.preferredProvider } +
+                    rankedChannels.filter { it.provider != effectiveRequest.preferredProvider }
                 executeChannelFallback(effectiveRequest, filtered, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
                 return@supervisorScope
             }
 
+            // 3b. Privacy Local routing keeps traffic on configured local LAN/Ollama endpoints
+            if (effectiveRequest.routingMode == AiRoutingMode.PRIVACY_LOCAL) {
+                val localChannels = rankedChannels.filter { it.provider == AiProviderType.LOCAL_OLLAMA }
+                if (localChannels.isNotEmpty()) {
+                    executeChannelFallback(
+                        effectiveRequest,
+                        localChannels,
+                        listOf(AiProviderType.LOCAL_OLLAMA),
+                        cacheKey,
+                        domain,
+                        wikiDeferred,
+                        this@flow
+                    )
+                    return@supervisorScope
+                }
+            }
+
             // 4. Trivial greeting or explicit FAST mode -> ultra-fast streaming single specialist
             if (effectiveRequest.mode == ProviderPoolMode.FAST || (effectiveRequest.mode == ProviderPoolMode.AUTO && isTrivialGreeting(effectiveRequest.prompt))) {
-                executeChannelFallback(effectiveRequest, channels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                executeChannelFallback(effectiveRequest, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
                 return@supervisorScope
             }
 
             // 5. Real Question in AUTO or BEST -> Quorum-Accelerated Multi-AI Parallel Ensemble!
             val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 5 else 4
-            val ensembleChannels = selectDiverseEnsembleChannels(channels, maxCount = targetMax)
+            val ensembleChannels = selectDiverseEnsembleChannels(rankedChannels, maxCount = targetMax)
             val totalEnsembleWorkers = ensembleChannels.size + if (isFirebaseAiReady) 1 else 0
             if (totalEnsembleWorkers >= 2 && (ensembleChannels.isNotEmpty() || isFirebaseAiReady)) {
-                executeMultiAiEnsemble(effectiveRequest, ensembleChannels, channels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                executeMultiAiEnsemble(effectiveRequest, ensembleChannels, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
             } else {
-                executeChannelFallback(effectiveRequest, channels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
+                executeChannelFallback(effectiveRequest, rankedChannels, availableProviders, cacheKey, domain, wikiDeferred, this@flow)
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun prioritizeChannelsForRoutingMode(
+        channels: List<AiModelChannel>,
+        routingMode: AiRoutingMode
+    ): List<AiModelChannel> {
+        if (routingMode == AiRoutingMode.AUTO || channels.size <= 1) return channels
+        val preferredPredicate: (AiModelChannel) -> Boolean = when (routingMode) {
+            AiRoutingMode.FAST -> { ch ->
+                "fast" in ch.specialties || ch.provider in setOf(AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.GEMINI)
+            }
+            AiRoutingMode.BEST_QUALITY -> { ch ->
+                ch.isReasoning || ch.provider in setOf(AiProviderType.GEMINI, AiProviderType.ANTHROPIC, AiProviderType.OPENAI, AiProviderType.DEEPSEEK)
+            }
+            AiRoutingMode.REASONING -> { ch ->
+                ch.isReasoning || "reasoning" in ch.specialties || "math" in ch.specialties
+            }
+            AiRoutingMode.CODING -> { ch ->
+                "coding" in ch.specialties || ch.provider in setOf(AiProviderType.ANTHROPIC, AiProviderType.MISTRAL, AiProviderType.DEEPSEEK)
+            }
+            AiRoutingMode.PRIVACY_LOCAL -> { ch ->
+                ch.provider == AiProviderType.LOCAL_OLLAMA
+            }
+            AiRoutingMode.COST_EFFICIENT -> { ch ->
+                ch.provider in setOf(AiProviderType.POLLINATIONS_FREE, AiProviderType.OPENROUTER, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA, AiProviderType.GEMINI)
+            }
+            AiRoutingMode.OPEN_WEIGHTS -> { ch ->
+                ch.provider in setOf(AiProviderType.LOCAL_OLLAMA, AiProviderType.OPENROUTER, AiProviderType.HUGGINGFACE, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA)
+            }
+            AiRoutingMode.AUTO -> { _ -> true }
+        }
+        val preferred = channels.filter(preferredPredicate)
+        val remainder = channels.filterNot(preferredPredicate)
+        return preferred + remainder
+    }
 
     /**
      * Selects up to [maxCount] diverse specialist channels for the question so we get

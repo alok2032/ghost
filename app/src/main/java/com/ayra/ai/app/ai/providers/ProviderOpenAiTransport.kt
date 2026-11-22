@@ -51,12 +51,13 @@ internal object ProviderOpenAiTransport {
             AiProviderType.OPENROUTER -> "https://openrouter.ai/api/v1/"
             AiProviderType.POLLINATIONS_FREE -> "https://text.pollinations.ai/"
             AiProviderType.LOCAL_OLLAMA -> {
-                val custom = context?.let { AyraPreferences.getCustomEndpointUrl(it) } ?: ""
+                val custom = context?.let { AyraPreferences.getCustomEndpointUrl(it).trim() } ?: ""
                 if (custom.isNotBlank()) {
-                    if (custom.endsWith("/")) custom else "$custom/"
+                    val normalized = custom.removeSuffix("/chat/completions").trimEnd('/')
+                    "$normalized/"
                 } else {
-                    val host = context?.let { AyraPreferences.getOllamaHost(it) } ?: "http://10.0.2.2:11434"
-                    if (host.endsWith("/")) "${host}v1/" else "$host/v1/"
+                    val host = context?.let { AyraPreferences.getOllamaHost(it).trim().trimEnd('/') } ?: "http://10.0.2.2:11434"
+                    if (host.endsWith("/v1")) "$host/" else "$host/v1/"
                 }
             }
             else -> "https://api.openai.com/v1/"
@@ -115,6 +116,19 @@ internal object ProviderOpenAiTransport {
         }
     }
 
+    private fun shouldAttachBearerHeader(provider: AiProviderType, context: Context?, apiKey: String): Boolean {
+        val clean = apiKey.trim()
+        if (clean.isBlank()) return false
+        if (provider != AiProviderType.LOCAL_OLLAMA) return true
+        if (clean == "local") return false
+        if (context != null) {
+            val url = AyraPreferences.getCustomEndpointUrl(context).trim()
+            val host = AyraPreferences.getOllamaHost(context).trim()
+            if (clean == url || clean == host) return false
+        }
+        return true
+    }
+
     fun callOpenAiCompatible(
         client: OkHttpClient,
         context: Context?,
@@ -145,7 +159,7 @@ internal object ProviderOpenAiTransport {
             .url(endpoint)
             .header("Accept", "application/json")
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
-        if (apiKey.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $apiKey")
+        if (shouldAttachBearerHeader(provider, context, apiKey)) reqBuilder.addHeader("Authorization", "Bearer $apiKey")
         if (provider == AiProviderType.OPENROUTER) {
             reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
             reqBuilder.addHeader("X-Title", "Ayra AI")
@@ -220,7 +234,7 @@ internal object ProviderOpenAiTransport {
             .url(endpoint)
             .header("Accept", "application/json")
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
-        if (key.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $key")
+        if (shouldAttachBearerHeader(provider, context, key)) reqBuilder.addHeader("Authorization", "Bearer $key")
         if (provider == AiProviderType.OPENROUTER) {
             reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
             reqBuilder.addHeader("X-Title", "Ayra AI")
@@ -284,7 +298,7 @@ internal object ProviderOpenAiTransport {
             .url(endpoint)
             .header("Accept", "text/event-stream")
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
-        if (apiKey.isNotBlank()) reqBuilder.addHeader("Authorization", "Bearer $apiKey")
+        if (shouldAttachBearerHeader(provider, context, apiKey)) reqBuilder.addHeader("Authorization", "Bearer $apiKey")
         if (provider == AiProviderType.OPENROUTER) {
             reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
             reqBuilder.addHeader("X-Title", "Ayra AI")
@@ -378,7 +392,7 @@ internal object ProviderOpenAiTransport {
         val baseUrl = getBaseUrlForProvider(provider, context, baseUrlOverrides)
         validateEndpointIfLocal(provider, context, baseUrl, baseUrlOverrides.isNotEmpty())
         val reqBuilder = Request.Builder().url("${baseUrl}models")
-        if (key.isNotBlank()) {
+        if (shouldAttachBearerHeader(provider, context, key)) {
             reqBuilder.addHeader("Authorization", "Bearer $key")
         }
         client.newCall(reqBuilder.get().build()).execute().use { resp ->

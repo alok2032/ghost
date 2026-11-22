@@ -6,6 +6,7 @@ import com.ayra.ai.app.ai.agents.AgentDomain
 import com.ayra.ai.app.ai.providers.AiModelChannel
 import com.ayra.ai.app.ai.providers.AiModelRegistry
 import com.ayra.ai.app.ai.providers.AiProviderType
+import com.ayra.ai.app.ai.providers.AiRoutingMode
 import com.ayra.ai.app.ai.providers.AyraStreamEvent
 import com.ayra.ai.app.ai.providers.BestAnswerSelector
 import com.ayra.ai.app.ai.providers.ChatRequest
@@ -267,5 +268,86 @@ class AutoConnectBestAnswerTest {
 
         assertTrue("BestAnswerSelector should choose clean runnable Kotlin code", finalText.contains("fun binarySearch"))
         assertTrue("Model label should reflect Best Answer selection", finalModel.contains("Best Answer"))
+    }
+
+    @Test
+    fun routingModeRoundTripsAllModesWithoutCollapsing() {
+        AiRoutingMode.entries.forEach { mode ->
+            assertEquals(mode, AiRoutingMode.fromId(mode.id))
+            AyraPreferences.setRoutingMode(context, mode.id)
+            assertEquals(mode.id, AyraPreferences.getRoutingMode(context))
+        }
+        assertEquals(AiRoutingMode.AUTO, AiRoutingMode.fromId("balanced"))
+        assertEquals(AiRoutingMode.BEST_QUALITY, AiRoutingMode.fromId("best_quality"))
+        assertEquals(AiRoutingMode.BEST_QUALITY, AiRoutingMode.fromId("gemini_pro"))
+        assertEquals(AiRoutingMode.FAST, AiRoutingMode.fromId("gemini_flash"))
+        assertEquals(AiRoutingMode.PRIVACY_LOCAL, AiRoutingMode.fromId("privacy_local"))
+        assertEquals(AiRoutingMode.REASONING, AiRoutingMode.fromId("deepseek_r1"))
+    }
+
+    @Test
+    fun allAiProvidersAndLocalEndpointsWireProperlyWithFailClosedConsent() {
+        // 1. Saving API keys must NEVER silently enable external consent
+        AyraPreferences.setCustomGeminiKey(context, "gem-key")
+        AyraPreferences.setOpenAiKey(context, "oai-key")
+        AyraPreferences.setAnthropicKey(context, "ant-key")
+        AyraPreferences.setDeepSeekKey(context, "ds-key")
+        AyraPreferences.setGroqKey(context, "groq-key")
+        AyraPreferences.setCerebrasKey(context, "cer-key")
+        AyraPreferences.setSambaNovaKey(context, "smb-key")
+        AyraPreferences.setHuggingFaceKey(context, "hf-key")
+        AyraPreferences.setXAiKey(context, "xai-key")
+        AyraPreferences.setMistralKey(context, "mis-key")
+        AyraPreferences.setPerplexityKey(context, "pplx-key")
+        AyraPreferences.setCustomOpenRouterKey(context, "or-key")
+        AyraPreferences.setNvidiaMinimaxKey(context, "nv-minimax")
+        AyraPreferences.setNvidiaGlmKey(context, "nv-glm")
+        AyraPreferences.setNvidiaMuseKey(context, "nv-muse")
+        AyraPreferences.setNvidiaGemmaKey(context, "nv-gemma")
+        AyraPreferences.setTavilySearchKey(context, "tvly-key")
+        AyraPreferences.setElevenLabsKey(context, "el-key")
+        AyraPreferences.setComfyUiUrl(context, "http://10.0.2.2:8188")
+        AyraPreferences.setBackendGatewayUrl(context, "https://1.1.1.1")
+
+        assertFalse("Saving keys must never silently grant external AI consent", AyraPreferences.hasExternalAiConsent(context))
+
+        val ext = ExternalAiProviders(context)
+        assertFalse("External providers must remain blocked until user opts in", ext.isProviderConfigured(AiProviderType.OPENAI))
+
+        // 2. Local Ollama / Proxy URL + optional Bearer key works without external cloud consent
+        AyraPreferences.setOllamaHost(context, "http://10.0.2.2:11434")
+        AyraPreferences.setCustomEndpointKey(context, "proxy-secret-token")
+        assertTrue(ext.isProviderConfigured(AiProviderType.LOCAL_OLLAMA))
+        assertEquals("proxy-secret-token", ext.getProviderKey(AiProviderType.LOCAL_OLLAMA))
+        assertTrue(
+            "Local Ollama channel must activate when explicit Ollama host is configured",
+            ext.getActiveChannels().any { it.provider == AiProviderType.LOCAL_OLLAMA }
+        )
+
+        // 3. Explicit external consent activates all 14+ cloud LLM engines & NIM per-model keys
+        AyraPreferences.setExternalAiConsent(context, true)
+        assertEquals("nv-minimax", ext.getKeyForProviderAndModel(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MINIMAX_MODEL))
+        assertEquals("nv-glm", ext.getKeyForProviderAndModel(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GLM_MODEL))
+        assertEquals("nv-muse", ext.getKeyForProviderAndModel(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MUSE_MODEL))
+        assertEquals("nv-gemma", ext.getKeyForProviderAndModel(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GEMMA_MODEL))
+
+        val activeIds = ext.getActiveChannels().map { it.id }.toSet()
+        assertTrue(activeIds.contains("gemini_3_8_flash"))
+        assertTrue(activeIds.contains("nvidia_minimax_m3_1"))
+        assertTrue(activeIds.contains("nvidia_glm_5_3"))
+        assertTrue(activeIds.contains("nvidia_muse_30b"))
+        assertTrue(activeIds.contains("nvidia_gemma_4_31b"))
+        assertTrue(activeIds.contains("groq_qwen_3_8"))
+        assertTrue(activeIds.contains("cerebras_gpt_oss"))
+        assertTrue(activeIds.contains("sambanova_deepseek"))
+        assertTrue(activeIds.contains("huggingface_qwen_72b"))
+        assertTrue(activeIds.contains("openai_gpt_6_2_sol"))
+        assertTrue(activeIds.contains("anthropic_claude_5_5"))
+        assertTrue(activeIds.contains("deepseek_v4_pro"))
+        assertTrue(activeIds.contains("perplexity_sonar"))
+        assertTrue(activeIds.contains("mistral_large"))
+        assertTrue(activeIds.contains("xai_grok"))
+        assertTrue(activeIds.contains("openrouter_free"))
+        assertTrue(activeIds.contains("local_ollama"))
     }
 }

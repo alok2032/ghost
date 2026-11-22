@@ -239,7 +239,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             val key = resolveChannelKey(channel, ctx)
             val keyOk = if (channel.provider == AiProviderType.LOCAL_OLLAMA) {
                 (channelKeyOverrides[channel.id]?.isNotBlank() == true) ||
-                    (ctx != null && AyraPreferences.getCustomEndpointUrl(ctx).isNotBlank())
+                    (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
+                    (ctx != null && (AyraPreferences.getCustomEndpointUrl(ctx).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(ctx)))
             } else {
                 key.isNotBlank()
             }
@@ -804,7 +805,14 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiProviderType.OPENROUTER -> AyraPreferences.getEffectiveOpenRouterKey(ctx)
             AiProviderType.LOCAL_OLLAMA -> {
                 val url = AyraPreferences.getCustomEndpointUrl(ctx)
-                if (url.isNotBlank()) AyraPreferences.getCustomEndpointKey(ctx).ifBlank { url } else ""
+                val hasOllama = AyraPreferences.hasExplicitOllamaHost(ctx)
+                val explicitKey = AyraPreferences.getCustomEndpointKey(ctx)
+                when {
+                    explicitKey.isNotBlank() && (url.isNotBlank() || hasOllama) -> explicitKey
+                    url.isNotBlank() -> url
+                    hasOllama -> AyraPreferences.getOllamaHost(ctx)
+                    else -> ""
+                }
             }
             AiProviderType.POLLINATIONS_FREE -> if (AyraPreferences.isFreeAiPoolEnabled(ctx)) "free" else ""
             AiProviderType.OMNI_ROUTE -> AyraPreferences.getEffectiveGeminiKey(ctx)
@@ -876,6 +884,13 @@ class ExternalAiProviders @JvmOverloads constructor(
     ): Long = withContext(Dispatchers.IO) {
         val model = customModel ?: getDefaultModelForProvider(provider)
         val key = customKey ?: getKeyForProviderAndModel(provider, model)
+        if (provider == AiProviderType.LOCAL_OLLAMA &&
+            channelKeyOverrides.isEmpty() &&
+            baseUrlOverrides.isEmpty() &&
+            (context == null || (AyraPreferences.getCustomEndpointUrl(context).isBlank() && !AyraPreferences.hasExplicitOllamaHost(context)))
+        ) {
+            throw ProviderError.NetworkFailure("No Local Ollama Host or Custom Proxy URL configured.")
+        }
         if (key.isBlank() &&
             provider != AiProviderType.LOCAL_OLLAMA &&
             provider != AiProviderType.OMNI_ROUTE &&
