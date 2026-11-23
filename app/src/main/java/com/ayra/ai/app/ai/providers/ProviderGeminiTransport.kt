@@ -26,6 +26,30 @@ internal object ProviderGeminiTransport {
         }
     }
 
+    private fun throwIfGeminiInlineErrorOrBlocked(json: JSONObject, model: String) {
+        val errObj = json.optJSONObject("error")
+        if (errObj != null) {
+            val code = errObj.optInt("code", 500)
+            val status = errObj.optString("status", "")
+            val msg = errObj.optString("message", status.ifBlank { "Gemini API error" })
+            when {
+                code == 401 || code == 403 || status == "UNAUTHENTICATED" || status == "PERMISSION_DENIED" ->
+                    throw ProviderError.Unauthorized(AiProviderType.GEMINI)
+                code == 429 || status == "RESOURCE_EXHAUSTED" ->
+                    throw ProviderError.RateLimited(msg)
+                code == 404 || code == 410 || status == "NOT_FOUND" ->
+                    throw ProviderError.ModelNotFound(AiProviderType.GEMINI, model, msg, httpStatus = code)
+                else ->
+                    throw ProviderError.ServerError(code, msg)
+            }
+        }
+        val promptFeedback = json.optJSONObject("promptFeedback")
+        val blockReason = promptFeedback?.optString("blockReason", "").orEmpty().trim()
+        if (blockReason.isNotBlank()) {
+            throw ProviderError.ContentBlocked(blockReason)
+        }
+    }
+
     fun buildGeminiUrl(
         baseUrlOverride: String?,
         model: String,
@@ -136,9 +160,11 @@ internal object ProviderGeminiTransport {
             }
 
             val json = JSONObject(response.readBounded())
+            throwIfGeminiInlineErrorOrBlocked(json, actualModel)
             val candidates = json.optJSONArray("candidates")
             if (candidates != null && candidates.length() > 0) {
-                val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+                val cand0 = candidates.getJSONObject(0)
+                val parts = cand0.optJSONObject("content")?.optJSONArray("parts")
                 if (parts != null && parts.length() > 0) {
                     val sb = StringBuilder()
                     for (i in 0 until parts.length()) {
@@ -148,6 +174,10 @@ internal object ProviderGeminiTransport {
                         }
                     }
                     return ExternalAiProviders.sanitizeModelOutput(sb.toString())
+                }
+                val finishReason = cand0.optString("finishReason", "")
+                if (finishReason in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION")) {
+                    throw ProviderError.ContentBlocked(finishReason)
                 }
             }
             ""
@@ -161,11 +191,13 @@ internal object ProviderGeminiTransport {
         model: String,
         apiKey: String,
         collector: FlowCollector<String>,
-        visitedModels: Set<String> = emptySet()
+        visitedModels: Set<String> = emptySet(),
+        withSearchGrounding: Boolean = true
     ) {
         val actualModel = ExternalAiProviders.resolveGeminiModel(model)
+        val allowGrounding = withSearchGrounding && !actualModel.startsWith("gemma")
         val url = buildGeminiUrl(baseUrlOverride, actualModel, apiKey, stream = true)
-        val requestJson = buildRequestJson(turns, actualModel, allowGrounding = false)
+        val requestJson = buildRequestJson(turns, actualModel, allowGrounding = allowGrounding)
 
         val reqBuilder = Request.Builder()
             .url(url)
@@ -175,13 +207,25 @@ internal object ProviderGeminiTransport {
         }
 
         httpClient.newCall(reqBuilder.build()).execute().use { response ->
+            if (response.code == 400 && allowGrounding) {
+                return streamGemini(
+                    httpClient = httpClient,
+                    baseUrlOverride = baseUrlOverride,
+                    turns = turns,
+                    model = actualModel,
+                    apiKey = apiKey,
+                    collector = collector,
+                    visitedModels = visitedModels,
+                    withSearchGrounding = false
+                )
+            }
             if (response.code == 404 || response.code == 410) {
                 if (response.code == 410) {
                     ModelCatalog.markModelRetired(AiProviderType.GEMINI, actualModel, "HTTP 410")
                 }
                 val nextModel = nextGeminiFallback(actualModel)
                 if (nextModel != null && nextModel !in visitedModels) {
-                    return streamGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, collector, visitedModels + actualModel)
+                    return streamGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, collector, visitedModels + actualModel, withSearchGrounding)
                 }
                 throw ProviderError.ModelNotFound(
                     AiProviderType.GEMINI,
@@ -209,9 +253,11 @@ internal object ProviderGeminiTransport {
                     if (jsonStr.isNotBlank() && jsonStr != "[DONE]") {
                         try {
                             val json = JSONObject(jsonStr)
+                            throwIfGeminiInlineErrorOrBlocked(json, actualModel)
                             val candidates = json.optJSONArray("candidates")
                             if (candidates != null && candidates.length() > 0) {
-                                val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+                                val cand0 = candidates.getJSONObject(0)
+                                val parts = cand0.optJSONObject("content")?.optJSONArray("parts")
                                 if (parts != null && parts.length() > 0) {
                                     for (i in 0 until parts.length()) {
                                         val part = parts.optJSONObject(i)
@@ -221,8 +267,17 @@ internal object ProviderGeminiTransport {
                                             collector.emit(token)
                                         }
                                     }
+                                } else if (!emittedAnySse) {
+                                    val finishReason = cand0.optString("finishReason", "")
+                                    if (finishReason in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION")) {
+                                        throw ProviderError.ContentBlocked(finishReason)
+                                    }
                                 }
                             }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: ProviderError) {
+                            throw e
                         } catch (e: Exception) {
                             Log.w("ProviderGeminiTransport", "Malformed SSE JSON chunk skipped: ${e.javaClass.simpleName}")
                         }
@@ -235,9 +290,11 @@ internal object ProviderGeminiTransport {
             if (!emittedAnySse && rawFallbackBuffer.isNotBlank()) {
                 try {
                     val json = JSONObject(rawFallbackBuffer.toString().trim())
+                    throwIfGeminiInlineErrorOrBlocked(json, actualModel)
                     val candidates = json.optJSONArray("candidates")
                     if (candidates != null && candidates.length() > 0) {
-                        val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+                        val cand0 = candidates.getJSONObject(0)
+                        val parts = cand0.optJSONObject("content")?.optJSONArray("parts")
                         if (parts != null && parts.length() > 0) {
                             val sb = StringBuilder()
                             for (i in 0 until parts.length()) {
@@ -250,6 +307,10 @@ internal object ProviderGeminiTransport {
                             if (cleaned.isNotEmpty()) collector.emit(cleaned)
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: ProviderError) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w("ProviderGeminiTransport", "Non-SSE fallback body parse skipped: ${e.javaClass.simpleName}")
                 }

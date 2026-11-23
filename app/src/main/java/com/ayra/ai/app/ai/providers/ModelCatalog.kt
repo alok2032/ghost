@@ -33,7 +33,9 @@ enum class ModelVerificationStatus(val label: String) {
     UNVERIFIED("Unverified (Opt-In Only)"),
     UNAVAILABLE("Unavailable (Cooldown)"),
     RETIRED("Retired"),
-    RATE_LIMITED("Rate Limited (Cooldown)")
+    RATE_LIMITED("Rate Limited (Cooldown)"),
+    AUTH_FAILED("Auth Failed"),
+    INVALID_MODEL("Invalid Model")
 }
 
 data class ModelCatalogEntry(
@@ -616,9 +618,11 @@ object ModelCatalog {
 
     fun markModelUnavailable(provider: AiProviderType, modelId: String, httpStatus: Int, reason: String) {
         val k = key(provider, modelId)
-        val statusOverride = when {
-            httpStatus == 429 -> ModelVerificationStatus.RATE_LIMITED
-            httpStatus == 410 -> ModelVerificationStatus.RETIRED
+        val statusOverride = when (httpStatus) {
+            401, 403 -> ModelVerificationStatus.AUTH_FAILED
+            400, 404 -> ModelVerificationStatus.INVALID_MODEL
+            429 -> ModelVerificationStatus.RATE_LIMITED
+            410 -> ModelVerificationStatus.RETIRED
             else -> ModelVerificationStatus.UNAVAILABLE
         }
         blockedModels[k] = HealthBlock(
@@ -696,8 +700,10 @@ object ModelCatalog {
                     ModelVerificationStatus.CONFIGURED -> 2
                     ModelVerificationStatus.UNVERIFIED -> 3
                     ModelVerificationStatus.RATE_LIMITED -> 4
-                    ModelVerificationStatus.UNAVAILABLE -> 5
-                    ModelVerificationStatus.RETIRED -> 6
+                    ModelVerificationStatus.INVALID_MODEL -> 5
+                    ModelVerificationStatus.AUTH_FAILED -> 6
+                    ModelVerificationStatus.UNAVAILABLE -> 7
+                    ModelVerificationStatus.RETIRED -> 8
                 }
             }
             .firstOrNull()

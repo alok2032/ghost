@@ -114,7 +114,7 @@ fun SettingsAppearanceScreen(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Appearance & Brain Center", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Live themes, typography, density, thinking modes, memory & real device health.",
+                    "Themes, thinking depth, memory & device telemetry.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -152,7 +152,7 @@ fun SettingsAppearanceScreen(
                         color = uiConfig.accentColor
                     )
                     Text(
-                        text = "Protected Multi-AI Engine, Routing & Encrypted API Keys",
+                        text = "1-Tap All-AI Activation, Routing & Encrypted Keys",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

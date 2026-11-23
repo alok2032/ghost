@@ -77,6 +77,7 @@ fun ProviderKeysSection(
     modifier: Modifier = Modifier,
     editsLocked: Boolean = false,
     initiallyExpandDeveloperKeys: Boolean = true,
+    externalRefreshTick: Int = 0,
     onActivationChanged: () -> Unit = {}
 ) {
     val providers = remember {
@@ -97,8 +98,8 @@ fun ProviderKeysSection(
     }
 
     var activationRevision by remember { mutableStateOf(0) }
-    var hasExternalConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
-    val isLocalOnly = remember(activationRevision) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
+    var hasExternalConsent by remember(externalRefreshTick) { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
+    val isLocalOnly = remember(externalRefreshTick, activationRevision) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
     var showDeveloperByok by remember { mutableStateOf(initiallyExpandDeveloperKeys) }
 
     val notifyActivationChanged = {

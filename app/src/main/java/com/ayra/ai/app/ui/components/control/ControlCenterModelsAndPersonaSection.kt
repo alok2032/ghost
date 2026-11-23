@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -161,6 +162,8 @@ internal fun ControlCenterModelsAndProvidersSection(
     val activeChannels = remember(isKeySectionExpanded, activationRevision) { providersEngine.getActiveChannels() }
     val savedCount = remember(isKeySectionExpanded, activationRevision) { providersEngine.getSavedKeyProvidersIgnoringConsent().size }
     val hasConsent = remember(isKeySectionExpanded, activationRevision) { AyraPreferences.hasExternalAiConsent(context) }
+    val isLocalOnly = remember(isKeySectionExpanded, activationRevision) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
+    val freePoolOn = remember(isKeySectionExpanded, activationRevision) { AyraPreferences.isFreeAiPoolEnabled(context) }
     val fbReady = remember(isKeySectionExpanded, activationRevision) { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }
     val activeCount = activeChannels.size + if (fbReady) 1 else 0
     val isMultiAiReady = activeCount > 0
@@ -200,8 +203,8 @@ internal fun ControlCenterModelsAndProvidersSection(
                     Text(
                         text = when {
                             isMultiAiReady -> "প্রশ্ন বুঝে উপযুক্ত সব সক্রিয় AI একসাথে কাজ করবে ও সেরা উত্তর বেছে নেবে"
-                            savedCount > 0 && !hasConsent -> "কী কনফিগার খুলে External Cloud AI Consent সুইচটি অন করলেই সেভ করা API গুলো অ্যাক্টিভ হবে"
-                            else -> "উত্তর পেতে কী কনফিগার থেকে API Key যোগ করুন, Local Ollama সেট করুন বা Free AI Pool অন করুন"
+                            savedCount > 0 && !hasConsent -> "নিচের ১-ট্যাপ বাটন চাপলেই আপনার সেভ করা সব AI ও Live Search চালু হবে"
+                            else -> "নিচের ১-ট্যাপ বাটনে ক্লিক করলেই সব AI ও Live Search একসাথে চালু হবে"
                         },
                         color = TextSecondary,
                         fontSize = 10.5.sp
@@ -224,10 +227,39 @@ internal fun ControlCenterModelsAndProvidersSection(
                 }
             }
 
+            if (isLocalOnly || !hasConsent || !freePoolOn) {
+                Button(
+                    onClick = {
+                        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+                        AyraPreferences.setExternalAiConsent(context, true)
+                        AyraPreferences.setFreeAiPoolEnabled(context, true)
+                        ExternalAiProviders.clearDynamicModelCache(null)
+                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                        activationRevision++
+                        onQuickFeedback("সব Active AI ও Live Search চালু হয়েছে ⚡")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("control_enable_all_ai_button")
+                ) {
+                    Text(
+                        text = "সব AI ও Live Search চালু করুন (1-Tap) ⚡",
+                        color = Color.Black,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             if (isKeySectionExpanded) {
                 ProviderKeysSection(
                     context = context,
                     modifier = Modifier.padding(top = 8.dp),
+                    externalRefreshTick = activationRevision,
                     onActivationChanged = { activationRevision++ }
                 )
             }

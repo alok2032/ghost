@@ -402,7 +402,7 @@ class Phase2HardeningAndAgentTest {
 
         assertTrue(controlSheet.readLines().size < 300)
         assertTrue(researchScreen.readLines().size < 200)
-        assertTrue(studiosScreen.readLines().size < 200)
+        assertFalse("Standalone StudiosScreen should remain removed", studiosScreen.exists())
         assertTrue(storageHelper.readLines().size < 300)
         assertTrue("Expected ChatScreen.kt < 800 lines after modularization", chatScreen.readLines().size < 800)
     }

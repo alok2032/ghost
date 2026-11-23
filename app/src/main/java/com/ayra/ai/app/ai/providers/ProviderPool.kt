@@ -114,10 +114,22 @@ class ProviderPool @JvmOverloads constructor(
         }
     )
 
-    private val timeSensitiveKeywords = listOf(
-        "today", "yesterday", "tomorrow", "now", "latest", "news", "price",
-        "current", "weather", "ajke", "kal", "বর্তমান", "আজ", "খবর", "সময়", "সময়"
-    )
+    companion object {
+        private val LATIN_TIME_SENSITIVE_REGEX = Regex(
+            "\\b(today|yesterday|tomorrow|now|latest|recent|current|news|price|weather|version|release|update|winner|champion|ceo|president|prime minister|score|rate|stock|2025|2026|2027|ajke|kal|notun|dam|koto|khobor|ekhon|ke)\\b",
+            RegexOption.IGNORE_CASE
+        )
+        private val INDIC_TIME_SENSITIVE_CUES = listOf(
+            "বর্তমান", "আজ", "খবর", "নতুন", "সাম্প্রতিক", "আপডেট", "দাম", "কত", "সময়", "সময়", "কে এখন"
+        )
+
+        fun isTimeSensitiveQuery(prompt: String): Boolean {
+            val clean = prompt.trim()
+            if (clean.isBlank()) return false
+            if (LATIN_TIME_SENSITIVE_REGEX.containsMatchIn(clean)) return true
+            return INDIC_TIME_SENSITIVE_CUES.any { clean.contains(it) }
+        }
+    }
 
     private val casualGreetings = setOf(
         "hi", "hello", "hey", "hii", "hiii", "yo", "salam", "assalamualaikum",
@@ -140,8 +152,7 @@ class ProviderPool @JvmOverloads constructor(
 
     private fun computeCacheKey(request: ChatRequest): String? {
         val prompt = request.prompt.trim()
-        val lower = prompt.lowercase()
-        if (timeSensitiveKeywords.any { lower.contains(it) }) return null
+        if (isTimeSensitiveQuery(prompt)) return null
         if (request.history.isNotEmpty()) return null
         if (request.imageBase64 != null || request.documentText != null) return null
 
@@ -306,7 +317,7 @@ class ProviderPool @JvmOverloads constructor(
         supervisorScope {
             val wikiDeferred: Deferred<String>? = if (shouldGroundWiki) {
                 async(Dispatchers.IO) {
-                    withTimeoutOrNull(2_200L) {
+                    withTimeoutOrNull(3_000L) {
                         val wikiJob = async {
                             runCatching {
                                 AutonomousKnowledgeEngine.queryMultiLayerWiki(
@@ -529,7 +540,7 @@ class ProviderPool @JvmOverloads constructor(
         priorError: AyraError? = null
     ) {
         val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(1400L) { wikiDeferred.await() } ?: ""
+            withTimeoutOrNull(2_200L) { wikiDeferred.await() } ?: ""
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
@@ -829,7 +840,7 @@ class ProviderPool @JvmOverloads constructor(
 
         // Inject live web & multi-layer wiki context into EVERY parallel AI worker upfront
         val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(1_400L) { wikiDeferred.await() } ?: ""
+            withTimeoutOrNull(2_200L) { wikiDeferred.await() } ?: ""
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
@@ -998,11 +1009,15 @@ class ProviderPool @JvmOverloads constructor(
             wikiContext = wikiContext
         )
 
-        if (rankedDrafts.size == 1 && wikiContext.isBlank()) {
-            val single = rankedDrafts.first()
+        val validDrafts = rankedDrafts
+            .filterNot { BestAnswerSelector.isLowValueOrRefusal(it.text) }
+            .ifEmpty { rankedDrafts }
+
+        if (validDrafts.size == 1 && wikiContext.isBlank()) {
+            val single = validDrafts.first()
             val resp = ProviderResponse(
                 text = single.text,
-                modelUsed = "${single.channel.displayName} (Best • ${single.score.toInt()}%) ⚡",
+                modelUsed = "${single.channel.displayName} (Best Answer • ${single.score.toInt()}%) ⚡",
                 provider = single.channel.provider
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
@@ -1011,10 +1026,10 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         // Prioritize Gemini, then highest-scored non-free flagship, then highest-scored overall draft
-        val synthesizer = rankedDrafts
+        val synthesizer = validDrafts
             .firstOrNull { it.channel.provider == AiProviderType.GEMINI }?.channel
-            ?: rankedDrafts.firstOrNull { it.channel.provider != AiProviderType.POLLINATIONS_FREE }?.channel
-            ?: rankedDrafts.first().channel
+            ?: validDrafts.firstOrNull { it.channel.provider != AiProviderType.POLLINATIONS_FREE }?.channel
+            ?: validDrafts.first().channel
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
         val isBanglish = AyraAgentOrchestrator.isBanglish(request.prompt)
@@ -1024,8 +1039,9 @@ class ProviderPool @JvmOverloads constructor(
             else -> "clear, authoritative natural English"
         }
 
+        val todayDate = java.time.LocalDate.now()
         val synthesisPrompt = buildString {
-            append("You are Ayra AI's Principal Consensus Synthesizer. ${rankedDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
+            append("You are Ayra AI's Principal Consensus Synthesizer. Today's Current Date: $todayDate (Year ${todayDate.year}). ${validDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
             append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")
@@ -1037,18 +1053,18 @@ class ProviderPool @JvmOverloads constructor(
                 append(wikiContext.take(2200))
                 append("\n\n")
             }
-            rankedDrafts.forEachIndexed { idx, scored ->
+            validDrafts.forEachIndexed { idx, scored ->
                 append("--- SPECIALIST ${idx + 1}: ${scored.channel.displayName} [Quality Score ${scored.score.toInt()}/100] ---\n")
                 append(scored.text.take(4500))
                 append("\n\n")
             }
             append("Instructions:\n")
-            append("1. Compare all specialist answers, verify against live Wiki/Plugin facts, select the most accurate solution, and synthesize ONE cohesive, detailed, authoritative response in $langNote.\n")
+            append("1. Compare all specialist answers, verify against Today's Current Date ($todayDate) and live Wiki/Plugin facts (preferring fresh up-to-date evidence over outdated training cutoffs), select the most accurate solution, and synthesize ONE cohesive, detailed, authoritative response in $langNote.\n")
             append("2. Resolve any disagreements accurately and preserve complete runnable code blocks without truncation.\n")
             append("3. Do NOT mention 'Specialist 1/2', quality scores, or meta-commentary about combining drafts. Output ONLY the final polished response.")
         }
 
-        collector.emit(AyraStreamEvent.Thinking("Selecting & synthesizing best answer (${rankedDrafts.size} AIs) with ${synthesizer.displayName}..."))
+        collector.emit(AyraStreamEvent.Thinking("Selecting & synthesizing best answer (${validDrafts.size} AIs) with ${synthesizer.displayName}..."))
 
         val streamedSynth = StringBuilder()
         var synthProviderUsed = synthesizer.provider
@@ -1094,10 +1110,10 @@ class ProviderPool @JvmOverloads constructor(
 
         var streamSucceeded = tryStreamSynthesizer(synthesizer)
         if (!streamSucceeded || ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString()).isBlank()) {
-            val backupSynth = rankedDrafts
+            val backupSynth = validDrafts
                 .firstOrNull { it.channel.id != synthesizer.id && it.channel.provider != AiProviderType.POLLINATIONS_FREE }
                 ?.channel
-                ?: rankedDrafts.firstOrNull { it.channel.id != synthesizer.id }?.channel
+                ?: validDrafts.firstOrNull { it.channel.id != synthesizer.id }?.channel
             if (backupSynth != null) {
                 collector.emit(AyraStreamEvent.Thinking("Switching synthesizer to ${backupSynth.displayName}..."))
                 synthProviderUsed = backupSynth.provider
@@ -1106,14 +1122,14 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthText = ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString())
-        val participatingNames = rankedDrafts.joinToString(" + ") { it.channel.displayName }
+        val participatingNames = validDrafts.joinToString(" + ") { it.channel.displayName }
 
         if (streamSucceeded && synthText.isNotBlank()) {
             val wikiSuffix = if (wikiContext.isNotBlank()) " + Multi-Wiki 🌐" else ""
             val pluginSuffix = if (request.activePluginNames.isNotEmpty()) " + Plugins(${request.activePluginNames.size}) 🔌" else ""
             val resp = ProviderResponse(
                 text = synthText,
-                modelUsed = "Multi-AI Ensemble • Best of ${rankedDrafts.size} ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
+                modelUsed = "Multi-AI Ensemble • Best of ${validDrafts.size} ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
                 provider = synthProviderUsed
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
@@ -1121,8 +1137,8 @@ class ProviderPool @JvmOverloads constructor(
             return@supervisorScope
         }
 
-        // Fallback: return the objectively highest-scored specialist draft (never naive length)
-        val bestDraft = rankedDrafts.first()
+        // Fallback: return the objectively highest-scored valid specialist draft (never naive length)
+        val bestDraft = validDrafts.first()
         val resp = ProviderResponse(
             text = bestDraft.text,
             modelUsed = "${bestDraft.channel.displayName} (Best Answer • ${bestDraft.score.toInt()}%) ⚡",
@@ -1221,6 +1237,10 @@ class ProviderPool @JvmOverloads constructor(
                 AyraError.Timeout(provider, safeDetail)
             e is ProviderError.NetworkFailure || e is java.net.UnknownHostException || e is java.net.ConnectException || msg.contains("unable to resolve host") || msg.contains("no internet") ->
                 AyraError.NoNetwork(safeDetail)
+            e is ProviderError.ContentBlocked ->
+                AyraError.ContentBlocked(e.reason)
+            e is ProviderError.ModelNotFound ->
+                AyraError.ProviderDown(provider, e.httpStatus, safeDetail)
             e is ProviderError.ServerError ->
                 AyraError.ProviderDown(provider, Regex("HTTP\\s*(\\d+)").find(e.displayMessage)?.groupValues?.get(1)?.toIntOrNull() ?: 500, safeDetail)
             msg.contains("404") || msg.contains("not found") ->

@@ -215,10 +215,15 @@ object BestAnswerSelector {
             }
         }
 
+        val finalScore = if (isLowValueOrRefusal(clean)) {
+            score.coerceIn(0f, 35f)
+        } else {
+            score.coerceIn(0f, 100f)
+        }
         return ScoredDraft(
             channel = channel,
             text = clean,
-            score = score.coerceIn(0f, 100f),
+            score = finalScore,
             rationale = reasons.joinToString(", ").ifBlank { "baseline" }
         )
     }
@@ -240,9 +245,8 @@ object BestAnswerSelector {
                 wikiContext = wikiContext
             )
         }
-        val nonGarbage = scored.filterNot { isLowValueOrRefusal(it.text) }
-        val pool = if (nonGarbage.isNotEmpty()) nonGarbage else scored
-        return pool.sortedByDescending { it.score }
+        val (garbage, nonGarbage) = scored.partition { isLowValueOrRefusal(it.text) }
+        return nonGarbage.sortedByDescending { it.score } + garbage.sortedByDescending { it.score }
     }
 
     fun selectBestDraft(

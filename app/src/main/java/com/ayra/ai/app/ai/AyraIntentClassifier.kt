@@ -144,7 +144,10 @@ object AyraIntentClassifier {
         // Video Intent
         val hasVidTerm = lower.contains("video") || lower.contains("ভিডিও") || lower.contains("cinematic")
         val hasVidAction = lower.contains("video edit") || lower.contains("video banano") || lower.contains("ভিডিও বানাও") ||
-                (hasVidTerm && (lower.contains("generate") || lower.contains("make") || lower.contains("banano") || lower.contains("বানাও") || lower.contains("collision") || lower.contains("galaxy") || lower.contains("black hole")))
+                lower.contains("ভিডিও তৈরি") ||
+                (hasVidTerm && (lower.contains("generate") || lower.contains("make") || lower.contains("create") ||
+                    lower.contains("render") || lower.contains("banano") || lower.contains("বানাও") ||
+                    lower.contains("তৈরি") || lower.contains("collision") || lower.contains("galaxy") || lower.contains("black hole")))
         if (!isQuestionForm && hasVidAction && !lower.contains("video game")) {
             return AyraToolIntent.VIDEO
         }

@@ -1,6 +1,5 @@
 package com.ayra.ai.app.ui.screens
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Hub
@@ -35,7 +33,6 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -86,17 +83,14 @@ enum class AyraDestination(
     val icon: ImageVector,
     val shortLabel: String
 ) {
-    CHAT("Ayra Chat", "Multi-Model Prompt Super-Hub", Icons.AutoMirrored.Filled.Chat, "Chat"),
+    CHAT("Ayra Chat", "Prompt-Driven Photo, Video, Code & AI", Icons.AutoMirrored.Filled.Chat, "Chat"),
     RESEARCH_WIKI("Multi-Layer Wiki & RAG", "Surface, Deep Academic & Dark Web Tech", Icons.Default.Public, "Wiki"),
-    PROMPT_CENTER("Prompt Engineering Center", "Builder, Grader, Versions & Lab", Icons.Default.Tune, "Prompts"),
     PROJECTS_ASSISTANTS("Projects & AI Assistants", "Isolated Contexts & Custom Personas", Icons.Default.FolderSpecial, "Projects"),
     MEMORY("Long-Term Memory", "Opt-In Encrypted Recall & Facts", Icons.Default.Psychology, "Memory"),
-    STUDIOS("Creative & Code Studios", "8K Image, Video, Music, 3D & Code", Icons.Default.AutoAwesome, "Studios"),
-    DATA_ANALYSIS("Data & CSV Analysis Lab", "Stats Profiler, Charts & AI Insights", Icons.Default.BarChart, "Data"),
     MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub, "Arena"),
     TOOLS_HUB("Tools, Keys & Plugins", "API Keys, Terminal, Files & GitHub", Icons.Default.Build, "Tools"),
     SETTINGS_APPEARANCE("Appearance & Personalization", "Themes, Memory, Thinking & Health", Icons.Default.Palette, "Theme"),
-    AI_SETTINGS("AI Control & Keys", "Auto Multi-AI, Edit Lock & API Keys", Icons.Default.AutoAwesome, "AI"),
+    AI_SETTINGS("AI Control & Keys", "1-Tap Multi-AI, Live Search & API Keys", Icons.Default.AutoAwesome, "AI"),
     SECURITY_CENTER("Zero-Trust Security Vault", "Biometrics, E2EE, Audit & Wipe", Icons.Default.Security, "Security")
 }
 
@@ -382,15 +376,6 @@ fun AyraWorkspaceHost(
                             onBack = { currentDest = AyraDestination.CHAT },
                             modifier = Modifier.fillMaxSize()
                         )
-                        AyraDestination.PROMPT_CENTER -> PromptEngineeringScreen(
-                            onBack = { currentDest = AyraDestination.CHAT },
-                            onUsePromptInChat = { prompt ->
-                                viewModel.updateInputText(prompt)
-                                currentDest = AyraDestination.CHAT
-                                Toast.makeText(context, "Prompt loaded in chat editor", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
                         AyraDestination.PROJECTS_ASSISTANTS -> ProjectsAndAssistantsScreen(
                             onBack = { currentDest = AyraDestination.CHAT },
                             onOpenProjectChat = { _, _ ->
@@ -401,18 +386,6 @@ fun AyraWorkspaceHost(
                         )
                         AyraDestination.MEMORY -> MemoryScreen(
                             onBack = { currentDest = AyraDestination.CHAT },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        AyraDestination.STUDIOS -> StudiosScreen(
-                            onBack = { currentDest = AyraDestination.CHAT },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        AyraDestination.DATA_ANALYSIS -> DataAnalysisWorkspaceScreen(
-                            onBack = { currentDest = AyraDestination.CHAT },
-                            onSendInsightPromptToChat = { prompt ->
-                                viewModel.updateInputText(prompt)
-                                currentDest = AyraDestination.CHAT
-                            },
                             modifier = Modifier.fillMaxSize()
                         )
                         AyraDestination.MODELS_ARENA -> ModelsArenaScreen(

@@ -189,6 +189,7 @@ export async function forwardSecureAiRequest(
         );
       }
       const data = (await upstreamRes.json()) as {
+        error?: { code?: number; message?: string };
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
         usageMetadata?: {
           totalTokenCount?: number;
@@ -196,6 +197,13 @@ export async function forwardSecureAiRequest(
           candidatesTokenCount?: number;
         };
       };
+      if (data.error) {
+        const errStatus =
+          typeof data.error.code === "number" && data.error.code >= 400 && data.error.code < 600
+            ? data.error.code
+            : 502;
+        throw new GatewayError(errStatus, data.error.message ?? "Upstream Gemini error");
+      }
       const text =
         data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
       if (!text) {
@@ -282,9 +290,17 @@ export async function forwardSecureAiRequest(
     }
 
     const data = (await upstreamRes.json()) as {
+      error?: { code?: number; message?: string };
       choices?: Array<{ message?: { content?: string } }>;
       usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
     };
+    if (data.error) {
+      const errStatus =
+        typeof data.error.code === "number" && data.error.code >= 400 && data.error.code < 600
+          ? data.error.code
+          : 502;
+      throw new GatewayError(errStatus, data.error.message ?? "Upstream provider error");
+    }
     const text = data.choices?.[0]?.message?.content?.trim() ?? "";
     if (!text) {
       throw new GatewayError(502, "Upstream provider returned empty completion.");

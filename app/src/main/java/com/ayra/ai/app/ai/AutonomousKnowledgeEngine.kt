@@ -146,27 +146,30 @@ object AutonomousKnowledgeEngine {
         if (cleanPrompt.length < 3) return@supervisorScope ""
 
         val topic = extractTopicKeyword(cleanPrompt).ifBlank { cleanPrompt }
+        val isTimeSensitive = com.ayra.ai.app.ai.providers.ProviderPool.isTimeSensitiveQuery(cleanPrompt)
         val cacheKey = "multi:${if (isBengali) "bn" else "en"}:${topic.lowercase(Locale.ROOT)}"
-        getCache(cacheKey)?.let { return@supervisorScope it }
+        if (!isTimeSensitive) {
+            getCache(cacheKey)?.let { return@supervisorScope it }
+        }
 
         val isDarkOrDeep = GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(cleanPrompt)
         val wantsDeepAcademic = isDarkOrDeep || isAcademicOrTechnicalQuery(cleanPrompt)
 
         val wikiDeferred = async(Dispatchers.IO) {
-            withTimeoutOrNull(1600L) {
+            withTimeoutOrNull(2400L) {
                 queryLiveWebKnowledge(cleanPrompt, isBengali, httpClient, wikipediaBaseUrl)
             } ?: ""
         }
 
         val ddgDeferred = async(Dispatchers.IO) {
-            withTimeoutOrNull(1500L) {
+            withTimeoutOrNull(2000L) {
                 fetchDuckDuckGoInstantAnswer(topic, httpClient, ddgBaseUrl)
             } ?: ""
         }
 
         val deepAcademicDeferred = async(Dispatchers.IO) {
             if (!wantsDeepAcademic) return@async ""
-            withTimeoutOrNull(1800L) {
+            withTimeoutOrNull(2400L) {
                 val oa = fetchOpenAlexResearch(topic, httpClient, openAlexBaseUrl)
                 val ax = if (oa.isBlank() || cleanPrompt.lowercase().contains("arxiv") || cleanPrompt.lowercase().contains("paper")) {
                     fetchArxivPreprints(topic, httpClient, arxivBaseUrl)
@@ -212,7 +215,7 @@ object AutonomousKnowledgeEngine {
             }
         }.trim()
 
-        if (assembled.isNotBlank() && wikipediaBaseUrl == null && ddgBaseUrl == null && openAlexBaseUrl == null && arxivBaseUrl == null) {
+        if (!isTimeSensitive && assembled.isNotBlank() && wikipediaBaseUrl == null && ddgBaseUrl == null && openAlexBaseUrl == null && arxivBaseUrl == null) {
             putCache(cacheKey, assembled)
         }
         assembled
@@ -623,9 +626,10 @@ object AutonomousKnowledgeEngine {
         val topic = extractTopicKeyword(prompt)
         val queryTerm = if (topic.isNotBlank()) topic else prompt.trim()
         if (queryTerm.isBlank()) return ""
+        val isTimeSensitive = com.ayra.ai.app.ai.providers.ProviderPool.isTimeSensitiveQuery(prompt)
         val cacheKey = "wiki:${if (isBengali) "bn" else "en"}:$queryTerm"
 
-        if (baseUrlOverride == null) {
+        if (baseUrlOverride == null && !isTimeSensitive) {
             getCache(cacheKey)?.let { return it }
         }
 
@@ -685,13 +689,13 @@ object AutonomousKnowledgeEngine {
             val bnGen = fetchWikiGeneratorSearch("bn", queryTerm) ?: fetchWikiGeneratorSearch("bn", prompt.trim())
             if (bnGen != null) {
                 val formatted = formatKnowledgePoints(bnGen.first, bnGen.second, isBengali = true)
-                if (baseUrlOverride == null) putCache(cacheKey, formatted)
+                if (baseUrlOverride == null && !isTimeSensitive) putCache(cacheKey, formatted)
                 return formatted
             }
             val bnSummary = fetchWikiSummary("bn", queryTerm)
             if (bnSummary != null) {
                 val formatted = formatKnowledgePoints(bnSummary.first, bnSummary.second, isBengali = true)
-                if (baseUrlOverride == null) putCache(cacheKey, formatted)
+                if (baseUrlOverride == null && !isTimeSensitive) putCache(cacheKey, formatted)
                 return formatted
             }
         }
@@ -699,14 +703,14 @@ object AutonomousKnowledgeEngine {
         val enGen = fetchWikiGeneratorSearch("en", queryTerm) ?: fetchWikiGeneratorSearch("en", prompt.trim())
         if (enGen != null) {
             val formatted = formatKnowledgePoints(enGen.first, enGen.second, isBengali = isBengali)
-            if (baseUrlOverride == null) putCache(cacheKey, formatted)
+            if (baseUrlOverride == null && !isTimeSensitive) putCache(cacheKey, formatted)
             return formatted
         }
 
         val enSummary = fetchWikiSummary("en", queryTerm)
         if (enSummary != null) {
             val formatted = formatKnowledgePoints(enSummary.first, enSummary.second, isBengali = isBengali)
-            if (baseUrlOverride == null) putCache(cacheKey, formatted)
+            if (baseUrlOverride == null && !isTimeSensitive) putCache(cacheKey, formatted)
             return formatted
         }
 

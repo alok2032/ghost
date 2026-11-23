@@ -523,13 +523,8 @@ fun ChatScreen(
                                 message = msg,
                                 onImageClick = { expandedImageUri = it },
                                 onCopy = {
-                                    AndroidHardeningHelper.copyWithSensitivityProtection(
-                                        context = context,
-                                        label = "Ayra AI Message",
-                                        text = msg.content,
-                                        isSensitive = true,
-                                        autoClearMs = if (AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
-                                    )
+                                    val ttl = if (AyraPreferences.isClipboardAutoClearEnabled(context)) 60_000L else 0L
+                                    AndroidHardeningHelper.copyWithSensitivityProtection(context, "Ayra AI Message", msg.content, true, ttl)
                                     Toast.makeText(context, "Copied (auto-clears securely)!", Toast.LENGTH_SHORT).show()
                                 },
                                 onSpeak = { voiceManager.speak(msg.content, overrideSentiment = SentimentDetector.detectSentiment(msg.content)) },
@@ -537,7 +532,18 @@ fun ChatScreen(
                                     viewModel.updateInputText(contentToEdit)
                                     Toast.makeText(context, "Loaded into editor to edit / এডিট করতে লোড হয়েছে", Toast.LENGTH_SHORT).show()
                                 },
-                                onRunPluginPrompt = { dispatchPrompt(it) }
+                                onRunPluginPrompt = { dispatchPrompt(it) },
+                                onRegenerate = if (msg.role != "user" && !isGenerating) {
+                                    {
+                                        viewModel.regenerateResponse(
+                                            assistantMessage = msg, orchestrator = orchestrator, persona = currentPersona,
+                                            tier = selectedModelTier, cloudRepo = cloudRepo,
+                                            onSpeakResponse = { voiceManager.speak(it, overrideSentiment = SentimentDetector.detectSentiment(it)) },
+                                            onMissingPrompt = { Toast.makeText(context, "No prompt found to regenerate", Toast.LENGTH_SHORT).show() }
+                                        )
+                                    }
+                                } else null,
+                                onDelete = if (!isGenerating && msg.id > 0L) { { viewModel.deleteMessage(msg.id) } } else null
                             )
                         }
                         if (isGenerating) {

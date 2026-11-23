@@ -132,6 +132,21 @@ class ChatRepository(
         )
     }
 
+    suspend fun deleteMessage(sessionId: Long, messageId: Long) = withContext(Dispatchers.IO) {
+        chatDao.deleteMessageById(messageId)
+        val latest = chatDao.getRecentMessagesForSession(sessionId, limit = 1).lastOrNull()
+        val preview = latest?.content
+            ?.replace('\n', ' ')
+            ?.trim()
+            ?.take(110)
+            .orEmpty()
+        sessionDao.refreshSessionActivity(
+            sessionId = sessionId,
+            preview = preview,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
     suspend fun deleteSession(sessionId: Long): ChatSession {
         sessionDao.deleteSessionById(sessionId)
         val fallback = sessionDao.getMostRecentSession()

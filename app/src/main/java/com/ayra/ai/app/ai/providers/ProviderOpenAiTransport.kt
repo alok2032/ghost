@@ -129,6 +129,25 @@ internal object ProviderOpenAiTransport {
         return true
     }
 
+    private fun throwIfOpenAiInlineError(json: JSONObject, provider: AiProviderType, model: String) {
+        val errObj = json.optJSONObject("error") ?: return
+        val code = errObj.optInt("code", 500)
+        val type = errObj.optString("type", "")
+        val msg = errObj.optString("message", "").ifBlank { type.ifBlank { "${provider.displayName} API error" } }
+        when {
+            code == 401 || code == 403 || msg.contains("invalid api key", ignoreCase = true) || msg.contains("unauthorized", ignoreCase = true) ->
+                throw ProviderError.Unauthorized(provider)
+            code == 429 || type.contains("rate_limit", ignoreCase = true) || msg.contains("rate limit", ignoreCase = true) ->
+                throw ProviderError.RateLimited(msg)
+            code == 404 || code == 410 ||
+                msg.contains("model_not_found", ignoreCase = true) ||
+                msg.contains("does not exist", ignoreCase = true) ||
+                msg.contains("model not found", ignoreCase = true) ->
+                throw ProviderError.ModelNotFound(provider, model, msg, httpStatus = if (code == 410) 410 else 404)
+            else -> throw ProviderError.ServerError(code, msg)
+        }
+    }
+
     fun callOpenAiCompatible(
         client: OkHttpClient,
         context: Context?,
@@ -182,6 +201,7 @@ internal object ProviderOpenAiTransport {
             }
 
             val json = JSONObject(response.readBounded())
+            throwIfOpenAiInlineError(json, provider, model)
             val choices = json.optJSONArray("choices")
             if (choices != null && choices.length() > 0) {
                 val message = choices.getJSONObject(0).optJSONObject("message")
@@ -250,6 +270,7 @@ internal object ProviderOpenAiTransport {
                 throw ProviderError.ServerError(response.code, response.readBounded(truncateOnOverflow = true).ifBlank { response.message })
             }
             val json = JSONObject(response.readBounded())
+            throwIfOpenAiInlineError(json, provider, model)
             val choices = json.optJSONArray("choices") ?: return ExternalAiProviders.OpenAiToolTurnResponse()
             if (choices.length() == 0) return ExternalAiProviders.OpenAiToolTurnResponse()
             val message = choices.getJSONObject(0).optJSONObject("message") ?: return ExternalAiProviders.OpenAiToolTurnResponse()
@@ -328,6 +349,7 @@ internal object ProviderOpenAiTransport {
                     if (data.isNotBlank()) {
                         try {
                             val json = JSONObject(data)
+                            throwIfOpenAiInlineError(json, provider, model)
                             val choices = json.optJSONArray("choices")
                             if (choices != null && choices.length() > 0) {
                                 val delta = choices.getJSONObject(0).optJSONObject("delta")
@@ -354,7 +376,11 @@ internal object ProviderOpenAiTransport {
                             }
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (_: Exception) {}
+                        } catch (e: ProviderError) {
+                            throw e
+                        } catch (e: Exception) {
+                            android.util.Log.w("ProviderOpenAiTransport", "Malformed SSE JSON chunk skipped: ${e.javaClass.simpleName}")
+                        }
                     }
                 } else if (!emittedAnySse && l.isNotEmpty()) {
                     rawFallbackBuffer.append(rawLine).append('\n')
@@ -364,6 +390,7 @@ internal object ProviderOpenAiTransport {
             if (!emittedAnySse && rawFallbackBuffer.isNotBlank()) {
                 try {
                     val json = JSONObject(rawFallbackBuffer.toString().trim())
+                    throwIfOpenAiInlineError(json, provider, model)
                     val choices = json.optJSONArray("choices")
                     if (choices != null && choices.length() > 0) {
                         val message = choices.getJSONObject(0).optJSONObject("message")
@@ -376,7 +403,11 @@ internal object ProviderOpenAiTransport {
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: ProviderError) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("ProviderOpenAiTransport", "Non-SSE fallback body parse skipped: ${e.javaClass.simpleName}")
+                }
             }
         }
     }

@@ -21,7 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,7 +75,9 @@ internal fun GlassMessageBubble(
     onCopy: () -> Unit,
     onSpeak: () -> Unit,
     onEdit: (String) -> Unit,
-    onRunPluginPrompt: (String) -> Unit = {}
+    onRunPluginPrompt: (String) -> Unit = {},
+    onRegenerate: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val context = LocalContext.current
@@ -261,6 +265,14 @@ internal fun GlassMessageBubble(
                 if (isUser) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        if (onDelete != null) {
+                            IconButton(
+                                onClick = onDelete,
+                                modifier = Modifier.size(48.dp).testTag("delete_user_message_button")
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete message / বার্তা মুছুন", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                            }
+                        }
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
@@ -278,7 +290,7 @@ internal fun GlassMessageBubble(
                     }
                 } else {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onCopy, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(18.dp))
                         }
@@ -287,6 +299,22 @@ internal fun GlassMessageBubble(
                         }
                         IconButton(onClick = { onEdit(message.content) }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit Note / নোট এডিট", tint = NeonPurple, modifier = Modifier.size(18.dp))
+                        }
+                        if (onRegenerate != null) {
+                            IconButton(
+                                onClick = onRegenerate,
+                                modifier = Modifier.size(48.dp).testTag("regenerate_message_button")
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Regenerate / উত্তর পুনরায় তৈরি", tint = NeonCyan, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        if (onDelete != null) {
+                            IconButton(
+                                onClick = onDelete,
+                                modifier = Modifier.size(48.dp).testTag("delete_message_button")
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete message / বার্তা মুছুন", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 }

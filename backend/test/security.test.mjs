@@ -930,3 +930,72 @@ test("Upstream HTTP 404/400 maps status accurately and does NOT trip circuit bre
     await new Promise((resolve) => cbSrv.close(() => resolve()));
   }
 });
+
+test("HTTP 200 inline data.error from Gemini/OpenAI-compatible upstream propagates typed GatewayError", async () => {
+  let mode = "gemini_inline_error";
+  const inlineApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      openRouterApiKey: "sk-or-test-inline",
+      rateLimitMax: 50,
+      aiProviderRateLimitMax: 50,
+      aiModelRateLimitMax: 50,
+    },
+    verifiers: {
+      verifyIdToken: async () => ({ uid: "uid_inline_err", email: "in@example.com", role: "user" }),
+      verifyAppCheckToken: async () => undefined,
+    },
+    rateLimitStore: new MemoryRateLimitStore(),
+    fetchFn: async () => {
+      if (mode === "gemini_inline_error") {
+        return new Response(
+          JSON.stringify({ error: { code: 400, status: "INVALID_ARGUMENT", message: "Inline Gemini error" } }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: { code: 429, message: "Inline OpenRouter rate limit" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+  const srv = await new Promise((resolve) => {
+    const s = inlineApp.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  try {
+    const u = `http://127.0.0.1:${srv.address().port}`;
+    const gemRes = await fetch(`${u}/api/v1/ai/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer inline_valid_token_12345",
+        "X-Firebase-AppCheck": "ok",
+      },
+      body: JSON.stringify({
+        provider: "gemini",
+        model: "gemini-3.8-flash",
+        messages: [{ role: "user", content: "Ping" }],
+      }),
+    });
+    assert.equal(gemRes.status, 400);
+
+    mode = "openrouter_inline_error";
+    const orRes = await fetch(`${u}/api/v1/ai/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer inline_valid_token_12345",
+        "X-Firebase-AppCheck": "ok",
+      },
+      body: JSON.stringify({
+        provider: "openrouter",
+        model: "openrouter/free",
+        messages: [{ role: "user", content: "Ping" }],
+      }),
+    });
+    assert.equal(orRes.status, 429);
+  } finally {
+    await new Promise((resolve) => srv.close(() => resolve()));
+  }
+});
+

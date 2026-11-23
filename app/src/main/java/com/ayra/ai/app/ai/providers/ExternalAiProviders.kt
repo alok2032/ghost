@@ -306,10 +306,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 httpClient, baseUrlOverrides, turns, channel.modelId, key
             )
             AiProviderType.POLLINATIONS_FREE -> {
-                val sys = turns.firstOrNull { it.role == "system" }?.content ?: ""
-                val usr = turns.lastOrNull { it.role == "user" }?.content ?: ""
                 ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                    httpClient, baseUrlOverrides, usr, sys, channel.modelId
+                    httpClient, baseUrlOverrides, turns, channel.modelId
                 )
             }
             AiProviderType.OMNI_ROUTE -> {
@@ -340,7 +338,8 @@ class ExternalAiProviders @JvmOverloads constructor(
         val turns = buildConversationTurns(systemPrompt, history, prompt, imageBase64)
         val startTime = System.currentTimeMillis()
         val cacheKey = "${prompt.trim()}|${systemPrompt.take(120)}|${preferredProvider?.id}|$preferredModelId"
-        if (imageBase64 == null && history.isNullOrEmpty()) {
+        val allowResponseCache = imageBase64 == null && history.isNullOrEmpty() && !ProviderPool.isTimeSensitiveQuery(prompt)
+        if (allowResponseCache) {
             circuitBreaker.getCachedResponse(cacheKey)?.let { cached ->
                 return@withContext ProviderResponse(
                     text = cached,
@@ -374,7 +373,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                     val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
                     AiUsageTracker.recordCall(ctx, proxyProvider, true, latency)
                     circuitBreaker.recordSuccess(proxyProvider)
-                    if (imageBase64 == null && history.isNullOrEmpty()) {
+                    if (allowResponseCache) {
                         circuitBreaker.putCachedResponse(cacheKey, proxyText)
                     }
                     return@withContext ProviderResponse(
@@ -442,7 +441,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                             } else {
                                 resultText
                             }
-                            if (imageBase64 == null && history.isNullOrEmpty()) circuitBreaker.putCachedResponse(cacheKey, finalText)
+                            if (allowResponseCache) circuitBreaker.putCachedResponse(cacheKey, finalText)
                             return@withContext ProviderResponse(
                                 text = finalText,
                                 modelUsed = "${preferredProvider.displayName} ($activeModel)",
@@ -498,7 +497,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                     AiUsageTracker.recordCall(context, channel.provider, true, chLatency)
                     circuitBreaker.recordSuccess(channel.provider)
                     circuitBreaker.recordChannelSuccess(channel.id)
-                    if (imageBase64 == null && history.isNullOrEmpty()) circuitBreaker.putCachedResponse(cacheKey, resultText)
+                    if (allowResponseCache) circuitBreaker.putCachedResponse(cacheKey, resultText)
                     return@withContext ProviderResponse(
                         text = resultText,
                         modelUsed = channel.displayName,
@@ -554,7 +553,7 @@ class ExternalAiProviders @JvmOverloads constructor(
         if (freeGate) {
             try {
                 val fallbackText = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                    httpClient, baseUrlOverrides, prompt, systemPrompt
+                    httpClient, baseUrlOverrides, turns
                 )
                 if (fallbackText.isNotBlank()) {
                     return@withContext ProviderResponse(
@@ -608,7 +607,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             try {
                 val text = when (provider) {
                     AiProviderType.POLLINATIONS_FREE -> ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                        httpClient, baseUrlOverrides, prompt, systemPrompt, model, preserveReasoning = true
+                        httpClient, baseUrlOverrides, turns, model, preserveReasoning = true
                     )
                     AiProviderType.GEMINI, AiProviderType.ANTHROPIC, AiProviderType.OMNI_ROUTE ->
                         callSpecificProviderPublic(provider, model, turns, key, false)
@@ -656,6 +655,35 @@ class ExternalAiProviders @JvmOverloads constructor(
             if (!gate.allowed) throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Zero-Trust policy.")
         }
         val initialModel = preferredModelId ?: (ModelCatalog.defaultModelFor(provider)?.id ?: getDefaultModelForProvider(provider))
+
+        if (provider != AiProviderType.LOCAL_OLLAMA &&
+            provider != AiProviderType.OMNI_ROUTE &&
+            imageBase64 == null &&
+            SecureAiGatewayClient.shouldUseBackendGatewayProxy(context, isTestHarnessMode)
+        ) {
+            val ctx = context
+            if (ctx != null) {
+                val startTime = System.currentTimeMillis()
+                val proxyResult = SecureAiGatewayClient.callAuthenticatedBackendAiProxy(
+                    context = ctx,
+                    backendBaseUrl = AyraPreferences.getBackendGatewayUrl(ctx),
+                    prompt = prompt,
+                    model = initialModel,
+                    provider = provider.id,
+                    systemPrompt = systemPrompt
+                )
+                val proxyText = proxyResult.getOrNull()?.trim().orEmpty()
+                if (proxyText.isNotBlank()) {
+                    val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(ctx, provider, true, latency)
+                    ModelCatalog.recordModelSuccess(provider, initialModel)
+                    circuitBreaker.recordSuccess(provider)
+                    emit(proxyText)
+                    return@flow
+                }
+            }
+        }
+
         val outerCollector: FlowCollector<String> = this
 
         suspend fun streamSingleAttempt(activeModel: String): Boolean {
@@ -676,7 +704,7 @@ class ExternalAiProviders @JvmOverloads constructor(
                 )
                 AiProviderType.POLLINATIONS_FREE -> {
                     val text = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                        httpClient, baseUrlOverrides, prompt, systemPrompt, activeModel.ifBlank { "openai" }
+                        httpClient, baseUrlOverrides, turns, activeModel.ifBlank { "openai" }
                     )
                     if (text.isBlank()) throw ProviderError.NetworkFailure("Free AI Pool unreachable")
                     capturingCollector.emit(text)
@@ -760,10 +788,8 @@ class ExternalAiProviders @JvmOverloads constructor(
             httpClient, baseUrlOverrides, turns, model, apiKey
         )
         AiProviderType.POLLINATIONS_FREE -> {
-            val sys = turns.firstOrNull { it.role == "system" }?.content ?: ""
-            val usr = turns.lastOrNull { it.role == "user" }?.content ?: ""
             val res = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                httpClient, baseUrlOverrides, usr, sys, model.ifBlank { "openai" }
+                httpClient, baseUrlOverrides, turns, model.ifBlank { "openai" }
             )
             if (res.isBlank()) throw ProviderError.NetworkFailure("Free AI Pool returned empty response")
             res

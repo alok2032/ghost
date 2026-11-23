@@ -201,6 +201,70 @@ class ChatViewModel(
         }
     }
 
+    fun deleteMessage(messageId: Long) {
+        val repo = repository ?: return
+        if (messageId <= 0L) return
+        val sessionId = _activeSessionId.value
+        viewModelScope.launch {
+            repo.deleteMessage(sessionId, messageId)
+        }
+    }
+
+    fun regenerateResponse(
+        assistantMessage: ChatMessage,
+        orchestrator: AyraOrchestrator,
+        persona: String,
+        tier: String,
+        cloudRepo: AyraCloudRepository? = null,
+        onSpeakResponse: (String) -> Unit = {},
+        onMissingPrompt: () -> Unit = {}
+    ) {
+        val repo = repository ?: return
+        val sessionId = _activeSessionId.value
+        viewModelScope.launch {
+            if (!tryStartSending()) return@launch
+            val historySnapshot = withContext(Dispatchers.IO) {
+                messages.value.takeIf { it.isNotEmpty() } ?: repo.getRecentMessages(sessionId, 30)
+            }
+            val targetIdx = historySnapshot.indexOfFirst { it.id == assistantMessage.id }
+                .takeIf { it >= 0 }
+                ?: historySnapshot.indexOfLast { it.role != "user" }
+            val userIdx = if (targetIdx > 0) {
+                (0 until targetIdx).lastOrNull { historySnapshot[it].role == "user" }
+            } else null
+
+            if (userIdx == null) {
+                finishSending()
+                onMissingPrompt()
+                return@launch
+            }
+
+            val promptText = historySnapshot[userIdx].content
+                .replace(Regex("^📄 \\[[^\\]]+\\]\\n"), "")
+                .trim()
+            if (promptText.isBlank()) {
+                finishSending()
+                onMissingPrompt()
+                return@launch
+            }
+
+            repo.deleteMessage(sessionId, assistantMessage.id)
+            val priorHistory = historySnapshot.take(userIdx).takeLast(15)
+            launchOrchestratedInference(
+                orchestrator = orchestrator,
+                prompt = promptText,
+                persona = persona,
+                tier = tier,
+                history = priorHistory,
+                imageBase64 = null,
+                documentText = null,
+                documentName = null,
+                cloudRepo = cloudRepo,
+                onSpeakResponse = onSpeakResponse
+            )
+        }
+    }
+
     fun renameSession(sessionId: Long, newTitle: String) {
         val repo = repository ?: return
         viewModelScope.launch {

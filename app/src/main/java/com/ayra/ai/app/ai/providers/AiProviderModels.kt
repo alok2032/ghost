@@ -105,6 +105,8 @@ sealed class ProviderError(val displayMessage: String) : Exception(displayMessag
         ProviderError(message)
     class NetworkFailure(message: String) :
         ProviderError("Network connection failed: $message")
+    class ContentBlocked(val reason: String) :
+        ProviderError("Content blocked by safety policy: $reason")
 }
 
 data class ChatTurn(

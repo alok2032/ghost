@@ -37,8 +37,8 @@ object AiAppAndCodeStudio {
             "**$cleanSubject**"-এর জন্য আসল, কাস্টম কোড তৈরি করতে একটি সক্রিয় এআই প্রোভাইডার (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, বা OpenRouter) এবং ইন্টারনেট সংযোগ প্রয়োজন। Ayra AI কোনো নকল বা আগে থেকে বানানো টেমপ্লেট কোড দেখায় না।
 
             **পরবর্তী পদক্ষেপ:**
-            1. **Tools → AI Provider Keys**-এ গিয়ে ফ্রি-টিয়ার API কী যোগ করুন (অথবা অনলাইনে থাকুন)।
-            2. অথবা **Studios → Code Builder** ব্যবহার করে মাল্টি-ফাইল প্রজেক্ট তৈরি ও ZIP ডাউনলোড করুন।
+            1. **AI Settings**-এ গিয়ে ১-ট্যাপে Multi-AI অ্যাক্টিভ করুন বা API কী যোগ করুন।
+            2. তারপর সরাসরি Chat-এ প্রম্পট লিখে সম্পূর্ণ প্রজেক্ট ও কোড তৈরি করুন।
             """.trimIndent()
         } else {
             """
@@ -47,8 +47,8 @@ object AiAppAndCodeStudio {
             Generating real, custom source code for **"$cleanSubject"** requires an active network connection and at least one configured LLM provider (Firebase Gemini AI, Groq, Cerebras, SambaNova, GitHub Models, or OpenRouter). Ayra AI does not emit canned static templates in place of real AI synthesis.
 
             **Next Steps:**
-            1. Add a free-tier API key in **Tools → AI Provider Keys** (or reconnect to the internet).
-            2. Or open **Studios → Code Builder** when online to scaffold, edit, and ZIP complete projects.
+            1. Enable Multi-AI in **AI Settings** with 1 tap (or add a free-tier API key) and reconnect to the internet.
+            2. Then type your complete app or website prompt directly in Chat to synthesize full code.
             """.trimIndent()
         }
 

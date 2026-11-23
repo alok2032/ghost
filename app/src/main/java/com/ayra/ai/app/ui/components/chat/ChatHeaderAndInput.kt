@@ -604,7 +604,7 @@ internal fun EmptyCosmicState(
         ) {
             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonCyan))
             Text(
-                text = "Tap '+' for Cyber Lab, Studios, Wiki RAG & Tools",
+                text = "Tap '+' for Photo/Video/PDF Prompts, Cyber Lab & Tools",
                 color = NeonCyan,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold

@@ -303,7 +303,10 @@ private fun RegistryHealthPanel(context: android.content.Context) {
             val statusColor = when (entry.healthStatus) {
                 ModelHealthStatus.OPERATIONAL -> MaterialTheme.colorScheme.secondary
                 ModelHealthStatus.DEGRADED -> MaterialTheme.colorScheme.tertiary
-                ModelHealthStatus.OFFLINE -> MaterialTheme.colorScheme.error
+                ModelHealthStatus.OFFLINE,
+                ModelHealthStatus.AUTH_FAILED,
+                ModelHealthStatus.INVALID_MODEL,
+                ModelHealthStatus.RETIRED -> MaterialTheme.colorScheme.error
                 ModelHealthStatus.UNCONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
                 ModelHealthStatus.UNKNOWN -> MaterialTheme.colorScheme.primary
             }

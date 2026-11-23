@@ -27,6 +27,25 @@ internal object ProviderAnthropicAndFreeTransport {
         return "${base}messages"
     }
 
+    private fun throwIfAnthropicInlineError(json: JSONObject, model: String) {
+        val errObj = json.optJSONObject("error")
+        val type = json.optString("type", "")
+        if (errObj == null && type != "error") return
+        val errType = errObj?.optString("type", "").orEmpty().lowercase()
+        val msg = errObj?.optString("message", "").orEmpty()
+            .ifBlank { json.optString("message", "Anthropic API error") }
+        when {
+            errType.contains("authentication") || errType.contains("permission") ->
+                throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
+            errType.contains("rate_limit") ->
+                throw ProviderError.RateLimited(msg)
+            errType.contains("not_found") ||
+                (errType.contains("invalid_request") && msg.contains("model", ignoreCase = true)) ->
+                throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, msg, httpStatus = 404)
+            else -> throw ProviderError.ServerError(500, msg)
+        }
+    }
+
     fun callAnthropic(
         httpClient: OkHttpClient,
         baseUrlOverrides: Map<AiProviderType, String>,
@@ -83,13 +102,34 @@ internal object ProviderAnthropicAndFreeTransport {
             if (response.code == 404 || response.code == 410) {
                 throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message }, httpStatus = response.code)
             }
-            if (!response.isSuccessful) throw ProviderError.ServerError(response.code, response.message)
+            if (!response.isSuccessful) {
+                val errBody = response.readBounded(truncateOnOverflow = true).ifBlank { response.message }
+                if (response.code == 400 && (
+                        errBody.contains("not_found_error", ignoreCase = true) ||
+                            (errBody.contains("model", ignoreCase = true) &&
+                                (errBody.contains("invalid", ignoreCase = true) || errBody.contains("not found", ignoreCase = true) || errBody.contains("does not exist", ignoreCase = true)))
+                        )
+                ) {
+                    throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, errBody, httpStatus = 400)
+                }
+                throw ProviderError.ServerError(response.code, errBody)
+            }
 
             val json = JSONObject(response.readBounded())
+            throwIfAnthropicInlineError(json, model)
             val contentArr = json.optJSONArray("content")
             if (contentArr != null && contentArr.length() > 0) {
-                val block = contentArr.getJSONObject(0)
-                return if (!block.isNull("text")) block.optString("text", "") else ""
+                val sb = StringBuilder()
+                for (i in 0 until contentArr.length()) {
+                    val block = contentArr.optJSONObject(i) ?: continue
+                    val blockType = block.optString("type", "")
+                    if (blockType == "thinking" || blockType == "redacted_thinking") continue
+                    if (!block.isNull("text")) {
+                        val txt = block.optString("text", "")
+                        if (txt.isNotEmpty()) sb.append(txt)
+                    }
+                }
+                return sb.toString()
             }
             ""
         }
@@ -136,8 +176,16 @@ internal object ProviderAnthropicAndFreeTransport {
                 throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, response.readBounded(truncateOnOverflow = true).ifBlank { response.message }, httpStatus = response.code)
             }
             if (!response.isSuccessful) {
-                val err = response.readBounded(truncateOnOverflow = true)
-                throw ProviderError.ServerError(response.code, err.ifBlank { response.message })
+                val err = response.readBounded(truncateOnOverflow = true).ifBlank { response.message }
+                if (response.code == 400 && (
+                        err.contains("not_found_error", ignoreCase = true) ||
+                            (err.contains("model", ignoreCase = true) &&
+                                (err.contains("invalid", ignoreCase = true) || err.contains("not found", ignoreCase = true) || err.contains("does not exist", ignoreCase = true)))
+                        )
+                ) {
+                    throw ProviderError.ModelNotFound(AiProviderType.ANTHROPIC, model, err, httpStatus = 400)
+                }
+                throw ProviderError.ServerError(response.code, err)
             }
             val reader = BufferedReader(InputStreamReader(response.body?.byteStream() ?: return, StandardCharsets.UTF_8))
             var line: String?
@@ -145,16 +193,25 @@ internal object ProviderAnthropicAndFreeTransport {
                 val l = line?.trim() ?: continue
                 if (l.startsWith("data:")) {
                     val data = l.substring(5).trim()
+                    if (data.isBlank() || data == "[DONE]") continue
                     try {
                         val json = JSONObject(data)
+                        throwIfAnthropicInlineError(json, model)
                         if (json.optString("type") == "content_block_delta") {
                             val delta = json.optJSONObject("delta")
-                            val text = if (delta != null && !delta.isNull("text")) delta.optString("text", "") else ""
-                            if (text.isNotEmpty()) collector.emit(text)
+                            val deltaType = delta?.optString("type", "") ?: ""
+                            if (deltaType != "thinking_delta" && delta != null && !delta.isNull("text")) {
+                                val text = delta.optString("text", "")
+                                if (text.isNotEmpty()) collector.emit(text)
+                            }
                         }
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Exception) {}
+                    } catch (e: ProviderError) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("AnthropicTransport", "Malformed SSE JSON chunk skipped: ${e.javaClass.simpleName}")
+                    }
                 }
             }
         }
@@ -237,28 +294,47 @@ internal object ProviderAnthropicAndFreeTransport {
         preferredModel: String = "openai",
         preserveReasoning: Boolean = false
     ): String {
+        val turns = buildList {
+            if (systemPrompt.isNotBlank()) add(ChatTurn(role = "system", content = systemPrompt))
+            add(ChatTurn(role = "user", content = prompt))
+        }
+        return queryPollinationsFallback(
+            httpClient = httpClient,
+            baseUrlOverrides = baseUrlOverrides,
+            turns = turns,
+            preferredModel = preferredModel,
+            preserveReasoning = preserveReasoning
+        )
+    }
+
+    fun queryPollinationsFallback(
+        httpClient: OkHttpClient,
+        baseUrlOverrides: Map<AiProviderType, String>,
+        turns: List<ChatTurn>,
+        preferredModel: String = "openai",
+        preserveReasoning: Boolean = false
+    ): String {
         val url = baseUrlOverrides[AiProviderType.POLLINATIONS_FREE]?.let {
             if (it.endsWith("/")) it else "$it/"
         } ?: "https://text.pollinations.ai/"
         val fastFreeClient = httpClient.newBuilder()
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(7, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
             .build()
-        val models = listOf(preferredModel, "openai-large").distinct()
+        val models = listOf(preferredModel.ifBlank { "openai" }, "openai", "openai-large", "qwen-coder")
+            .distinct()
+            .take(3)
+        val filteredTurns = turns.filter { it.content.isNotBlank() }
         for (m in models) {
             try {
                 val jsonPayload = JSONObject().apply {
                     put("messages", JSONArray().apply {
-                        if (systemPrompt.isNotBlank()) {
+                        filteredTurns.forEach { t ->
                             put(JSONObject().apply {
-                                put("role", "system")
-                                put("content", systemPrompt)
+                                put("role", if (t.role in setOf("system", "assistant", "user")) t.role else "user")
+                                put("content", t.content)
                             })
                         }
-                        put(JSONObject().apply {
-                            put("role", "user")
-                            put("content", prompt)
-                        })
                     })
                     put("model", m)
                 }
@@ -287,6 +363,14 @@ internal object ProviderAnthropicAndFreeTransport {
         return ""
     }
 
+    private fun verifiedNimOrDefault(preferredCandidate: String): String {
+        return if (ModelCatalog.isVerifiedOrConfigured(AiProviderType.NVIDIA_NIM, preferredCandidate)) {
+            preferredCandidate
+        } else {
+            ModelCatalog.defaultModelFor(AiProviderType.NVIDIA_NIM)?.id ?: ExternalAiProviders.NVIDIA_LLAMA_MODEL
+        }
+    }
+
     fun getOptimalModelForRoutingMode(
         mode: AiRoutingMode,
         configured: List<AiProviderType>,
@@ -309,7 +393,7 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_DEFAULT_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_REASONER_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
-            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_MUSE_MODEL)
+            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, verifiedNimOrDefault(ExternalAiProviders.NVIDIA_MUSE_MODEL))
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_MODEL)
         }
@@ -319,7 +403,7 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_QWEN_MODEL)
-            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GLM_MODEL)
+            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, verifiedNimOrDefault(ExternalAiProviders.NVIDIA_GLM_MODEL))
             configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_REASONING_MODEL)
             configured.contains(AiProviderType.PERPLEXITY) -> Pair(AiProviderType.PERPLEXITY, ExternalAiProviders.PERPLEXITY_REASONING_MODEL)
             else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL)
@@ -330,7 +414,7 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
-            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ExternalAiProviders.NVIDIA_GLM_MODEL)
+            configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, verifiedNimOrDefault(ExternalAiProviders.NVIDIA_GLM_MODEL))
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, ExternalAiProviders.HF_QWEN_MODEL)
             configured.contains(AiProviderType.OPENAI) -> Pair(AiProviderType.OPENAI, ExternalAiProviders.OPENAI_DEFAULT_MODEL)

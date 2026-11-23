@@ -293,6 +293,7 @@ fun OnboardingOverlay(
                                         com.ayra.ai.app.ai.providers.ExternalAiProviders.clearDynamicModelCache(null)
                                         com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
                                         com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                                        completeAndDismiss()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = uiConfig.accentColor),
                                     modifier = Modifier

@@ -243,8 +243,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
         val langPref = context?.let { AyraPreferences.getPreferredLanguage(it) } ?: "Auto"
         val localOnly = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
         val privacyMode = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } ?: false
+        val isTimeSensitive = com.ayra.ai.app.ai.providers.ProviderPool.isTimeSensitiveQuery(cleanPrompt)
         val cacheKey = "${currentPersona}_${selectedModelTier}_${langPref}_${localOnly}_${privacyMode}_${cleanPrompt.lowercase()}"
-        if (attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank()) {
+        if (!isTimeSensitive && attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank()) {
             memoryResponseCache[cacheKey]?.let { return@withContext it }
         }
 
@@ -385,7 +386,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
             mapped to canonicalTier.displayName
         }
 
-        val shouldCache = (attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank())
+        val shouldCache = (!isTimeSensitive && attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank())
         fun emitResponse(resp: AiResponse): AiResponse {
             if (shouldCache && resp.craftType == null && resp.modelUsed != "Offline Status") {
                 if (memoryResponseCache.size > MAX_CACHE_ENTRIES) {

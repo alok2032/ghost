@@ -102,7 +102,7 @@ internal fun ChatAttachmentHubDialog(
                         }
                         Column {
                             Text(
-                                text = "Ayra AI Studio & Super-Hub ⚡",
+                                text = "Ayra AI Prompt & Super-Hub ⚡",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan,
@@ -251,7 +251,7 @@ internal fun ChatAttachmentHubDialog(
                     icon = Icons.Default.Image,
                     tint = NeonPurple,
                     bgColor = Color(0xFF131B2E),
-                    title = "AI Image Studio (8K Masterpiece) 🎨",
+                    title = "AI Image Creator (8K Masterpiece) 🎨",
                     subtitle = "DALL-E 3 + Gemini + Flux.1 আল্ট্রা-রিয়েল ভিজ্যুয়াল",
                     onClick = {
                         onDismiss()

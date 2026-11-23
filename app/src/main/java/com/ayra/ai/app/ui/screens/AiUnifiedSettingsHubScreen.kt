@@ -24,8 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -35,18 +33,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -72,7 +67,6 @@ fun AiUnifiedSettingsHubScreen(
 
     BackHandler { onBack() }
 
-    var editsLocked by rememberSaveable { mutableStateOf(true) }
     var refreshTick by remember { mutableIntStateOf(0) }
 
     var selectedTier by remember { mutableStateOf(AyraPreferences.getSavedModelTier(context)) }
@@ -81,6 +75,8 @@ fun AiUnifiedSettingsHubScreen(
     )
 
     val isLocalOnly = remember(refreshTick) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
+    val hasConsent = remember(refreshTick) { AyraPreferences.hasExternalAiConsent(context) }
+    val freePoolOn = remember(refreshTick) { AyraPreferences.isFreeAiPoolEnabled(context) }
     val firebaseAvailable = remember(refreshTick) { FirebaseAiEngine.isAvailable(context) }
     val gatewayUrl = remember(refreshTick) { AyraPreferences.getBackendGatewayUrl(context) }
     val activeChannelCount = remember(refreshTick) {
@@ -140,78 +136,32 @@ fun AiUnifiedSettingsHubScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Protected Multi-AI Control Center",
+                    text = "1-Tap Multi-AI & Live Search Control",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Safe Edit Lock Card (defaults to locked to prevent accidental configuration changes)
+        val allAutoActive = !isLocalOnly && hasConsent && freePoolOn
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = if (editsLocked) {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
-                } else {
-                    uiConfig.accentColor.copy(alpha = 0.12f)
-                }
+                containerColor = uiConfig.accentColor.copy(alpha = if (allAutoActive) 0.14f else 0.10f)
             ),
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .border(
                     1.dp,
-                    if (editsLocked) MaterialTheme.colorScheme.outline.copy(alpha = 0.45f) else uiConfig.accentColor.copy(alpha = 0.65f),
+                    uiConfig.accentColor.copy(alpha = 0.55f),
                     RoundedCornerShape(16.dp)
                 )
-                .testTag("ai_settings_lock_card")
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = if (editsLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                    contentDescription = if (editsLocked) "AI settings locked" else "AI settings unlocked",
-                    tint = if (editsLocked) MaterialTheme.colorScheme.primary else uiConfig.accentColor
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (editsLocked) "Safe Edit Lock: ON" else "Safe Edit Lock: UNLOCKED",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        text = if (editsLocked) {
-                            "Locked against accidental taps. Toggle switch to edit AI routing, consent or API keys."
-                        } else {
-                            "Editing enabled. Re-lock when finished to protect your AI setup."
-                        },
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = editsLocked,
-                    onCheckedChange = { editsLocked = it },
-                    modifier = Modifier.testTag("ai_settings_lock_switch")
-                )
-            }
-        }
-
-        // Automatic AI Readiness Summary Card
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("ai_readiness_summary_card")
+                .testTag("ai_hub_auto_setup_card")
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
@@ -225,23 +175,53 @@ fun AiUnifiedSettingsHubScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Automatic Multi-AI Readiness",
+                        text = if (allAutoActive) "All Active AIs & Live Search Ready ✓" else "Auto Multi-AI & Live Search Setup",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
                 }
                 Text(
                     text = buildString {
-                        append("Built-in Firebase AI Logic: ")
-                        append(if (firebaseAvailable) "Active (Zero-Key Ready)" else if (isLocalOnly) "Paused (Local-Only)" else "Unavailable")
-                        append("\nRoute B Backend Gateway: ")
-                        append(if (gatewayUrl.isNotBlank()) "Configured ($gatewayUrl)" else "Not configured (optional)")
-                        append("\nActive BYOK / Local Engines: $activeChannelCount channel(s)")
+                        append("Built-in Firebase AI: ")
+                        append(if (firebaseAvailable) "Active" else if (isLocalOnly) "Paused (Local-Only)" else "Unavailable")
+                        append(" • External Consent: ")
+                        append(if (hasConsent) "ON" else "OFF")
+                        append("\nFree AI Pool + Multi-Engine: ")
+                        append(if (freePoolOn) "ON" else "OFF")
+                        append(" • Active Channels: $activeChannelCount")
+                        if (gatewayUrl.isNotBlank()) append("\nRoute B Gateway: $gatewayUrl")
                     },
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 17.sp
                 )
+                Button(
+                    onClick = {
+                        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+                        AyraPreferences.setExternalAiConsent(context, true)
+                        AyraPreferences.setFreeAiPoolEnabled(context, true)
+                        ExternalAiProviders.clearDynamicModelCache(null)
+                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                        refreshTick++
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("ai_hub_auto_setup_button")
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (allAutoActive) {
+                            "Refresh All AI Engines & Live Search ⚡"
+                        } else {
+                            "Activate All AIs & Live Search (1-Tap) ⚡"
+                        },
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -296,7 +276,6 @@ fun AiUnifiedSettingsHubScreen(
                     tierChoices.forEach { (tier, label) ->
                         FilterChip(
                             selected = selectedTier == tier.id,
-                            enabled = !editsLocked,
                             onClick = {
                                 selectedTier = tier.id
                                 AyraPreferences.saveModelTier(context, tier.id)
@@ -318,7 +297,6 @@ fun AiUnifiedSettingsHubScreen(
                     thinkingChoices.forEach { (modeId, label) ->
                         FilterChip(
                             selected = thinkingMode == modeId,
-                            enabled = !editsLocked,
                             onClick = {
                                 AyraPreferences.setThinkingMode(context, modeId)
                                 refreshTick++
@@ -335,8 +313,9 @@ fun AiUnifiedSettingsHubScreen(
 
         ProviderKeysSection(
             context = context,
-            editsLocked = editsLocked,
+            editsLocked = false,
             initiallyExpandDeveloperKeys = false,
+            externalRefreshTick = refreshTick,
             onActivationChanged = { refreshTick++ }
         )
 

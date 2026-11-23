@@ -13,9 +13,6 @@ import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -300,9 +297,10 @@ class AyraComposeUiTest {
     }
 
     @Test
-    fun settingsAiButtonAndAiHubSafeEditLockProtectSettingsAndConfirmKeyClear() {
+    fun settingsAiButtonOpensStreamlinedHubWithOneTapAutoSetupAndConfirmKeyClear() {
         AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
         AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
         AyraPreferences.setGroqKey(context, "gsk-lock-test-key")
         val aiOpenedState = mutableStateOf(false)
 
@@ -333,18 +331,17 @@ class AyraComposeUiTest {
         composeRule.waitForIdle()
         assertTrue(aiOpenedState.value)
 
-        // Default lock ON protects consent toggle against accidental edits
-        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOn()
-        composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsNotEnabled()
-        assertFalse(AyraPreferences.hasExternalAiConsent(context))
-
-        // Unlocking enables switches and accordion expansion
-        composeRule.onNodeWithTag("ai_settings_lock_switch").performScrollTo().performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOff()
+        // Controls are unlocked immediately without extra lock-switch friction
         composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsEnabled().performClick()
         composeRule.waitForIdle()
         assertTrue(AyraPreferences.hasExternalAiConsent(context))
+
+        // 1-Tap Auto-Setup button activates LocalOnly=false, Consent=true, and FreePool=true
+        composeRule.onNodeWithTag("ai_hub_auto_setup_button").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
 
         composeRule.onNodeWithTag("developer_byok_expand_button").performScrollTo().performClick()
         composeRule.waitForIdle()
@@ -399,9 +396,10 @@ class AyraComposeUiTest {
         AyraPreferences.setExternalAiConsent(context, false)
         AyraPreferences.setFreeAiPoolEnabled(context, false)
 
+        var onboardingDismissed = false
         composeRule.setContent {
             AyraTheme {
-                OnboardingOverlay(onDismissed = {})
+                OnboardingOverlay(onDismissed = { onboardingDismissed = true })
             }
         }
         composeRule.waitForIdle()
@@ -409,6 +407,7 @@ class AyraComposeUiTest {
         composeRule.onNodeWithTag("onboarding_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()
         composeRule.waitForIdle()
 
+        assertTrue(onboardingDismissed)
         assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
         assertTrue(AyraPreferences.hasExternalAiConsent(context))
         assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))

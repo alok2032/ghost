@@ -8,14 +8,17 @@ import android.widget.Toast
 import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import java.util.Locale
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -206,26 +211,56 @@ fun PersonalizationAndMemoryPanel(
             }
         }
 
-        Text("Structured Custom Instructions (Encrypted)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra AI") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = aboutUser, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ayra AI Should Respond") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = outputFormat, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = restrictions, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = freeform, onValueChange = { freeform = it }, label = { Text("Additional Freeform Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+        var showCustomInstructions by remember { mutableStateOf(false) }
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { showCustomInstructions = !showCustomInstructions },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Custom Instructions (Optional)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (showCustomInstructions) "Tap to collapse instructions" else "Tap to edit role, style & format",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = if (showCustomInstructions) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (showCustomInstructions) "Collapse custom instructions" else "Expand custom instructions"
+                    )
+                }
 
-        Button(
-            onClick = {
-                AyraPreferences.setUserCustomInstructions(context, freeform)
-                AyraPreferences.saveStructuredInstructions(
-                    context,
-                    AyraPreferences.StructuredInstructions(rolePrompt, aboutUser, howRespond, outputFormat, interests, restrictions)
-                )
-                Toast.makeText(context, "Encrypted personalization saved!", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth().testTag("save_personalization_button")
-        ) { Text("Save Custom Instructions") }
+                AnimatedVisibility(visible = showCustomInstructions) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = rolePrompt, onValueChange = { rolePrompt = it }, label = { Text("Role / Identity for Ayra AI") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = aboutUser, onValueChange = { aboutUser = it }, label = { Text("About You (Background / Goals)") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = howRespond, onValueChange = { howRespond = it }, label = { Text("How Ayra AI Should Respond") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = outputFormat, onValueChange = { outputFormat = it }, label = { Text("Preferred Output Format") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("Domain Stack & Interests") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = restrictions, onValueChange = { restrictions = it }, label = { Text("Avoid / Restrictions") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = freeform, onValueChange = { freeform = it }, label = { Text("Additional Freeform Instructions") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+
+                        Button(
+                            onClick = {
+                                AyraPreferences.setUserCustomInstructions(context, freeform)
+                                AyraPreferences.saveStructuredInstructions(
+                                    context,
+                                    AyraPreferences.StructuredInstructions(rolePrompt, aboutUser, howRespond, outputFormat, interests, restrictions)
+                                )
+                                Toast.makeText(context, "Encrypted personalization saved!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("save_personalization_button")
+                        ) { Text("Save Custom Instructions") }
+                    }
+                }
+            }
+        }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Persistent Encrypted Memory", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)

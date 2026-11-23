@@ -355,9 +355,12 @@ object AyraAgentOrchestrator {
             else -> "Execution Mode: Balanced — combine clarity, accuracy, and practical depth."
         }
 
+        val todayDate = java.time.LocalDate.now()
+
         return """
             $personaPrefix
             
+            Current Date: $todayDate (Year ${todayDate.year})
             Dispatched Agent: ${domain.title} (${domain.specialty})
             $domainDirective
             $thinkingDirective
@@ -365,9 +368,10 @@ object AyraAgentOrchestrator {
             
             Quality & Anti-Hallucination Standards:
             1. Answer thoroughly with precision, clarity, and practical depth rather than shallow one-liners (unless the user only sent a brief greeting).
-            2. Ground factual claims in any [SURFACE WIKI], [DEEP WEB ACADEMIC WIKI], or [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI] evidence provided below when relevant.
-            3. Never fabricate URLs, statistics, or paper citations. If a detail cannot be verified, state the limitation transparently.
-            4. If asked directly whether you are an AI, acknowledge that you are Ayra AI, an autonomous AI assistant created by Alok.
+            2. Always anchor time-sensitive facts (recent news, current leaders, versions, software releases, prices, weather, ${todayDate.year} events) to Current Date ($todayDate) and provided Live Wiki/Search evidence rather than outdated pretraining cutoffs.
+            3. Ground factual claims in any [SURFACE WIKI], [DEEP WEB ACADEMIC WIKI], or [DARK WEB & OVERLAY NETWORK TECHNICAL WIKI] evidence provided below when relevant.
+            4. Never fabricate URLs, statistics, or paper citations. If a detail cannot be verified, state the limitation transparently.
+            5. If asked directly whether you are an AI, acknowledge that you are Ayra AI, an autonomous AI assistant created by Alok.
             $userContextBlock
         """.trimIndent()
     }
@@ -381,6 +385,7 @@ object AyraAgentOrchestrator {
         val lower = clean.lowercase(Locale.ROOT)
         if (com.ayra.ai.app.ai.GlobalWebKnowledgeGateway.isDarkWebOrNetworkSecurityQuery(clean)) return true
         if (com.ayra.ai.app.ai.AutonomousKnowledgeEngine.tryCalculateMath(clean) != null) return false
+        if (com.ayra.ai.app.ai.providers.ProviderPool.isTimeSensitiveQuery(clean)) return true
         return domain == AgentDomain.RESEARCH_AGENT ||
             domain == AgentDomain.EDUCATION_AGENT ||
             domain == AgentDomain.CYBER_DEFENSE_AGENT ||
@@ -388,7 +393,10 @@ object AyraAgentOrchestrator {
             lower.contains("wiki") || lower.contains("উইকি") ||
             lower.contains("?") || lower.contains("কি") || lower.contains("কী") ||
             lower.contains("explain") || lower.contains("history") || lower.contains("who ") ||
-            lower.contains("what ") || lower.contains("why ") || lower.contains("how ")
+            lower.contains("what ") || lower.contains("why ") || lower.contains("how ") ||
+            lower.contains("kobe") || lower.contains("kothay") || lower.contains("koto") ||
+            lower.contains("dam") || lower.contains("notun") || lower.contains("khobor") ||
+            lower.contains("kivabe")
     }
 
     /**

@@ -37,6 +37,9 @@ enum class ModelHealthStatus(val label: String) {
     OPERATIONAL("Operational"),
     DEGRADED("Degraded"),
     OFFLINE("Error / Offline"),
+    AUTH_FAILED("Auth Failed"),
+    INVALID_MODEL("Invalid Model"),
+    RETIRED("Retired"),
     UNCONFIGURED("Key Needed"),
     UNKNOWN("Not Checked")
 }
@@ -299,7 +302,7 @@ object AiModelRegistry {
                 supportsVision = false,
                 supportsToolCalling = false,
                 modelVersion = "retired",
-                healthStatus = ModelHealthStatus.OFFLINE,
+                healthStatus = ModelHealthStatus.RETIRED,
                 verificationStatus = ModelVerificationStatus.RETIRED,
                 failureReason = "models.inference.ai.azure.com shut down 2026-07-30"
             ),
@@ -569,7 +572,8 @@ object AiModelRegistry {
     suspend fun pingEntry(
         context: Context?,
         entry: RegistryModelEntry,
-        httpClient: OkHttpClient? = null
+        httpClient: OkHttpClient? = null,
+        externalProvidersOverride: ExternalAiProviders? = null
     ): RegistryModelEntry = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val client = httpClient ?: com.ayra.ai.app.security.NetworkSecurityHelper.newClient(
@@ -670,7 +674,7 @@ object AiModelRegistry {
         }
 
         // 3. External REST providers
-        val ext = ExternalAiProviders(context)
+        val ext = externalProvidersOverride ?: ExternalAiProviders(context)
         if (!ext.isProviderConfigured(entry.provider)) {
             return@withContext entry.copy(
                 healthStatus = ModelHealthStatus.UNCONFIGURED,
@@ -690,11 +694,23 @@ object AiModelRegistry {
                 failureReason = null
             )
         } catch (e: Exception) {
-            val status = if (e is ProviderError.RateLimited) ModelHealthStatus.DEGRADED else ModelHealthStatus.OFFLINE
             val httpStatus = when (e) {
+                is ProviderError.Unauthorized -> 401
                 is ProviderError.RateLimited -> 429
                 is ProviderError.ModelNotFound -> e.httpStatus
                 else -> 503
+            }
+            val (status, verStatus) = when {
+                e is ProviderError.Unauthorized || httpStatus == 401 || httpStatus == 403 ->
+                    ModelHealthStatus.AUTH_FAILED to ModelVerificationStatus.AUTH_FAILED
+                e is ProviderError.RateLimited || httpStatus == 429 ->
+                    ModelHealthStatus.DEGRADED to ModelVerificationStatus.RATE_LIMITED
+                httpStatus == 410 ->
+                    ModelHealthStatus.RETIRED to ModelVerificationStatus.RETIRED
+                e is ProviderError.ModelNotFound || httpStatus == 400 || httpStatus == 404 ->
+                    ModelHealthStatus.INVALID_MODEL to ModelVerificationStatus.INVALID_MODEL
+                else ->
+                    ModelHealthStatus.OFFLINE to ModelVerificationStatus.UNAVAILABLE
             }
             if (httpStatus == 410) {
                 ModelCatalog.markModelRetired(entry.provider, entry.modelId, e.message ?: "Model retired")
@@ -710,7 +726,7 @@ object AiModelRegistry {
                 healthStatus = status,
                 lastCheckedMs = now,
                 lastError = e.message ?: "Connection failed",
-                verificationStatus = if (e is ProviderError.RateLimited) ModelVerificationStatus.RATE_LIMITED else ModelVerificationStatus.UNAVAILABLE,
+                verificationStatus = verStatus,
                 failureReason = e.message
             )
         }
@@ -886,12 +902,22 @@ object AiModelRegistry {
                     supportsImageGen = "IMAGE_GEN" in capSet,
                     supportsAudio = "AUDIO" in capSet,
                     modelVersion = "gateway",
-                    healthStatus = if (available) ModelHealthStatus.OPERATIONAL else ModelHealthStatus.UNCONFIGURED,
+                    healthStatus = when {
+                        statusStr == "RETIRED" -> ModelHealthStatus.RETIRED
+                        statusStr == "AUTH_FAILED" -> ModelHealthStatus.AUTH_FAILED
+                        statusStr == "INVALID_MODEL" -> ModelHealthStatus.INVALID_MODEL
+                        statusStr == "RATE_LIMITED" -> ModelHealthStatus.DEGRADED
+                        available -> ModelHealthStatus.OPERATIONAL
+                        else -> ModelHealthStatus.UNCONFIGURED
+                    },
                     lastCheckedMs = now,
                     lastError = obj.optString("failureReason").takeIf { it.isNotBlank() },
                     verificationStatus = when (statusStr) {
                         "LIVE_VERIFIED" -> ModelVerificationStatus.VERIFIED_LIVE
                         "RETIRED" -> ModelVerificationStatus.RETIRED
+                        "AUTH_FAILED" -> ModelVerificationStatus.AUTH_FAILED
+                        "INVALID_MODEL" -> ModelVerificationStatus.INVALID_MODEL
+                        "RATE_LIMITED" -> ModelVerificationStatus.RATE_LIMITED
                         "UNAVAILABLE" -> ModelVerificationStatus.UNAVAILABLE
                         else -> ModelVerificationStatus.CONFIGURED
                     }
