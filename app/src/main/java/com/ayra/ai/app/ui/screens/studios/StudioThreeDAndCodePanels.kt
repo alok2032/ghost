@@ -259,7 +259,7 @@ fun CodeBuilderPanel(context: Context) {
                 isBusy = true
                 errorNote = null
                 scope.launch {
-                    val resText = withContext(Dispatchers.IO) {
+                    val resResult = withContext(Dispatchers.IO) {
                         val sys = "You are a senior software engineer. Output a multi-file project using exact markers `=== FILE: relative/path.ext ===` before each file's code. Write complete, runnable code with zero placeholders."
                         runCatching {
                             pool.executeSync(
@@ -270,11 +270,17 @@ fun CodeBuilderPanel(context: Context) {
                                     systemPromptOverride = sys
                                 )
                             ).text
-                        }.getOrElse { "" }
+                        }
                     }
 
-                    if (resText.isBlank()) {
-                        errorNote = "No configured AI provider returned code. Check Tools & Keys or internet connection."
+                    val resText = resResult.getOrNull().orEmpty()
+                    if (resResult.isFailure || resText.isBlank()) {
+                        val reason = resResult.exceptionOrNull()?.message
+                        errorNote = if (!reason.isNullOrBlank()) {
+                            "Code generation failed: $reason"
+                        } else {
+                            "No configured AI provider returned code. Check AI Settings or internet connection."
+                        }
                         isBusy = false
                         return@launch
                     }

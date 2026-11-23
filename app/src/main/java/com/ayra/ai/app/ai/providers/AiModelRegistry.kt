@@ -790,9 +790,119 @@ object AiModelRegistry {
                 }
             }
         }
+        var backendAdded = 0
+        if (com.ayra.ai.app.security.SecureAiGatewayClient.shouldUseBackendGatewayProxy(context, false)) {
+            backendAdded = syncBackendModelCatalog(
+                context = context,
+                backendBaseUrl = AyraPreferences.getBackendGatewayUrl(context),
+                targetList = currentList,
+                existingPairs = existingModelPairs
+            )
+            addedCount += backendAdded
+        }
+
         if (addedCount > 0) {
             _entries.value = currentList
         }
         addedCount
+    }
+
+    suspend fun syncBackendModelCatalog(
+        context: Context,
+        backendBaseUrl: String,
+        targetList: MutableList<RegistryModelEntry>? = null,
+        existingPairs: MutableSet<String>? = null,
+        httpClient: OkHttpClient? = null,
+        bearerTokenOverride: String? = null,
+        allowUnvalidatedUrlForTests: Boolean = false
+    ): Int = withContext(Dispatchers.IO) {
+        val res = com.ayra.ai.app.security.SecureAiGatewayClient.fetchBackendModelCatalog(
+            context = context,
+            backendBaseUrl = backendBaseUrl,
+            httpClient = httpClient,
+            bearerTokenOverride = bearerTokenOverride,
+            allowUnvalidatedUrlForTests = allowUnvalidatedUrlForTests
+        )
+        val payload = res.getOrElse { err ->
+            android.util.Log.w("AiModelRegistry", "Route B catalog sync skipped: ${err.message}")
+            return@withContext 0
+        }
+        AyraPreferences.setRemoteModelCatalogJson(context, payload.toString())
+
+        val modelsArr = payload.optJSONArray("models") ?: return@withContext 0
+        val workingList = targetList ?: _entries.value.toMutableList()
+        val seenPairs = existingPairs ?: workingList.map { "${it.provider.id}:${it.modelId}" }.toMutableSet()
+        val now = System.currentTimeMillis()
+        var merged = 0
+
+        for (i in 0 until modelsArr.length()) {
+            val obj = modelsArr.optJSONObject(i) ?: continue
+            val modelId = obj.optString("id").trim()
+            if (modelId.isBlank()) continue
+            val rawProv = obj.optString("provider").trim().lowercase()
+            val mappedProvider = when (rawProv) {
+                "gemini" -> AiProviderType.GEMINI
+                "openrouter" -> AiProviderType.OPENROUTER
+                "nvidia", "nvidia_nim" -> AiProviderType.NVIDIA_NIM
+                "groq" -> AiProviderType.GROQ
+                else -> AiProviderType.OPENROUTER
+            }
+            val pairKey = "${mappedProvider.id}:$modelId"
+            if (!seenPairs.add(pairKey)) continue
+
+            val caps = obj.optJSONArray("capabilities")
+            val capSet = buildSet {
+                if (caps != null) {
+                    for (j in 0 until caps.length()) add(caps.optString(j).uppercase())
+                }
+            }
+            val statusStr = obj.optString("verificationStatus", "STATIC_DEFAULT")
+            val available = obj.optBoolean("availableViaGateway", false)
+            val category = when {
+                "IMAGE_GEN" in capSet -> ModelCategory.IMAGE
+                "AUDIO" in capSet -> ModelCategory.AUDIO
+                "CODE" in capSet -> ModelCategory.CODING
+                "REASONING" in capSet -> ModelCategory.REASONING
+                else -> ModelCategory.GENERAL
+            }
+            val contextTokens = obj.optInt("contextTokens", 128_000)
+            val contextWindow = if (contextTokens >= 1_000_000) "${contextTokens / 1_000_000}M tokens" else "${contextTokens / 1_000}k tokens"
+
+            workingList.add(
+                RegistryModelEntry(
+                    id = "gateway_${mappedProvider.id}_${modelId.replace(Regex("[^a-zA-Z0-9_]"), "_").take(32)}",
+                    provider = mappedProvider,
+                    modelId = modelId,
+                    displayName = "${obj.optString("displayName", modelId)} (Gateway)",
+                    category = category,
+                    endpoint = "${backendBaseUrl.trimEnd('/')}/api/v1/ai/chat",
+                    authRequirement = "Firebase Auth + Route B Gateway",
+                    tierStatus = ProviderTierStatus.FREE_TIER_API,
+                    rateLimitNote = if (available) "Verified via Route B Gateway" else "Gateway provider unconfigured",
+                    contextWindow = contextWindow,
+                    supportsStreaming = false,
+                    supportsVision = "VISION" in capSet,
+                    supportsToolCalling = "TOOLS" in capSet,
+                    supportsImageGen = "IMAGE_GEN" in capSet,
+                    supportsAudio = "AUDIO" in capSet,
+                    modelVersion = "gateway",
+                    healthStatus = if (available) ModelHealthStatus.OPERATIONAL else ModelHealthStatus.UNCONFIGURED,
+                    lastCheckedMs = now,
+                    lastError = obj.optString("failureReason").takeIf { it.isNotBlank() },
+                    verificationStatus = when (statusStr) {
+                        "LIVE_VERIFIED" -> ModelVerificationStatus.VERIFIED_LIVE
+                        "RETIRED" -> ModelVerificationStatus.RETIRED
+                        "UNAVAILABLE" -> ModelVerificationStatus.UNAVAILABLE
+                        else -> ModelVerificationStatus.CONFIGURED
+                    }
+                )
+            )
+            merged++
+        }
+
+        if (targetList == null && merged > 0) {
+            _entries.value = workingList
+        }
+        merged
     }
 }

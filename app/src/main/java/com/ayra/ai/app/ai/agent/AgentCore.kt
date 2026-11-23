@@ -713,7 +713,8 @@ class DefaultAgentCore(
                 externalProviders.callOpenAiWithTools(openAiCompatProvider, turns, model, toolsArray)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("DefaultAgentCore", "OpenAI tool planner failed: ${e.message}")
                 null
             }
             if (res != null && (res.toolCalls.isNotEmpty() || res.content.isNotBlank())) {
@@ -732,7 +733,8 @@ class DefaultAgentCore(
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("DefaultAgentCore", "Fallback planner failed: ${e.message}")
             null
         }
         return (resp?.text ?: "") to emptyList()

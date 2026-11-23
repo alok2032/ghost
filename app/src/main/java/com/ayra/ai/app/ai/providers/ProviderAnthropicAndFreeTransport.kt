@@ -196,6 +196,39 @@ internal object ProviderAnthropicAndFreeTransport {
         }
     }
 
+    internal fun extractPollinationsText(rawBody: String): String {
+        val trimmed = rawBody.trim()
+        if (trimmed.startsWith("{")) {
+            val extracted = runCatching {
+                val json = JSONObject(trimmed)
+                val choices = json.optJSONArray("choices")
+                if (choices != null && choices.length() > 0) {
+                    val msg = choices.getJSONObject(0).optJSONObject("message")
+                    val content = if (msg != null && !msg.isNull("content")) msg.optString("content", "") else ""
+                    val reasoning = if (msg != null && !msg.isNull("reasoning_content")) msg.optString("reasoning_content", "") else ""
+                    (content.ifBlank { reasoning }).trim()
+                } else {
+                    val directText = if (!json.isNull("text")) json.optString("text", "") else ""
+                    val directContent = if (!json.isNull("content")) json.optString("content", "") else ""
+                    directText.ifBlank { directContent }.trim()
+                }
+            }.getOrDefault("")
+            if (extracted.isNotBlank()) return extracted
+        }
+        return trimmed
+    }
+
+    internal fun isPollinationsGatewayError(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        if (lower.length < 2) return true
+        return lower.startsWith("<!doctype") ||
+            lower.startsWith("<html") ||
+            lower.contains("502 bad gateway") ||
+            lower.contains("504 gateway") ||
+            lower.contains("cloudflare") ||
+            lower.contains("error code: 5")
+    }
+
     fun queryPollinationsFallback(
         httpClient: OkHttpClient,
         baseUrlOverrides: Map<AiProviderType, String>,
@@ -208,10 +241,10 @@ internal object ProviderAnthropicAndFreeTransport {
             if (it.endsWith("/")) it else "$it/"
         } ?: "https://text.pollinations.ai/"
         val fastFreeClient = httpClient.newBuilder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(7, TimeUnit.SECONDS)
             .build()
-        val models = listOf(preferredModel, "openai-large", "openai", "mistral").distinct()
+        val models = listOf(preferredModel, "openai-large").distinct()
         for (m in models) {
             try {
                 val jsonPayload = JSONObject().apply {
@@ -238,14 +271,18 @@ internal object ProviderAnthropicAndFreeTransport {
 
                 val result = fastFreeClient.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        val text = resp.readBounded(truncateOnOverflow = true).trim()
-                        if (text.length >= 2 && !text.contains("error code", ignoreCase = true) && !text.startsWith("<!DOCTYPE")) text else ""
+                        val parsed = extractPollinationsText(resp.readBounded(truncateOnOverflow = true))
+                        if (!isPollinationsGatewayError(parsed)) parsed else ""
                     } else ""
                 }
                 if (result.isNotBlank()) {
                     return if (preserveReasoning) result else ExternalAiProviders.sanitizeModelOutput(result)
                 }
-            } catch (_: Exception) {}
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("PollinationsTransport", "Free AI call failed ($m): ${e.message}")
+            }
         }
         return ""
     }

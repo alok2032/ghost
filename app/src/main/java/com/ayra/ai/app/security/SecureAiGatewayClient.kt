@@ -100,6 +100,105 @@ object SecureAiGatewayClient {
         return SecurityAuditLogger.redactSensitiveText(input)
     }
 
+    fun mapProviderToGatewaySlug(provider: AiProviderType?): String = when (provider) {
+        AiProviderType.OPENROUTER -> "openrouter"
+        AiProviderType.NVIDIA_NIM -> "nvidia"
+        AiProviderType.GROQ -> "groq"
+        else -> "gemini"
+    }
+
+    suspend fun probeBackendGatewayHealth(
+        context: Context,
+        backendBaseUrl: String,
+        httpClient: okhttp3.OkHttpClient? = null,
+        allowUnvalidatedUrlForTests: Boolean = false
+    ): Long = withContext(Dispatchers.IO) {
+        if (AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
+            throw SecurityException("Blocked backend check: Local-Only Privacy Mode is active.")
+        }
+        if (!allowUnvalidatedUrlForTests) {
+            val urlCheck = NetworkSecurityHelper.validatePublicHttpsUrl(backendBaseUrl)
+            if (!urlCheck.allowed) {
+                throw IllegalArgumentException(urlCheck.reason ?: "Unsafe backend URL (HTTPS public domain required).")
+            }
+        }
+        val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
+        val start = System.currentTimeMillis()
+        val req = Request.Builder()
+            .url("${backendBaseUrl.trimEnd('/')}/health")
+            .get()
+            .build()
+        activeClient.newCall(req).execute().use { resp ->
+            val raw = resp.readBounded()
+            if (!resp.isSuccessful) {
+                throw IllegalStateException("Backend gateway /health HTTP ${resp.code}: ${raw.take(150)}")
+            }
+        }
+        (System.currentTimeMillis() - start).coerceAtLeast(1L)
+    }
+
+    suspend fun fetchBackendModelCatalog(
+        context: Context,
+        backendBaseUrl: String,
+        appCheckToken: String? = null,
+        httpClient: okhttp3.OkHttpClient? = null,
+        bearerTokenOverride: String? = null,
+        allowUnvalidatedUrlForTests: Boolean = false
+    ): Result<JSONObject> = withContext(Dispatchers.IO) {
+        if (AyraPreferences.isLocalOnlyAiModeEnabled(context)) {
+            return@withContext Result.failure(SecurityException("Blocked backend catalog: Local-Only Privacy Mode is active."))
+        }
+        if (!AyraPreferences.hasExternalAiConsent(context)) {
+            return@withContext Result.failure(SecurityException("Blocked backend catalog: External Cloud AI consent is disabled."))
+        }
+        if (!allowUnvalidatedUrlForTests) {
+            val urlCheck = NetworkSecurityHelper.validatePublicHttpsUrl(backendBaseUrl)
+            if (!urlCheck.allowed) {
+                return@withContext Result.failure(SecurityException("Unsafe backend URL: ${urlCheck.reason}"))
+            }
+        }
+
+        val tokenResult = if (!bearerTokenOverride.isNullOrBlank()) {
+            bearerTokenOverride
+        } else {
+            val user = runCatching { FirebaseAuth.getInstance().currentUser }.getOrNull()
+                ?: return@withContext Result.failure(SecurityException("Firebase authentication required for Ayra AI Backend."))
+            runCatching {
+                val task = user.getIdToken(false)
+                com.google.android.gms.tasks.Tasks.await(task).token
+            }.getOrNull()
+        }
+        if (tokenResult.isNullOrBlank()) {
+            return@withContext Result.failure(SecurityException("Unable to obtain verified Firebase ID token."))
+        }
+
+        val resolvedAppCheckToken = appCheckToken?.takeIf { it.isNotBlank() } ?: runCatching {
+            val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+            com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false)).token
+        }.getOrNull()
+
+        val reqBuilder = Request.Builder()
+            .url("${backendBaseUrl.trimEnd('/')}/api/v1/models/catalog")
+            .header("Authorization", "Bearer $tokenResult")
+            .header("X-Ayra-Device-Id", AyraPreferences.getOrCreateDeviceId(context))
+            .get()
+
+        if (!resolvedAppCheckToken.isNullOrBlank()) {
+            reqBuilder.header("X-Firebase-AppCheck", resolvedAppCheckToken)
+        }
+
+        val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
+        runCatching {
+            activeClient.newCall(reqBuilder.build()).execute().use { resp ->
+                val raw = resp.readBounded()
+                if (!resp.isSuccessful) {
+                    throw IllegalStateException("Backend catalog HTTP ${resp.code}: ${raw.take(200)}")
+                }
+                JSONObject(raw)
+            }
+        }
+    }
+
     /**
      * Sends a Zero-Trust authenticated chat request to AYRA's own backend AI gateway (`backend/`),
      * attaching a fresh Firebase ID Token in `Authorization: Bearer` and Firebase App Check token

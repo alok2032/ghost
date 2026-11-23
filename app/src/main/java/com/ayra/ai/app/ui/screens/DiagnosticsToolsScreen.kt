@@ -265,11 +265,17 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
     var backupStatus by remember { mutableStateOf<String?>(null) }
 
     fun reloadArtifacts() {
-        artifacts = StorageHelper.listWorkspaceArtifacts(context)
+        scope.launch {
+            artifacts = withContext(Dispatchers.IO) {
+                StorageHelper.listWorkspaceArtifacts(context)
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
-        reloadArtifacts()
+        artifacts = withContext(Dispatchers.IO) {
+            StorageHelper.listWorkspaceArtifacts(context)
+        }
     }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
@@ -597,8 +603,15 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                         }
                         IconButton(
                             onClick = {
-                                if (StorageHelper.deleteWorkspaceArtifact(item.file)) {
-                                    reloadArtifacts()
+                                scope.launch {
+                                    val deleted = withContext(Dispatchers.IO) {
+                                        StorageHelper.deleteWorkspaceArtifact(item.file)
+                                    }
+                                    if (deleted) {
+                                        artifacts = withContext(Dispatchers.IO) {
+                                            StorageHelper.listWorkspaceArtifacts(context)
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier.size(48.dp)

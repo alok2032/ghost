@@ -408,7 +408,7 @@ fun PromptEngineeringScreen(
                         }
                     },
                     enabled = !isCritiquing && compiledPrompt.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 ) {
                     if (isCritiquing) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     else Text("Run Live AI Deep Critique")
@@ -509,7 +509,7 @@ fun PromptEngineeringScreen(
                         }
                     },
                     enabled = !isRunningLab && compiledPrompt.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 ) {
                     if (isRunningLab) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     else Text("Run Multi-Model A/B Test")

@@ -284,13 +284,13 @@ fun SecurityCenterScreen(
                 }
             }
 
-            if (!erasureReportNote.isNullOrBlank()) {
+            erasureReportNote?.takeIf { it.isNotBlank() }?.let { note ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(
-                        text = erasureReportNote!!,
+                        text = note,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(14.dp)

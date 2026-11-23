@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -53,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ayra.ai.app.data.AyraPreferences
@@ -180,7 +182,7 @@ fun ProjectsAndAssistantsScreen(
                     onClick = { activeTab = tab },
                     leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     label = { Text(tab.label, fontSize = 12.sp) },
-                    modifier = Modifier.testTag("workspace_tab_${tab.name.lowercase()}")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("workspace_tab_${tab.name.lowercase()}")
                 )
             }
         }
@@ -193,14 +195,17 @@ fun ProjectsAndAssistantsScreen(
                             editingProject = null
                             showProjectDialog = true
                         },
-                        modifier = Modifier.weight(1f).testTag("new_project_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("new_project_button")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("New Project")
                     }
                     if (activeProjectId > 0L) {
-                        OutlinedButton(onClick = { AyraPreferences.setActiveProjectId(context, 0L) }) {
+                        OutlinedButton(
+                            onClick = { AyraPreferences.setActiveProjectId(context, 0L) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
                             Text("Clear Active")
                         }
                     }
@@ -226,7 +231,14 @@ fun ProjectsAndAssistantsScreen(
                         ) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(proj.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        proj.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                    )
                                     if (isActive) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = uiConfig.accentColor, modifier = Modifier.size(16.dp))
@@ -244,10 +256,13 @@ fun ProjectsAndAssistantsScreen(
                                     Text("Project Memory: ${proj.memoryNotes.take(120)}", style = MaterialTheme.typography.labelSmall, color = uiConfig.accentColor)
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Button(onClick = {
-                                        AyraPreferences.setActiveProjectId(context, proj.id)
-                                        onOpenProjectChat(proj.id, null)
-                                    }) {
+                                    Button(
+                                        onClick = {
+                                            AyraPreferences.setActiveProjectId(context, proj.id)
+                                            onOpenProjectChat(proj.id, null)
+                                        },
+                                        modifier = Modifier.heightIn(min = 48.dp)
+                                    ) {
                                         Text(if (isActive) "Open Chat" else "Activate & Chat")
                                     }
                                     IconButton(
@@ -282,14 +297,17 @@ fun ProjectsAndAssistantsScreen(
                             editingAssistant = null
                             showAssistantDialog = true
                         },
-                        modifier = Modifier.weight(1f).testTag("new_assistant_button")
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("new_assistant_button")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Create Assistant")
                     }
                     if (activeAssistantId > 0L) {
-                        OutlinedButton(onClick = { AyraPreferences.setActiveAssistantId(context, 0L) }) {
+                        OutlinedButton(
+                            onClick = { AyraPreferences.setActiveAssistantId(context, 0L) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
                             Text("Reset Default")
                         }
                     }
@@ -308,7 +326,14 @@ fun ProjectsAndAssistantsScreen(
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("${ast.iconEmoji} ${ast.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text(
+                                    "${ast.iconEmoji} ${ast.name}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                )
                                 if (isActive) {
                                     Text("ACTIVE", color = uiConfig.accentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -322,10 +347,13 @@ fun ProjectsAndAssistantsScreen(
                                 color = uiConfig.accentColor
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Button(onClick = {
-                                    AyraPreferences.setActiveAssistantId(context, ast.id)
-                                    onOpenProjectChat(null, ast.id)
-                                }) {
+                                Button(
+                                    onClick = {
+                                        AyraPreferences.setActiveAssistantId(context, ast.id)
+                                        onOpenProjectChat(null, ast.id)
+                                    },
+                                    modifier = Modifier.heightIn(min = 48.dp)
+                                ) {
                                     Text(if (isActive) "Chat Now" else "Activate")
                                 }
                                 IconButton(
@@ -415,27 +443,30 @@ private fun ProjectEditorDialog(
                 OutlinedTextField(value = memoryNotes, onValueChange = { memoryNotes = it }, label = { Text("Project Memory Notes / Specs") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     com.ayra.ai.app.ai.providers.ModelTier.projectDefaultIds.forEach { t ->
-                        FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 11.sp) })
+                        FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 11.sp) }, modifier = Modifier.heightIn(min = 48.dp))
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (name.isBlank()) return@Button
-                onSave(
-                    (initial ?: ProjectEntity(name = name)).copy(
-                        name = name.trim(),
-                        description = desc.trim(),
-                        customInstructions = instructions.trim(),
-                        memoryNotes = memoryNotes.trim(),
-                        defaultModelTier = tier,
-                        updatedAt = System.currentTimeMillis()
+            Button(
+                onClick = {
+                    if (name.isBlank()) return@Button
+                    onSave(
+                        (initial ?: ProjectEntity(name = name)).copy(
+                            name = name.trim(),
+                            description = desc.trim(),
+                            customInstructions = instructions.trim(),
+                            memoryNotes = memoryNotes.trim(),
+                            defaultModelTier = tier,
+                            updatedAt = System.currentTimeMillis()
+                        )
                     )
-                )
-            }) { Text("Save") }
+                },
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") } }
     )
 }
 
@@ -462,14 +493,17 @@ private fun AssistantEditorDialog(
             title = { Text("18+ Companion Persona Confirmation", fontWeight = FontWeight.Bold) },
             text = { Text("Companion Mode is intended only for adults (18+). Confirm you are 18+ to assign GF_COMPANION to a custom assistant.") },
             confirmButton = {
-                Button(onClick = {
-                    AyraPreferences.setCompanionAgeVerified(dialogContext, true)
-                    style = "GF_COMPANION"
-                    showAgeGate = false
-                }) { Text("Confirm 18+") }
+                Button(
+                    onClick = {
+                        AyraPreferences.setCompanionAgeVerified(dialogContext, true)
+                        style = "GF_COMPANION"
+                        showAgeGate = false
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Confirm 18+") }
             },
             dismissButton = {
-                TextButton(onClick = { showAgeGate = false }) { Text("Cancel") }
+                TextButton(onClick = { showAgeGate = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
             }
         )
     }
@@ -497,41 +531,45 @@ private fun AssistantEditorDialog(
                                     style = s
                                 }
                             },
-                            label = { Text(if (s == "GF_COMPANION") "COMPANION (18+)" else s, fontSize = 10.sp) }
+                            label = { Text(if (s == "GF_COMPANION") "COMPANION (18+)" else s, fontSize = 10.sp) },
+                            modifier = Modifier.heightIn(min = 48.dp)
                         )
                     }
                 }
                 Text("Thinking Mode:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("fast", "balanced", "deep_analysis", "reasoning", "research", "coding", "creative").forEach { m ->
-                        FilterChip(selected = thinking == m, onClick = { thinking = m }, label = { Text(m, fontSize = 10.sp) })
+                        FilterChip(selected = thinking == m, onClick = { thinking = m }, label = { Text(m, fontSize = 10.sp) }, modifier = Modifier.heightIn(min = 48.dp))
                     }
                 }
                 Text("Default Tier:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     com.ayra.ai.app.ai.providers.ModelTier.assistantDefaultIds.forEach { t ->
-                        FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 10.sp) })
+                        FilterChip(selected = tier == t, onClick = { tier = t }, label = { Text(t, fontSize = 10.sp) }, modifier = Modifier.heightIn(min = 48.dp))
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (name.isBlank() || systemPrompt.isBlank()) return@Button
-                onSave(
-                    (initial ?: CustomAssistantEntity(name = name, systemPrompt = systemPrompt)).copy(
-                        name = name.trim(),
-                        iconEmoji = emoji.ifBlank { "🤖" },
-                        description = desc.trim(),
-                        systemPrompt = systemPrompt.trim(),
-                        personaStyle = style,
-                        thinkingMode = thinking,
-                        defaultModelTier = tier,
-                        updatedAt = System.currentTimeMillis()
+            Button(
+                onClick = {
+                    if (name.isBlank() || systemPrompt.isBlank()) return@Button
+                    onSave(
+                        (initial ?: CustomAssistantEntity(name = name, systemPrompt = systemPrompt)).copy(
+                            name = name.trim(),
+                            iconEmoji = emoji.ifBlank { "🤖" },
+                            description = desc.trim(),
+                            systemPrompt = systemPrompt.trim(),
+                            personaStyle = style,
+                            thinkingMode = thinking,
+                            defaultModelTier = tier,
+                            updatedAt = System.currentTimeMillis()
+                        )
                     )
-                )
-            }) { Text("Save") }
+                },
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") } }
     )
 }

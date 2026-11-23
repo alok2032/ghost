@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -23,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
@@ -73,7 +75,8 @@ fun SettingsAppearanceScreen(
     onOpenSecurityCenter: () -> Unit,
     onPersonaChanged: (String) -> Unit,
     modifier: Modifier = Modifier,
-    onOpenMemory: () -> Unit = {}
+    onOpenMemory: () -> Unit = {},
+    onOpenAiSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiConfig = LocalAyraUiConfig.current
@@ -118,6 +121,51 @@ fun SettingsAppearanceScreen(
             }
         }
 
+        Card(
+            onClick = onOpenAiSettings,
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = uiConfig.accentColor.copy(alpha = 0.14f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .border(1.dp, uiConfig.accentColor.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
+                .testTag("settings_ai_button")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = "Open AI Settings Hub",
+                    tint = uiConfig.accentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "AI",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = uiConfig.accentColor
+                    )
+                    Text(
+                        text = "Protected Multi-AI Engine, Routing & Encrypted API Keys",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = "Open",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = uiConfig.accentColor
+                )
+            }
+        }
+
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SettingsTab.entries.forEach { tab ->
                 val icon = when (tab) {
@@ -130,7 +178,7 @@ fun SettingsAppearanceScreen(
                     onClick = { activeTab = tab },
                     leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     label = { Text(tab.label, fontSize = 12.sp) },
-                    modifier = Modifier.testTag("settings_tab_${tab.name.lowercase()}")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("settings_tab_${tab.name.lowercase()}")
                 )
             }
         }
@@ -151,7 +199,7 @@ fun SettingsAppearanceScreen(
                             selected = themeMode == id,
                             onClick = { AyraPreferences.setThemeMode(context, id) },
                             label = { Text(label, fontSize = 11.sp) },
-                            modifier = Modifier.testTag("theme_mode_$id")
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("theme_mode_$id")
                         )
                     }
                 }
@@ -187,7 +235,10 @@ fun SettingsAppearanceScreen(
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
-                        Button(onClick = { AyraPreferences.setCustomAccentHex(context, customHexDraft) }) {
+                        Button(
+                            onClick = { AyraPreferences.setCustomAccentHex(context, customHexDraft) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
                             Text("Apply")
                         }
                     }
@@ -201,7 +252,8 @@ fun SettingsAppearanceScreen(
                                 FilterChip(
                                     selected = kotlin.math.abs(fontScale - sc) < 0.03f,
                                     onClick = { AyraPreferences.setFontScale(context, sc) },
-                                    label = { Text(label, fontSize = 11.sp) }
+                                    label = { Text(label, fontSize = 11.sp) },
+                                    modifier = Modifier.heightIn(min = 48.dp)
                                 )
                             }
                         }
@@ -224,7 +276,8 @@ fun SettingsAppearanceScreen(
                                 FilterChip(
                                     selected = uiDensity == d,
                                     onClick = { AyraPreferences.setUiDensity(context, d) },
-                                    label = { Text(d.replaceFirstChar { it.uppercase() }, fontSize = 11.sp) }
+                                    label = { Text(d.replaceFirstChar { it.uppercase() }, fontSize = 11.sp) },
+                                    modifier = Modifier.heightIn(min = 48.dp)
                                 )
                             }
                         }

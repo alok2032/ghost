@@ -11,6 +11,7 @@ import com.ayra.ai.app.ai.providers.BestAnswerSelector
 import com.ayra.ai.app.ai.providers.ChatRequest
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.ai.providers.ModelTier
+import com.ayra.ai.app.ai.providers.ProviderAnthropicAndFreeTransport
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.data.AyraPreferences
@@ -267,5 +268,53 @@ class AutoConnectBestAnswerTest {
 
         assertTrue("BestAnswerSelector should choose clean runnable Kotlin code", finalText.contains("fun binarySearch"))
         assertTrue("Model label should reflect Best Answer selection", finalModel.contains("Best Answer"))
+    }
+
+    @Test
+    fun bestAnswerSelectorPenalizesLongRefusalAndSelectDiversePicksAcrossProviders() {
+        val longRefusal = "As an AI language model, I cannot verify live repository contents right now. " +
+            "Please provide an API key first to proceed with detailed code generation. ".repeat(10)
+        assertTrue(
+            "Long hard refusal (>500 chars) must still be flagged as low value/refusal",
+            BestAnswerSelector.isLowValueOrRefusal(longRefusal)
+        )
+
+        val channels = listOf(
+            AiModelChannel("groq_1", AiProviderType.GROQ, "llama-3.3-70b", "Groq 1", setOf("general"), false, keyResolver = { "k" }),
+            AiModelChannel("groq_2", AiProviderType.GROQ, "qwen3-32b", "Groq 2", setOf("coding"), false, keyResolver = { "k" }),
+            AiModelChannel("cerebras_1", AiProviderType.CEREBRAS, "llama3.1-8b", "Cerebras 1", setOf("fast"), false, keyResolver = { "k" }),
+            AiModelChannel("sambanova_1", AiProviderType.SAMBANOVA, "DeepSeek-R1", "SambaNova 1", setOf("reasoning"), false, keyResolver = { "k" }),
+            AiModelChannel("openai_1", AiProviderType.OPENAI, "gpt-4o", "OpenAI 1", setOf("general"), false, keyResolver = { "k" })
+        )
+        val pool = ProviderPool(context = context)
+        val selected = pool.selectDiverseEnsembleChannels(channels, maxCount = 4)
+        val selectedProviders = selected.map { it.provider }.toSet()
+        assertEquals(4, selected.size)
+        assertEquals(
+            "Round-robin diversity must pick 1 from each distinct provider before taking secondary models",
+            setOf(AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA, AiProviderType.OPENAI),
+            selectedProviders
+        )
+    }
+
+    @Test
+    fun pollinationsTransportExtractsOpenAiJsonAndAllowsValidTechnicalProse() {
+        val openAiJson = JSONObject().put(
+            "choices",
+            JSONArray().put(
+                JSONObject().put("message", JSONObject().put("role", "assistant").put("content", "HTTP error code 502 means Bad Gateway."))
+            )
+        ).toString()
+
+        val extracted = ProviderAnthropicAndFreeTransport.extractPollinationsText(openAiJson)
+        assertEquals("HTTP error code 502 means Bad Gateway.", extracted)
+        assertFalse(
+            "Valid prose explaining an HTTP status should NOT be misclassified as a gateway error",
+            ProviderAnthropicAndFreeTransport.isPollinationsGatewayError(extracted)
+        )
+        assertTrue(
+            "HTML error page must still be rejected as gateway error",
+            ProviderAnthropicAndFreeTransport.isPollinationsGatewayError("<!DOCTYPE html><html><body>502 Bad Gateway</body></html>")
+        )
     }
 }

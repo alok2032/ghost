@@ -309,7 +309,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("UnifiedAiEngine", "BYOX Pool fallback: ${e.message}")
+                }
             }
             val byoxFallback = BuildYourOwnXKnowledgeEngine.synthesizeBuildYourOwnX(cleanPrompt, isBengali, isGfMode)
             val byoxNotice = if (isBengali) {
@@ -347,7 +349,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("UnifiedAiEngine", "Code Studio Pool fallback: ${e.message}")
+                }
             }
             val geminiAllowed = externalAiProviders.isTestHarnessMode ||
                 com.ayra.ai.app.security.SecureAiGatewayClient.evaluateProviderAccess(context, com.ayra.ai.app.ai.providers.AiProviderType.GEMINI).allowed
@@ -431,8 +435,8 @@ class UnifiedAiEngine @JvmOverloads constructor(
 
                 val poolMode = canonicalTier.resolvePoolMode(wsCtx.effectiveThinkingMode)
                 val (preferredProvider, preferredModel) =
-                    targetTier.toModelTier().resolvePreferredProviderAndModel(externalAiProviders)
-                val specialistDirective = targetTier.toModelTier().buildSpecialistSystemDirective(
+                    canonicalTier.resolvePreferredProviderAndModel(externalAiProviders)
+                val specialistDirective = canonicalTier.buildSpecialistSystemDirective(
                     prompt = effectivePrompt,
                     context = context,
                     baseSystemPrompt = sysPrompt

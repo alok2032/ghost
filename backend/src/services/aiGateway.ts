@@ -177,8 +177,14 @@ export async function forwardSecureAiRequest(
         signal: AbortSignal.timeout(30_000),
       });
       if (!upstreamRes.ok) {
+        const mappedStatus =
+          upstreamRes.status === 429
+            ? 429
+            : upstreamRes.status >= 400 && upstreamRes.status < 500
+              ? upstreamRes.status
+              : 502;
         throw new GatewayError(
-          upstreamRes.status === 429 ? 429 : 502,
+          mappedStatus,
           `Upstream provider returned HTTP ${upstreamRes.status}`
         );
       }
@@ -263,8 +269,14 @@ export async function forwardSecureAiRequest(
     });
 
     if (!upstreamRes.ok) {
+      const mappedStatus =
+        upstreamRes.status === 429
+          ? 429
+          : upstreamRes.status >= 400 && upstreamRes.status < 500
+            ? upstreamRes.status
+            : 502;
       throw new GatewayError(
-        upstreamRes.status === 429 ? 429 : 502,
+        mappedStatus,
         `Upstream provider returned HTTP ${upstreamRes.status}`
       );
     }

@@ -80,6 +80,7 @@ fun OnboardingOverlay(
     var localOnlyEnabled by remember { mutableStateOf(AyraPreferences.isLocalOnlyAiModeEnabled(context)) }
     var externalAiConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
     var freePoolEnabled by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
+    var quickActivatedBanner by remember { mutableStateOf(false) }
 
     val steps = remember {
         listOf(
@@ -276,6 +277,43 @@ fun OnboardingOverlay(
                                             )
                                         }
                                     }
+                                }
+                            }
+
+                            if (activeStep == 0) {
+                                Button(
+                                    onClick = {
+                                        localOnlyEnabled = false
+                                        externalAiConsent = true
+                                        freePoolEnabled = true
+                                        quickActivatedBanner = true
+                                        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+                                        AyraPreferences.setExternalAiConsent(context, true)
+                                        AyraPreferences.setFreeAiPoolEnabled(context, true)
+                                        com.ayra.ai.app.ai.providers.ExternalAiProviders.clearDynamicModelCache(null)
+                                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = uiConfig.accentColor),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .testTag("onboarding_enable_all_ai_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (quickActivatedBanner || (externalAiConsent && freePoolEnabled && !localOnlyEnabled)) {
+                                            "All Active AIs & Live Search Activated ✓"
+                                        } else {
+                                            "Enable All Active AIs & Live Search (1-Tap)"
+                                        },
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
 

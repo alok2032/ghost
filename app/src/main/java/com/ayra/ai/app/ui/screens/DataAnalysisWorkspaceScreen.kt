@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -138,7 +139,7 @@ fun DataAnalysisWorkspaceScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = { filePicker.launch(arrayOf("text/csv", "text/tab-separated-values", "text/plain")) },
-                modifier = Modifier.weight(1f).testTag("import_csv_button")
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("import_csv_button")
             ) {
                 Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
@@ -149,7 +150,7 @@ fun DataAnalysisWorkspaceScreen(
                     val profile = DataAnalysisEngine.summarizeTabularText(rawCsv, fileName)
                     onSendInsightPromptToChat("Analyze this dataset thoroughly and suggest actionable charts & anomalies:\n\n$profile")
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
             ) {
                 Text("Discuss in Chat")
             }
@@ -248,7 +249,7 @@ fun DataAnalysisWorkspaceScreen(
                 }
             },
             enabled = !isAnalyzingAi && rawCsv.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().testTag("ask_ai_data_insights_button")
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ask_ai_data_insights_button")
         ) {
             if (isAnalyzingAi) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
             else {

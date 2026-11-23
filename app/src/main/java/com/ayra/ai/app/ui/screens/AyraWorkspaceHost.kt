@@ -96,6 +96,7 @@ enum class AyraDestination(
     MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub, "Arena"),
     TOOLS_HUB("Tools, Keys & Plugins", "API Keys, Terminal, Files & GitHub", Icons.Default.Build, "Tools"),
     SETTINGS_APPEARANCE("Appearance & Personalization", "Themes, Memory, Thinking & Health", Icons.Default.Palette, "Theme"),
+    AI_SETTINGS("AI Control & Keys", "Auto Multi-AI, Edit Lock & API Keys", Icons.Default.AutoAwesome, "AI"),
     SECURITY_CENTER("Zero-Trust Security Vault", "Biometrics, E2EE, Audit & Wipe", Icons.Default.Security, "Security")
 }
 
@@ -436,7 +437,14 @@ fun AyraWorkspaceHost(
                             onOpenTools = { currentDest = AyraDestination.TOOLS_HUB },
                             onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
                             onOpenMemory = { currentDest = AyraDestination.MEMORY },
+                            onOpenAiSettings = { currentDest = AyraDestination.AI_SETTINGS },
                             onPersonaChanged = { style -> viewModel.setPersona(style) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AyraDestination.AI_SETTINGS -> AiUnifiedSettingsHubScreen(
+                            onBack = { currentDest = AyraDestination.SETTINGS_APPEARANCE },
+                            onOpenModels = { currentDest = AyraDestination.MODELS_ARENA },
+                            onOpenSecurityCenter = { currentDest = AyraDestination.SECURITY_CENTER },
                             modifier = Modifier.fillMaxSize()
                         )
                         AyraDestination.SECURITY_CENTER -> SecurityCenterScreen(

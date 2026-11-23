@@ -851,3 +851,82 @@ test("M3 & M4: Atomic AI quota settles actual tokens, refunds failures, and Redi
   assert.equal(redisCommands[0][0][0], "EVAL");
   assert.ok(String(redisCommands[0][0][1]).includes("redis.call('DEL'"));
 });
+
+test("Upstream HTTP 404/400 maps status accurately and does NOT trip circuit breaker, while repeated 500 opens it", async () => {
+  let upstreamStatus = 404;
+  let upstreamCalls = 0;
+  const cbApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      rateLimitMax: 50,
+      aiProviderRateLimitMax: 50,
+      aiModelRateLimitMax: 50,
+      dailyTokenQuotaPerUser: 100_000,
+    },
+    verifiers: {
+      verifyIdToken: async () => ({ uid: "uid_cb_test", email: "cb@example.com", role: "user" }),
+      verifyAppCheckToken: async () => undefined,
+    },
+    rateLimitStore: new MemoryRateLimitStore(),
+    fetchFn: async () => {
+      upstreamCalls++;
+      return new Response(JSON.stringify({ error: { message: "upstream status test" } }), {
+        status: upstreamStatus,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  const cbSrv = await new Promise((resolve) => {
+    const srv = cbApp.listen(0, "127.0.0.1", () => resolve(srv));
+  });
+  try {
+    const u = `http://127.0.0.1:${cbSrv.address().port}`;
+    const sendChat = (model = "gemini-3.8-flash") =>
+      fetch(`${u}/api/v1/ai/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer cb_valid_id_token_12345",
+          "X-Firebase-AppCheck": "ok",
+        },
+        body: JSON.stringify({
+          provider: "gemini",
+          model,
+          messages: [{ role: "user", content: "Ping" }],
+          maxTokens: 64,
+        }),
+      });
+
+    // 4 consecutive 404s + 1 400 must preserve 4xx status and never trip circuit breaker (threshold=3)
+    for (let i = 0; i < 4; i++) {
+      const r = await sendChat();
+      assert.equal(r.status, 404);
+    }
+    upstreamStatus = 400;
+    const badReq = await sendChat();
+    assert.equal(badReq.status, 400);
+    assert.equal(upstreamCalls, 5);
+
+    // 3 consecutive 500s map to 502 and trip circuit breaker; 4th request fails fast with 503 without calling upstream
+    upstreamStatus = 500;
+    for (let i = 0; i < 3; i++) {
+      const r = await sendChat();
+      assert.equal(r.status, 502);
+    }
+    assert.equal(upstreamCalls, 8);
+
+    const openRes = await sendChat();
+    assert.equal(openRes.status, 503);
+    assert.equal(upstreamCalls, 8);
+
+    const catRes = await fetch(`${u}/api/v1/models/catalog`, {
+      headers: { Authorization: "Bearer cb_valid_id_token_12345", "X-Firebase-AppCheck": "ok" },
+    });
+    assert.equal(catRes.status, 200);
+    const catalog = await catRes.json();
+    const flash = catalog.models.find((m) => m.id === "gemini-3.8-flash");
+    assert.equal(flash?.verificationStatus, "UNAVAILABLE");
+  } finally {
+    await new Promise((resolve) => cbSrv.close(() => resolve()));
+  }
+});

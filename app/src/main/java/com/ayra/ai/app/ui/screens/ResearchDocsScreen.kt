@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -101,7 +102,7 @@ fun ResearchDocsScreen(
                     selected = activeTab == tab,
                     onClick = { activeTab = tab },
                     label = { Text(tab.label, fontSize = 12.sp) },
-                    modifier = Modifier.testTag("research_subtab_${tab.name.lowercase()}")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("research_subtab_${tab.name.lowercase()}")
                 )
             }
         }

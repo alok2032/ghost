@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -165,7 +166,8 @@ fun MemoryScreen(
                 FilterChip(
                     selected = selectedCategory == cat,
                     onClick = { selectedCategory = cat },
-                    label = { Text(cat, fontSize = 11.sp) }
+                    label = { Text(cat, fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -181,7 +183,8 @@ fun MemoryScreen(
                         FilterChip(
                             selected = newCategory == cat,
                             onClick = { newCategory = cat },
-                            label = { Text(cat, fontSize = 10.sp) }
+                            label = { Text(cat, fontSize = 10.sp) },
+                            modifier = Modifier.heightIn(min = 48.dp)
                         )
                     }
                 }
@@ -339,28 +342,32 @@ fun MemoryScreen(
                             FilterChip(
                                 selected = editDraftCategory == cat,
                                 onClick = { editDraftCategory = cat },
-                                label = { Text(cat, fontSize = 10.sp) }
+                                label = { Text(cat, fontSize = 10.sp) },
+                                modifier = Modifier.heightIn(min = 48.dp)
                             )
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    scope.launch {
-                        val res = LongTermMemoryManager.updateMemory(
-                            context, target, editDraftCategory, editDraftText, editDraftPinned
-                        )
-                        if (res is MemorySaveResult.Rejected) {
-                            Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
-                        } else {
-                            editingEntity = null
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val res = LongTermMemoryManager.updateMemory(
+                                context, target, editDraftCategory, editDraftText, editDraftPinned
+                            )
+                            if (res is MemorySaveResult.Rejected) {
+                                Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
+                            } else {
+                                editingEntity = null
+                            }
                         }
-                    }
-                }) { Text("Save") }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Save") }
             },
             dismissButton = {
-                TextButton(onClick = { editingEntity = null }) { Text("Cancel") }
+                TextButton(onClick = { editingEntity = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
             }
         )
     }
@@ -373,6 +380,7 @@ fun MemoryScreen(
             confirmButton = {
                 Button(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.heightIn(min = 48.dp),
                     onClick = {
                         confirmWipeAll = false
                         scope.launch { LongTermMemoryManager.deleteAllMemories(context) }
@@ -380,7 +388,7 @@ fun MemoryScreen(
                 ) { Text("Delete All") }
             },
             dismissButton = {
-                TextButton(onClick = { confirmWipeAll = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmWipeAll = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
             }
         )
     }

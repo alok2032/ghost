@@ -30,6 +30,11 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.io.FileOutputStream
 
+data class FirebaseTextResult(
+    val text: String,
+    val error: Exception? = null
+)
+
 sealed class FirebaseImageResult {
     data class Success(
         val file: File,
@@ -59,8 +64,9 @@ class FirebaseAiEngine(private val context: Context?) {
         const val MODEL_IMAGE_NANO_BANANA = "gemini-nano-banana-2.1"
         const val MODEL_TTS = "gemini-3.1-flash-tts-preview"
 
-        private const val STREAM_SEARCH_TIMEOUT_MS = 25_000L
-        private const val TEXT_TIMEOUT_MS = 45_000L
+        private const val STREAM_SEARCH_TIMEOUT_MS = 10_000L
+        private const val UNARY_SEARCH_TIMEOUT_MS = 7_500L
+        private const val TEXT_TIMEOUT_MS = 22_000L
         private const val IMAGE_TIMEOUT_MS = 90_000L
 
         fun isAvailable(context: Context?): Boolean {
@@ -77,6 +83,20 @@ class FirebaseAiEngine(private val context: Context?) {
                 val bytes = Base64.decode(base64, Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             }.getOrNull()
+        }
+
+        internal fun isFatalNonRecoverableError(e: Throwable): Boolean {
+            if (e is java.net.UnknownHostException || e is java.net.ConnectException) return true
+            val msg = (e.message ?: e.localizedMessage ?: "").lowercase()
+            return msg.contains("403") ||
+                msg.contains("401") ||
+                msg.contains("appcheck") ||
+                msg.contains("app check") ||
+                msg.contains("attestation") ||
+                msg.contains("api key not valid") ||
+                msg.contains("billing") ||
+                msg.contains("permission denied") ||
+                msg.contains("unable to resolve host")
         }
     }
 
@@ -114,18 +134,41 @@ class FirebaseAiEngine(private val context: Context?) {
         imageBase64: String? = null,
         modelName: String = MODEL_FLASH,
         enableSearchGrounding: Boolean = false
-    ): String = withContext(Dispatchers.IO) {
-        if (!isAvailable(context)) return@withContext ""
+    ): String = generateTextDetailed(
+        prompt = prompt,
+        systemPrompt = systemPrompt,
+        history = history,
+        imageBase64 = imageBase64,
+        modelName = modelName,
+        enableSearchGrounding = enableSearchGrounding
+    ).text
+
+    suspend fun generateTextDetailed(
+        prompt: String,
+        systemPrompt: String = "",
+        history: List<ChatMessage> = emptyList(),
+        imageBase64: String? = null,
+        modelName: String = MODEL_FLASH,
+        enableSearchGrounding: Boolean = false
+    ): FirebaseTextResult = withContext(Dispatchers.IO) {
+        if (!isAvailable(context)) {
+            return@withContext FirebaseTextResult(
+                text = "",
+                error = IllegalStateException("Firebase AI Logic is not available in this session.")
+            )
+        }
         val bitmap = decodeBase64ToBitmap(imageBase64)
         val fullPrompt = buildHistoryAugmentedPrompt(prompt, history)
         val candidates = modelFallbackChain(modelName)
+        var lastError: Exception? = null
 
-        for (candidateModel in candidates) {
+        candidateLoop@ for (candidateModel in candidates) {
             val groundingAttempts = if (enableSearchGrounding) listOf(true, false) else listOf(false)
             for (useSearch in groundingAttempts) {
                 val startMs = System.currentTimeMillis()
+                val attemptTimeout = if (useSearch) UNARY_SEARCH_TIMEOUT_MS else TEXT_TIMEOUT_MS
                 try {
-                    val text = withTimeout(TEXT_TIMEOUT_MS) {
+                    val text = withTimeout(attemptTimeout) {
                         val tools = if (useSearch) listOf(Tool.googleSearch()) else null
                         val model = aiClient.generativeModel(
                             modelName = candidateModel,
@@ -143,18 +186,22 @@ class FirebaseAiEngine(private val context: Context?) {
                     val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                     if (text.isNotBlank()) {
                         AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
-                        return@withContext text
+                        return@withContext FirebaseTextResult(text = text, error = null)
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    lastError = e
                     val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                     AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
                     Log.w(TAG, "generateText failed for $candidateModel (search=$useSearch): ${e.message}")
+                    if (isFatalNonRecoverableError(e)) {
+                        break@candidateLoop
+                    }
                 }
             }
         }
-        ""
+        FirebaseTextResult(text = "", error = lastError)
     }
 
     fun streamText(
@@ -170,6 +217,7 @@ class FirebaseAiEngine(private val context: Context?) {
         val fullPrompt = buildHistoryAugmentedPrompt(prompt, history)
         val candidates = modelFallbackChain(modelName)
         var lastError: Exception? = null
+        var hitFatalError = false
 
         suspend fun collectStream(candidateModel: String, useSearch: Boolean): Boolean {
             val startMs = System.currentTimeMillis()
@@ -203,7 +251,7 @@ class FirebaseAiEngine(private val context: Context?) {
             return emittedAny
         }
 
-        for (candidateModel in candidates) {
+        candidateLoop@ for (candidateModel in candidates) {
             val groundingAttempts = if (enableSearchGrounding) listOf(true, false) else listOf(false)
             for (useSearch in groundingAttempts) {
                 val attemptStart = System.currentTimeMillis()
@@ -218,39 +266,45 @@ class FirebaseAiEngine(private val context: Context?) {
                     val elapsed = (System.currentTimeMillis() - attemptStart).coerceAtLeast(1L)
                     AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
                     Log.e(TAG, "streamText failed for $candidateModel (search=$useSearch): ${e.message}", e)
+                    if (isFatalNonRecoverableError(e)) {
+                        hitFatalError = true
+                        break@candidateLoop
+                    }
                 }
             }
         }
 
         // Unary fallback on default free-tier Flash without search in case streaming returned empty or threw
-        val unaryStart = System.currentTimeMillis()
-        try {
-            val fallbackModel = aiClient.generativeModel(
-                modelName = MODEL_FLASH,
-                systemInstruction = if (systemPrompt.isNotBlank()) content { text(systemPrompt) } else null
-            )
-            val unaryInput = content {
-                text(fullPrompt)
-                if (bitmap != null) {
-                    image(bitmap)
+        if (!hitFatalError) {
+            val unaryStart = System.currentTimeMillis()
+            try {
+                val fallbackModel = aiClient.generativeModel(
+                    modelName = MODEL_FLASH,
+                    systemInstruction = if (systemPrompt.isNotBlank()) content { text(systemPrompt) } else null
+                )
+                val unaryInput = content {
+                    text(fullPrompt)
+                    if (bitmap != null) {
+                        image(bitmap)
+                    }
                 }
-            }
-            val unaryText = withTimeout(TEXT_TIMEOUT_MS) {
-                fallbackModel.generateContent(unaryInput).text?.trim().orEmpty()
-            }
-            if (unaryText.isNotBlank()) {
+                val unaryText = withTimeout(TEXT_TIMEOUT_MS) {
+                    fallbackModel.generateContent(unaryInput).text?.trim().orEmpty()
+                }
+                if (unaryText.isNotBlank()) {
+                    val elapsed = (System.currentTimeMillis() - unaryStart).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
+                    emit(unaryText)
+                    return@flow
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
                 val elapsed = (System.currentTimeMillis() - unaryStart).coerceAtLeast(1L)
-                AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
-                emit(unaryText)
-                return@flow
+                AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                Log.e(TAG, "unary fallback failed for $MODEL_FLASH: ${e.message}", e)
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            lastError = e
-            val elapsed = (System.currentTimeMillis() - unaryStart).coerceAtLeast(1L)
-            AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
-            Log.e(TAG, "unary fallback failed for $MODEL_FLASH: ${e.message}", e)
         }
 
         if (lastError != null) {

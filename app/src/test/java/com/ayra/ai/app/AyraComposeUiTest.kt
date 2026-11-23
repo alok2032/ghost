@@ -4,10 +4,18 @@ import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -28,9 +36,12 @@ import com.ayra.ai.app.security.VaultDatabaseKeyManager
 import com.ayra.ai.app.ui.components.McpServersSection
 import com.ayra.ai.app.ui.components.OnboardingOverlay
 import com.ayra.ai.app.ui.components.ProviderKeysSection
+import com.ayra.ai.app.ui.components.chat.EmptyCosmicState
 import com.ayra.ai.app.ui.components.chat.GlassInputRow
+import com.ayra.ai.app.ui.screens.AiUnifiedSettingsHubScreen
 import com.ayra.ai.app.ui.screens.AyraWorkspaceHost
 import com.ayra.ai.app.ui.screens.SecurityCenterScreen
+import com.ayra.ai.app.ui.screens.SettingsAppearanceScreen
 import com.ayra.ai.app.ui.screens.VaultLockScreen
 import com.ayra.ai.app.ui.theme.AyraTheme
 import com.ayra.ai.app.ui.viewmodel.ChatViewModel
@@ -38,6 +49,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -285,5 +297,139 @@ class AyraComposeUiTest {
         composeRule.waitForIdle()
 
         assertTrue(sendTriggered)
+    }
+
+    @Test
+    fun settingsAiButtonAndAiHubSafeEditLockProtectSettingsAndConfirmKeyClear() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setGroqKey(context, "gsk-lock-test-key")
+        val aiOpenedState = mutableStateOf(false)
+
+        composeRule.setContent {
+            AyraTheme {
+                var aiOpened by remember { aiOpenedState }
+                if (!aiOpened) {
+                    SettingsAppearanceScreen(
+                        onBack = {},
+                        onOpenModels = {},
+                        onOpenTools = {},
+                        onOpenSecurityCenter = {},
+                        onPersonaChanged = {},
+                        onOpenAiSettings = { aiOpened = true }
+                    )
+                } else {
+                    AiUnifiedSettingsHubScreen(
+                        onBack = { aiOpened = false },
+                        onOpenModels = {},
+                        onOpenSecurityCenter = {}
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("settings_ai_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertTrue(aiOpenedState.value)
+
+        // Default lock ON protects consent toggle against accidental edits
+        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOn()
+        composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsNotEnabled()
+        assertFalse(AyraPreferences.hasExternalAiConsent(context))
+
+        // Unlocking enables switches and accordion expansion
+        composeRule.onNodeWithTag("ai_settings_lock_switch").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOff()
+        composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsEnabled().performClick()
+        composeRule.waitForIdle()
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+
+        composeRule.onNodeWithTag("developer_byok_expand_button").performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("backend_gateway_input").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("NVIDIA • Llama 3.3 70B Instruct (Verified Default)").performScrollTo().assertIsDisplayed()
+
+        // Clearing an API key opens confirmation dialog instead of wiping on single tap
+        composeRule.onNodeWithTag("provider_key_clear_groq").performScrollTo().assertIsEnabled().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("confirm_clear_key_groq").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertEquals("", AyraPreferences.getGroqKey(context))
+    }
+
+    @Test
+    fun glassInputRowCompactWidthKeepsAllFourActionButtonsInlineAndVisible() {
+        composeRule.setContent {
+            AyraTheme {
+                DeviceConfigurationOverride(
+                    DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 800.dp))
+                ) {
+                    GlassInputRow(
+                        text = "",
+                        onTextChange = {},
+                        isListening = false,
+                        isRecordingAudio = false,
+                        isTranscribingAudio = false,
+                        canSendWithAttachment = false,
+                        isGenerating = false,
+                        onSend = {},
+                        onStop = {},
+                        onAudioTranscribeClick = {},
+                        onMicClick = {},
+                        onAttachClick = {}
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("bottom_attachment_hub_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("chat_input_text_field").assertIsDisplayed()
+        composeRule.onNodeWithTag("gemini_audio_transcribe_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("voice_mic_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("chat_send_button").assertIsDisplayed()
+    }
+
+    @Test
+    fun oneTapEnableAllAiButtonsActivateConsentAndFreePoolInOnboardingAndEmptyState() {
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+
+        composeRule.setContent {
+            AyraTheme {
+                OnboardingOverlay(onDismissed = {})
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("onboarding_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
+
+        // Reset and verify quick_enable_all_ai_button inside EmptyCosmicState
+        AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+        AyraPreferences.setExternalAiConsent(context, false)
+        AyraPreferences.setFreeAiPoolEnabled(context, false)
+
+        composeRule.setContent {
+            AyraTheme {
+                EmptyCosmicState(currentPersona = "AI_ASSISTANT")
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("quick_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
     }
 }

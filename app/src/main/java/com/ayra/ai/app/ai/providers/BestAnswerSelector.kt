@@ -20,22 +20,26 @@ data class ScoredDraft(
  */
 object BestAnswerSelector {
 
-    private val refusalOrErrorMarkers = listOf(
+    private val hardRefusalOrErrorMarkers = listOf(
         "as an ai language model, i cannot",
         "as an ai, i cannot",
         "i don't have access to real-time",
         "please provide an api key",
         "api key is missing",
+        "<!doctype html",
+        "<html",
+        "502 bad gateway",
+        "credit balance is too low"
+    )
+
+    private val refusalOrErrorMarkers = hardRefusalOrErrorMarkers + listOf(
         "rate limit exceeded",
         "too many requests",
         "service temporarily unavailable",
         "bad gateway",
         "cloudflare",
-        "<!doctype html",
-        "<html",
         "internal server error",
-        "model not found",
-        "credit balance is too low"
+        "model not found"
     )
 
     private val banglishOrBengaliCodeStopwords = setOf(
@@ -49,8 +53,8 @@ object BestAnswerSelector {
         val trimmed = text.trim()
         if (trimmed.length < 6) return true
         val lower = trimmed.lowercase(Locale.ROOT)
-        if (refusalOrErrorMarkers.any { lower.contains(it) } && trimmed.length < 400) return true
-        if (lower.contains("<!doctype html") || lower.contains("<html")) return true
+        if (hardRefusalOrErrorMarkers.any { lower.contains(it) }) return true
+        if (refusalOrErrorMarkers.any { lower.contains(it) } && trimmed.length < 500) return true
         return false
     }
 
@@ -80,7 +84,7 @@ object BestAnswerSelector {
             reasons.add("partial-refusal")
         }
 
-        // 2. Domain-channel specialty fit
+        // 2. Domain-channel specialty fit (unbiased across providers)
         val desiredSpecialty = when (domain) {
             AgentDomain.CODING_AGENT -> "coding"
             AgentDomain.MATHEMATICS_AGENT -> "math"
@@ -97,11 +101,8 @@ object BestAnswerSelector {
             score += 14f
             reasons.add("domain-fit:$desiredSpecialty")
         }
-        if (channel.provider == AiProviderType.GEMINI || channel.id.startsWith("firebase_ai_")) {
+        if (channel.isReasoning && (domain == AgentDomain.MATHEMATICS_AGENT || domain == AgentDomain.CODING_AGENT || domain == AgentDomain.CYBER_DEFENSE_AGENT || domain == AgentDomain.RESEARCH_AGENT)) {
             score += 6f
-        }
-        if (channel.isReasoning && (domain == AgentDomain.MATHEMATICS_AGENT || domain == AgentDomain.CODING_AGENT || domain == AgentDomain.CYBER_DEFENSE_AGENT)) {
-            score += 5f
         }
 
         // 3. Language alignment (Bengali / Banglish / English)
@@ -174,25 +175,43 @@ object BestAnswerSelector {
             else -> score += 6f
         }
 
-        // Penalize broken abrupt truncation if text ends mid-fence or trailing comma/colon without closing punctuation
+        // Penalize broken abrupt truncation if text ends mid-fence
         if (clean.endsWith("```") && Regex("```").findAll(clean).count() % 2 == 1) {
             score -= 8f
         }
 
-        // 6. Cross-model consensus & live Wiki grounding overlap
+        // 6. Direct prompt relevance + cross-model consensus + live Wiki/Web grounding overlap
+        val candidateTerms = extractSignificantTerms(clean)
+        val promptTerms = extractSignificantTerms(prompt)
+        if (promptTerms.isNotEmpty() && candidateTerms.isNotEmpty()) {
+            val promptHits = promptTerms.count { it in candidateTerms }
+            val promptBonus = ((promptHits.toFloat() / promptTerms.size.coerceAtLeast(1)) * 10f).coerceIn(0f, 10f)
+            score += promptBonus
+            if (promptBonus >= 5f) reasons.add("on-topic")
+        }
+
         val referenceTerms = extractSignificantTerms(
             peerDrafts
                 .filter { it.first.id != channel.id }
                 .joinToString(" ") { it.second } + " " + wikiContext
         )
-        if (referenceTerms.isNotEmpty()) {
-            val candidateTerms = extractSignificantTerms(clean)
-            if (candidateTerms.isNotEmpty()) {
-                val overlapCount = candidateTerms.count { it in referenceTerms }
-                val overlapRatio = overlapCount.toFloat() / candidateTerms.size.coerceAtLeast(1)
-                val consensusBonus = (overlapRatio * 24f).coerceIn(0f, 16f)
-                score += consensusBonus
-                if (consensusBonus >= 6f) reasons.add("consensus")
+        if (referenceTerms.isNotEmpty() && candidateTerms.isNotEmpty()) {
+            val overlapCount = candidateTerms.count { it in referenceTerms }
+            val overlapRatio = overlapCount.toFloat() / candidateTerms.size.coerceAtLeast(1)
+            val consensusBonus = (overlapRatio * 24f).coerceIn(0f, 16f)
+            score += consensusBonus
+            if (consensusBonus >= 6f) reasons.add("consensus")
+        }
+
+        if (wikiContext.isNotBlank() && clean.contains("https://")) {
+            val urlRegex = Regex("https://[^\\s)\\]>\"']+")
+            val wikiUrls = urlRegex.findAll(wikiContext).map { it.value.trimEnd('.', ',') }.toSet()
+            if (wikiUrls.isNotEmpty()) {
+                val citedGrounded = urlRegex.findAll(clean).any { it.value.trimEnd('.', ',') in wikiUrls }
+                if (citedGrounded) {
+                    score += 8f
+                    reasons.add("grounded-citation")
+                }
             }
         }
 

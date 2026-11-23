@@ -95,7 +95,9 @@ class OmniRouteEngine(private val context: Context? = null) {
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.w("OmniRouteEngine", "executeRoute failed: ${e.message}")
+        }
 
         AiResponse(text = "", modelUsed = "OmniRoute")
     }

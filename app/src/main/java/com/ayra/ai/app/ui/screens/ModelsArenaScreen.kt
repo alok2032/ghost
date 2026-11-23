@@ -365,8 +365,8 @@ private fun RegistryHealthPanel(context: android.content.Context) {
 @Composable
 private fun ComparisonArenaPanel(context: android.content.Context) {
     val scope = rememberCoroutineScope()
-    val engine = remember { AiComparisonEngine(context) }
-    val targets = remember { engine.getAvailableTargets() }
+    val engine = remember(context) { AiComparisonEngine(context) }
+    var targets by remember { mutableStateOf(engine.getAvailableTargets()) }
 
     var selectedIds by remember {
         mutableStateOf(targets.take(3).map { it.id }.toSet())
@@ -375,6 +375,16 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
     var runDebate by remember { mutableStateOf(true) }
     var isRunning by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<ComparisonArenaReport?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val refreshed = engine.getAvailableTargets()
+        targets = refreshed
+        val validIds = refreshed.map { it.id }.toSet()
+        selectedIds = selectedIds.filter { it in validIds }.toSet().ifEmpty {
+            refreshed.take(3).map { it.id }.toSet()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -461,6 +471,7 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                 val q = prompt.trim()
                 if (q.isBlank() || isRunning || selectedIds.isEmpty()) return@Button
                 isRunning = true
+                errorMessage = null
                 scope.launch {
                     try {
                         report = engine.runComparisonArena(
@@ -468,6 +479,10 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                             selectedTargetIds = selectedIds,
                             runDebateVerification = runDebate
                         )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        errorMessage = "Comparison failed: ${e.message ?: "Provider or network error"}"
                     } finally {
                         isRunning = false
                     }
@@ -481,6 +496,15 @@ private fun ComparisonArenaPanel(context: android.content.Context) {
                 Spacer(Modifier.width(8.dp))
             }
             Text(if (isRunning) "Executing Parallel Models..." else "Run Parallel Comparison")
+        }
+
+        errorMessage?.let { err ->
+            Text(
+                text = err,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier.testTag("arena_error_message")
+            )
         }
 
         report?.let { rep ->

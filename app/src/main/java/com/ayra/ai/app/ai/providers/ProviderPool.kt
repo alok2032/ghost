@@ -1,6 +1,7 @@
 package com.ayra.ai.app.ai.providers
 
 import android.content.Context
+import android.util.Log
 import com.ayra.ai.app.ai.AutonomousKnowledgeEngine
 import com.ayra.ai.app.ai.agents.AgentDomain
 import com.ayra.ai.app.ai.agents.AyraAgentOrchestrator
@@ -25,6 +26,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 import java.util.Collections
 import java.util.LinkedHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.random.Random
 
 enum class ProviderPoolMode {
@@ -87,6 +89,14 @@ class ProviderPool @JvmOverloads constructor(
     private val context: Context? = null,
     private val externalProviders: ExternalAiProviders = ExternalAiProviders(context)
 ) {
+
+    internal data class RouteBTestConfig(
+        val baseUrl: String,
+        val bearerToken: String,
+        val httpClient: okhttp3.OkHttpClient
+    )
+
+    internal var routeBTestOverride: RouteBTestConfig? = null
 
     val circuitBreaker: ProviderCircuitBreaker get() = externalProviders.circuitBreaker
 
@@ -238,7 +248,18 @@ class ProviderPool @JvmOverloads constructor(
             !isStrictLocalRouting &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
 
-        if (routedChannels.isEmpty() && routedProviders.isEmpty() && !isFirebaseAiReady) {
+        val isRouteBReady = !isLocalOnlyMode &&
+            !isStrictLocalRouting &&
+            ((routeBTestOverride != null &&
+                context != null &&
+                AyraPreferences.hasExternalAiConsent(context) &&
+                !AyraPreferences.isByokPreferred(context)) ||
+                com.ayra.ai.app.security.SecureAiGatewayClient.shouldUseBackendGatewayProxy(
+                    context = context,
+                    hasExplicitTestOverrides = externalProviders.isTestHarnessMode
+                ))
+
+        if (routedChannels.isEmpty() && routedProviders.isEmpty() && !isFirebaseAiReady && !isRouteBReady) {
             val savedIgnoringConsent = if (!externalProviders.isTestHarnessMode && context != null) {
                 externalProviders.getSavedKeyProvidersIgnoringConsent()
             } else {
@@ -272,22 +293,40 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
+        val hasTavilyKey = context != null && AyraPreferences.getTavilySearchKey(context).isNotBlank()
         val shouldGroundWiki = !isLocalOnlyMode &&
             !isStrictLocalRouting &&
             externalProviders.allowExternalWikiGrounding &&
             request.imageBase64 == null &&
             request.documentText == null &&
             !isTrivialGreeting(request.prompt) &&
-            AyraAgentOrchestrator.needsLiveWikiGrounding(request.prompt, domain)
+            (AyraAgentOrchestrator.needsLiveWikiGrounding(request.prompt, domain) ||
+                (hasTavilyKey && request.prompt.trim().length >= 8))
 
         supervisorScope {
             val wikiDeferred: Deferred<String>? = if (shouldGroundWiki) {
                 async(Dispatchers.IO) {
-                    withTimeoutOrNull(1800L) {
-                        AutonomousKnowledgeEngine.queryMultiLayerWiki(
-                            prompt = request.prompt,
-                            isBengali = isBengali
-                        )
+                    withTimeoutOrNull(2_200L) {
+                        val wikiJob = async {
+                            runCatching {
+                                AutonomousKnowledgeEngine.queryMultiLayerWiki(
+                                    prompt = request.prompt,
+                                    isBengali = isBengali
+                                )
+                            }.getOrDefault("")
+                        }
+                        val tavilyJob = if (hasTavilyKey && context != null) {
+                            async {
+                                runCatching {
+                                    com.ayra.ai.app.search.TavilySearchEngine(context)
+                                        .search(request.prompt, maxResults = 3, searchDepth = "basic")
+                                        .formattedSummary
+                                }.getOrDefault("")
+                            }
+                        } else null
+                        val wikiRes = wikiJob.await()
+                        val tavilyRes = tavilyJob?.await().orEmpty()
+                        listOf(tavilyRes, wikiRes).filter { it.isNotBlank() }.joinToString("\n\n")
                     } ?: ""
                 }
             } else null
@@ -308,6 +347,12 @@ class ProviderPool @JvmOverloads constructor(
             }
             val effectiveRequest = if (effectiveMode != request.mode) request.copy(mode = effectiveMode) else request
 
+            // Preserve Route B Backend Gateway routing when explicitly configured without multi-provider ensemble or under test override
+            if (routeBTestOverride != null || (isRouteBReady && routedChannels.size < 2 && !isFirebaseAiReady)) {
+                executeChannelFallback(effectiveRequest, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
+                return@supervisorScope
+            }
+
             // 3. Explicit provider/model override uses focused single-channel execution with fallback
             if (effectiveRequest.preferredProvider != null && effectiveRequest.preferredProvider != AiProviderType.OMNI_ROUTE) {
                 val filtered = routedChannels.filter { it.provider == effectiveRequest.preferredProvider } +
@@ -326,7 +371,7 @@ class ProviderPool @JvmOverloads constructor(
             }
 
             // 5. Real Question in AUTO or BEST -> Quorum-Accelerated Multi-AI Parallel Ensemble!
-            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 5 else 4
+            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 8 else 6
             val ensembleChannels = selectDiverseEnsembleChannels(routedChannels, maxCount = targetMax)
             val totalEnsembleWorkers = ensembleChannels.size + if (isFirebaseAiReady) 1 else 0
             if (totalEnsembleWorkers >= 2 && (ensembleChannels.isNotEmpty() || isFirebaseAiReady)) {
@@ -430,15 +475,32 @@ class ProviderPool @JvmOverloads constructor(
     }
 
     /**
-     * Selects up to [maxCount] diverse specialist channels for the question so we get
-     * genuine multi-model intelligence without redundant calls to identical weights.
+     * Selects up to [maxCount] diverse specialist channels for the question so every active
+     * AI provider participates in parallel round-robin before allocating secondary models.
      */
-    private fun selectDiverseEnsembleChannels(channels: List<AiModelChannel>, maxCount: Int): List<AiModelChannel> {
+    internal fun selectDiverseEnsembleChannels(channels: List<AiModelChannel>, maxCount: Int): List<AiModelChannel> {
+        if (channels.isEmpty() || maxCount <= 0) return emptyList()
         val selected = mutableListOf<AiModelChannel>()
+        val selectedIds = mutableSetOf<String>()
         val seenModelFamilies = mutableSetOf<String>()
         var pickedLocalOllama = false
 
+        // Pass 1: First select the top-ranked channel from each distinct provider for true multi-AI diversity
+        val seenProviders = mutableSetOf<AiProviderType>()
         for (ch in channels) {
+            if (ch.provider in seenProviders) continue
+            val familyKey = ch.modelId.lowercase()
+            seenProviders.add(ch.provider)
+            seenModelFamilies.add(familyKey)
+            selected.add(ch)
+            selectedIds.add(ch.id)
+            if (ch.provider == AiProviderType.LOCAL_OLLAMA) pickedLocalOllama = true
+            if (selected.size >= maxCount) return selected
+        }
+
+        // Pass 2: Fill any remaining ensemble slots with distinct secondary model families
+        for (ch in channels) {
+            if (ch.id in selectedIds) continue
             if (ch.provider == AiProviderType.LOCAL_OLLAMA) {
                 if (pickedLocalOllama) continue
                 pickedLocalOllama = true
@@ -446,6 +508,7 @@ class ProviderPool @JvmOverloads constructor(
             val familyKey = ch.modelId.lowercase()
             if (seenModelFamilies.add(familyKey)) {
                 selected.add(ch)
+                selectedIds.add(ch.id)
                 if (selected.size >= maxCount) break
             }
         }
@@ -462,10 +525,11 @@ class ProviderPool @JvmOverloads constructor(
         cacheKey: String?,
         domain: AgentDomain,
         wikiDeferred: Deferred<String>?,
-        collector: FlowCollector<AyraStreamEvent>
+        collector: FlowCollector<AyraStreamEvent>,
+        priorError: AyraError? = null
     ) {
         val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(1100L) { wikiDeferred.await() } ?: ""
+            withTimeoutOrNull(1400L) { wikiDeferred.await() } ?: ""
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
@@ -479,7 +543,7 @@ class ProviderPool @JvmOverloads constructor(
             currentPrompt = safePrompt,
             currentImageBase64 = request.imageBase64
         )
-        var lastError: AyraError? = null
+        var lastError: AyraError? = priorError
 
         val candidateList: List<AiModelChannel> = if (channels.isNotEmpty()) {
             channels
@@ -554,6 +618,82 @@ class ProviderPool @JvmOverloads constructor(
                 )
                 false
             }
+        }
+
+        suspend fun tryRouteBBackendGateway(): Boolean {
+            val appCtx = context ?: return false
+            val testCfg = routeBTestOverride
+            val routeBAllowed = if (testCfg != null) {
+                !AyraPreferences.isLocalOnlyAiModeEnabled(appCtx) &&
+                    AyraPreferences.hasExternalAiConsent(appCtx) &&
+                    !AyraPreferences.isByokPreferred(appCtx)
+            } else {
+                com.ayra.ai.app.security.SecureAiGatewayClient.shouldUseBackendGatewayProxy(
+                    context = appCtx,
+                    hasExplicitTestOverrides = externalProviders.isTestHarnessMode
+                )
+            }
+            if (!routeBAllowed || !request.imageBase64.isNullOrBlank()) return false
+            val gatewayUrl = testCfg?.baseUrl ?: AyraPreferences.getBackendGatewayUrl(appCtx)
+            if (gatewayUrl.isBlank()) return false
+
+            val mappedProvider = request.preferredProvider?.takeIf {
+                it in setOf(
+                    AiProviderType.GEMINI,
+                    AiProviderType.OPENROUTER,
+                    AiProviderType.NVIDIA_NIM,
+                    AiProviderType.GROQ
+                )
+            } ?: AiProviderType.GEMINI
+            val gatewaySlug = com.ayra.ai.app.security.SecureAiGatewayClient.mapProviderToGatewaySlug(mappedProvider)
+            val gatewayModel = request.preferredModelId?.takeIf { it.isNotBlank() } ?: when (gatewaySlug) {
+                "groq" -> ExternalAiProviders.GROQ_QWEN_MODEL
+                "openrouter" -> ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
+                "nvidia" -> ExternalAiProviders.NVIDIA_LLAMA_MODEL
+                else -> if (request.mode == ProviderPoolMode.BEST ||
+                    request.routingMode == AiRoutingMode.REASONING ||
+                    request.routingMode == AiRoutingMode.BEST_QUALITY
+                ) {
+                    com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_PRO_REASONING
+                } else {
+                    com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_FLASH
+                }
+            }
+
+            collector.emit(AyraStreamEvent.Thinking("Ayra Zero-Trust Gateway ($gatewaySlug) 🛡️"))
+            val proxyResult = com.ayra.ai.app.security.SecureAiGatewayClient.callAuthenticatedBackendAiProxy(
+                context = appCtx,
+                backendBaseUrl = gatewayUrl,
+                prompt = safePrompt,
+                model = gatewayModel,
+                provider = gatewaySlug,
+                systemPrompt = sysPrompt,
+                httpClient = testCfg?.httpClient,
+                bearerTokenOverride = testCfg?.bearerToken,
+                allowUnvalidatedUrlForTests = testCfg != null
+            )
+            val cleanText = ExternalAiProviders.sanitizeModelOutput(proxyResult.getOrNull().orEmpty())
+            if (proxyResult.isSuccess && cleanText.isNotBlank()) {
+                collector.emit(AyraStreamEvent.Token(cleanText))
+                val resp = ProviderResponse(
+                    text = cleanText,
+                    modelUsed = "$gatewayModel (Route B Gateway) 🛡️",
+                    provider = mappedProvider
+                )
+                cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
+                collector.emit(AyraStreamEvent.Complete(resp))
+                return true
+            }
+            val err = proxyResult.exceptionOrNull()
+            if (err != null) {
+                android.util.Log.w("ProviderPool", "Route B backend gateway failed (${err.message}); falling back")
+                lastError = AyraError.ProviderDown(mappedProvider, 502, err.message ?: "Route B gateway unavailable")
+            }
+            return false
+        }
+
+        if (request.routingMode != AiRoutingMode.PRIVACY_LOCAL && tryRouteBBackendGateway()) {
+            return
         }
 
         val firebaseCanHandlePrimary = request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
@@ -685,9 +825,14 @@ class ProviderPool @JvmOverloads constructor(
         collector: FlowCollector<AyraStreamEvent>
     ) = supervisorScope {
         val namesPreview = ensembleChannels.take(4).joinToString(", ") { it.displayName }
-        collector.emit(AyraStreamEvent.Thinking("${domain.title} Ensemble ($namesPreview)"))
+        collector.emit(AyraStreamEvent.Thinking("${domain.title} • Live Search & Ensemble ($namesPreview)"))
 
-        val sysPrompt = resolveSystemPrompt(request, domain)
+        // Inject live web & multi-layer wiki context into EVERY parallel AI worker upfront
+        val wikiContext = if (wikiDeferred != null) {
+            withTimeoutOrNull(1_400L) { wikiDeferred.await() } ?: ""
+        } else ""
+
+        val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
         val privacyRedactionOn = context?.let { AyraPreferences.isPrivacyModeEnabled(it) } == true
         val safePrompt = if (privacyRedactionOn) {
             com.ayra.ai.app.security.SecureAiGatewayClient.redactSecretsForOutboundSafety(request.prompt)
@@ -700,7 +845,7 @@ class ProviderPool @JvmOverloads constructor(
         )
 
         val isBestMode = request.mode == ProviderPoolMode.BEST
-        val perChannelTimeoutMs = if (isBestMode) 8_500L else 6_000L
+        val perChannelTimeoutMs = if (isBestMode) 14_000L else 11_000L
 
         val wrappedChannel = Channel<Any>(Channel.UNLIMITED)
         val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -708,10 +853,11 @@ class ProviderPool @JvmOverloads constructor(
         val firebaseEnsembleActive = externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
         val totalWorkers = ensembleChannels.size + if (firebaseEnsembleActive) 1 else 0
-        val targetQuorum = if (isBestMode) minOf(3, totalWorkers) else minOf(2, totalWorkers)
-        val quorumGraceMs = if (isBestMode) 1_500L else 1_000L
+        val targetQuorum = if (isBestMode) minOf(4, totalWorkers) else minOf(3, totalWorkers)
+        val quorumGraceMs = if (isBestMode) 2_500L else 1_800L
 
         val successfulDrafts = mutableListOf<Pair<AiModelChannel, String>>()
+        val workerErrors = ConcurrentLinkedQueue<AyraError>()
         try {
             if (firebaseEnsembleActive) {
                 val fbModelName = firebaseAiEngine.selectModelForTask(
@@ -734,18 +880,39 @@ class ProviderPool @JvmOverloads constructor(
                 draftScope.launch {
                     val outcome: Any = withTimeoutOrNull(perChannelTimeoutMs) {
                         try {
-                            val fbText = firebaseAiEngine.generateText(
+                            val fbRes = firebaseAiEngine.generateTextDetailed(
                                 prompt = safePrompt,
                                 systemPrompt = sysPrompt,
                                 history = request.history,
                                 imageBase64 = request.imageBase64,
                                 modelName = fbModelName,
-                                enableSearchGrounding = true
+                                enableSearchGrounding = !isTrivialGreeting(safePrompt)
                             )
-                            if (fbText.isNotBlank()) Pair(fbChannel, fbText) else Unit
+                            if (fbRes.text.isNotBlank()) {
+                                Pair(fbChannel, fbRes.text)
+                            } else {
+                                fbRes.error?.let { err ->
+                                    workerErrors.add(
+                                        mapExceptionToAyraError(
+                                            AiProviderType.GEMINI,
+                                            err,
+                                            isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
+                                        )
+                                    )
+                                }
+                                Unit
+                            }
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            Log.w("ProviderPool", "Firebase ensemble worker failed: ${e.message}")
+                            workerErrors.add(
+                                mapExceptionToAyraError(
+                                    AiProviderType.GEMINI,
+                                    e,
+                                    isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
+                                )
+                            )
                             Unit
                         }
                     } ?: Unit
@@ -765,8 +932,10 @@ class ProviderPool @JvmOverloads constructor(
                             } else Unit
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            Log.w("ProviderPool", "Ensemble worker ${channel.id} failed: ${e.message}")
                             circuitBreaker.recordChannelFailure(channel.id)
+                            workerErrors.add(mapExceptionToAyraError(channel.provider, e))
                             Unit
                         }
                     } ?: Unit
@@ -809,14 +978,18 @@ class ProviderPool @JvmOverloads constructor(
 
         if (successfulDrafts.isEmpty()) {
             val remaining = allChannels.filter { ch -> ensembleChannels.none { it.id == ch.id } }
-            executeChannelFallback(request, remaining.ifEmpty { allChannels }, fallbackProviders, cacheKey, domain, wikiDeferred, collector)
+            executeChannelFallback(
+                request = request,
+                channels = remaining.ifEmpty { allChannels },
+                fallbackProviders = fallbackProviders,
+                cacheKey = cacheKey,
+                domain = domain,
+                wikiDeferred = wikiDeferred,
+                collector = collector,
+                priorError = workerErrors.firstOrNull()
+            )
             return@supervisorScope
         }
-
-        // Grab whatever Multi-Layer Wiki evidence is already ready (max 450ms wait since it launched in parallel)
-        val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(450L) { wikiDeferred.await() } ?: ""
-        } else ""
 
         val rankedDrafts = BestAnswerSelector.rankDrafts(
             prompt = safePrompt,
@@ -912,7 +1085,8 @@ class ProviderPool @JvmOverloads constructor(
                     streamedSynth.isNotBlank()
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.w("ProviderPool", "Synthesizer ${target.displayName} failed: ${e.message}")
                     false
                 }
             } ?: false

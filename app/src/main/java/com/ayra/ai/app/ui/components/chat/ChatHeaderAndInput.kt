@@ -217,26 +217,32 @@ internal fun GlassHeaderBar(
         }
 
         if (isSpeaking) {
-            IconButton(onClick = onStopVoice) {
+            IconButton(
+                onClick = onStopVoice,
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Mute voice", tint = NeonRose)
             }
         }
 
         IconButton(
             onClick = onSessionsClick,
-            modifier = Modifier.testTag("chat_sessions_button")
+            modifier = Modifier.size(48.dp).testTag("chat_sessions_button")
         ) {
             Icon(Icons.Default.History, contentDescription = "Chat history sessions", tint = NeonCyan)
         }
 
         IconButton(
             onClick = onNewSessionClick,
-            modifier = Modifier.testTag("new_chat_session_button")
+            modifier = Modifier.size(48.dp).testTag("new_chat_session_button")
         ) {
             Icon(Icons.Default.AddComment, contentDescription = "New conversation", tint = NeonPurple)
         }
 
-        IconButton(onClick = onClearChat) {
+        IconButton(
+            onClick = onClearChat,
+            modifier = Modifier.size(48.dp)
+        ) {
             Icon(Icons.Default.Delete, contentDescription = "Clear Chat", tint = TextSecondary)
         }
     }
@@ -258,11 +264,11 @@ internal fun GlassInputRow(
     onAttachClick: () -> Unit
 ) {
     val canSendNow = text.isNotBlank() || canSendWithAttachment
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(26.dp))
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(28.dp))
             .background(GlassSurfaceDark)
             .border(
                 width = 1.4.dp,
@@ -270,19 +276,47 @@ internal fun GlassInputRow(
                     if (isListening || isRecordingAudio) listOf(NeonRose, NeonPurple, NeonCyan)
                     else listOf(NeonCyan.copy(alpha = 0.75f), NeonPurple.copy(alpha = 0.65f))
                 ),
-                shape = RoundedCornerShape(26.dp)
+                shape = RoundedCornerShape(28.dp)
             )
-            .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 6.dp)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable { onAttachClick() }
+                .testTag("bottom_attachment_hub_button"),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Brush.radialGradient(listOf(Color(0xFF1E1035), Color(0xFF0E162B))))
+                    .border(1.2.dp, Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonRose)), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Attach & Super-App Tools Hub",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 4.dp, vertical = 6.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             if (text.isEmpty()) {
                 Text(
-                    text = if (canSendWithAttachment) "Add a note or tap Send to analyze attachment..." else "Ask Ayra AI, generate photo, open apps...",
+                    text = if (canSendWithAttachment) "Add a note or send..." else "Ask Ayra AI...",
                     color = TextSecondary,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -309,46 +343,24 @@ internal fun GlassInputRow(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 32.dp)
                     .testTag("chat_input_text_field")
             )
         }
 
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(enabled = !isTranscribingAudio) { onAudioTranscribeClick() }
+                .testTag("gemini_audio_transcribe_button"),
+            contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(Color(0xFF1E1035), Color(0xFF0E162B))))
-                    .border(1.2.dp, Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonRose)), CircleShape)
-                    .clickable { onAttachClick() }
-                    .testTag("bottom_attachment_hub_button"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Attach & Super-App Tools Hub",
-                    tint = NeonCyan,
-                    modifier = Modifier.size(21.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(if (isRecordingAudio) NeonRose else Color(0xFF0E162B))
-                    .border(1.1.dp, if (isRecordingAudio) NeonRose else NeonPurple.copy(alpha = 0.85f), CircleShape)
-                    .clickable(enabled = !isTranscribingAudio) { onAudioTranscribeClick() }
-                    .testTag("gemini_audio_transcribe_button"),
+                    .border(1.1.dp, if (isRecordingAudio) NeonRose else NeonPurple.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (isTranscribingAudio) {
@@ -362,49 +374,63 @@ internal fun GlassInputRow(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = "AI Audio Transcribe",
                         tint = if (isRecordingAudio) Color.Black else NeonPurple,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(19.dp)
                     )
                 }
             }
+        }
 
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable { onMicClick() }
+                .testTag("voice_mic_button"),
+            contentAlignment = Alignment.Center
+        ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(if (isListening) NeonRose else Color(0xFF0E162B))
-                    .border(1.1.dp, if (isListening) NeonRose else NeonCyan.copy(alpha = 0.85f), CircleShape)
-                    .clickable { onMicClick() }
-                    .testTag("voice_mic_button"),
+                    .border(1.1.dp, if (isListening) NeonRose else NeonCyan.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
                     contentDescription = "Voice",
                     tint = if (isListening) Color.Black else NeonCyan,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
+        }
 
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .alpha(if (isGenerating || canSendNow) 1f else 0.45f)
+                .clip(CircleShape)
+                .clickable(enabled = isGenerating || canSendNow) {
+                    if (isGenerating) onStop()
+                    else if (canSendNow) onSend()
+                }
+                .testTag("chat_send_button"),
+            contentAlignment = Alignment.Center
+        ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .alpha(if (isGenerating || canSendNow) 1f else 0.45f)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(
                         if (isGenerating) Brush.linearGradient(listOf(Color(0xFFFF1744), Color(0xFFD50000)))
                         else Brush.linearGradient(listOf(NeonCyan, NeonPurple))
-                    )
-                    .clickable(enabled = isGenerating || canSendNow) {
-                        if (isGenerating) onStop()
-                        else if (canSendNow) onSend()
-                    }
-                    .testTag("chat_send_button"),
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (isGenerating) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(21.dp))
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(20.dp))
                 } else {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(19.dp))
+                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -484,25 +510,29 @@ internal fun EmptyCosmicState(
         Spacer(modifier = Modifier.height(14.dp))
 
         val context = androidx.compose.ui.platform.LocalContext.current
-        val (readinessSummary, badgeAccentColor) = remember(currentPersona, readinessRefreshKey) {
+        val localTickState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        val (readinessSummary, badgeAccentColor, showQuickEnable) = remember(currentPersona, readinessRefreshKey, localTickState.intValue) {
             val ext = com.ayra.ai.app.ai.providers.ExternalAiProviders(context)
             val extCount = runCatching { ext.getActiveChannels().size }.getOrDefault(0)
             val savedCount = runCatching { ext.getSavedKeyProvidersIgnoringConsent().size }.getOrDefault(0)
             val fbReady = runCatching { com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) }.getOrDefault(false)
             val hasConsent = com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context)
+            val freePoolOn = com.ayra.ai.app.data.AyraPreferences.isFreeAiPoolEnabled(context)
             val localOnly = com.ayra.ai.app.data.AyraPreferences.isLocalOnlyAiModeEnabled(context)
             val totalEngines = extCount + if (fbReady) 1 else 0
+            val needsQuickEnable = !localOnly && (!hasConsent || !freePoolOn)
             when {
-                localOnly -> "Local-Only Privacy Active ($extCount local engines)" to NeonCyan
+                localOnly -> Triple("Local-Only Privacy Active ($extCount local engines)", NeonCyan, false)
                 totalEngines > 0 -> {
-                    if (fbReady && extCount == 0) {
-                        "Built-in Ayra AI Active (Firebase AI Logic)" to NeonGreen
+                    val label = if (fbReady && extCount == 0) {
+                        "Built-in Ayra AI Active (Tap + Free Pool / Keys for Ensemble)"
                     } else {
-                        "$totalEngines AI Engines Active • Ensemble Ready" to NeonGreen
+                        "$totalEngines AI Engines Active • Parallel Search & Ensemble Ready"
                     }
+                    Triple(label, NeonGreen, needsQuickEnable)
                 }
-                savedCount > 0 && !hasConsent -> "$savedCount Key(s) Saved • Tap to enable Cloud Consent" to Color(0xFFF59E0B)
-                else -> "Offline Mode • Tap to configure Local Ollama or Keys" to NeonRose
+                savedCount > 0 && !hasConsent -> Triple("$savedCount Key(s) Saved • Tap to enable Cloud Consent", Color(0xFFF59E0B), true)
+                else -> Triple("Tap below to Activate All AIs & Live Search or configure Keys", NeonRose, true)
             }
         }
 
@@ -523,8 +553,42 @@ internal fun EmptyCosmicState(
                 text = readinessSummary,
                 color = badgeAccentColor,
                 fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
+        }
+
+        if (showQuickEnable) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.22f), NeonPurple.copy(alpha = 0.22f))))
+                    .border(1.dp, NeonCyan.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                    .clickable {
+                        com.ayra.ai.app.data.AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
+                        com.ayra.ai.app.data.AyraPreferences.setExternalAiConsent(context, true)
+                        com.ayra.ai.app.data.AyraPreferences.setFreeAiPoolEnabled(context, true)
+                        com.ayra.ai.app.ai.providers.ExternalAiProviders.clearDynamicModelCache(null)
+                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                        localTickState.intValue++
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .testTag("quick_enable_all_ai_button")
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
+                Text(
+                    text = "Enable All Active AIs & Live Search ⚡",
+                    color = NeonCyan,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

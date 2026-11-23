@@ -17,12 +17,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -70,6 +75,8 @@ import kotlinx.coroutines.launch
 fun ProviderKeysSection(
     context: Context,
     modifier: Modifier = Modifier,
+    editsLocked: Boolean = false,
+    initiallyExpandDeveloperKeys: Boolean = true,
     onActivationChanged: () -> Unit = {}
 ) {
     val providers = remember {
@@ -92,6 +99,7 @@ fun ProviderKeysSection(
     var activationRevision by remember { mutableStateOf(0) }
     var hasExternalConsent by remember { mutableStateOf(AyraPreferences.hasExternalAiConsent(context)) }
     val isLocalOnly = remember(activationRevision) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
+    var showDeveloperByok by remember { mutableStateOf(initiallyExpandDeveloperKeys) }
 
     val notifyActivationChanged = {
         activationRevision++
@@ -115,7 +123,9 @@ fun ProviderKeysSection(
             hasExternalConsent = hasExternalConsent,
             isLocalOnly = isLocalOnly,
             activationRevision = activationRevision,
+            editsLocked = editsLocked,
             onConsentChanged = { enabled ->
+                if (editsLocked) return@AiActivationAndConsentCard
                 hasExternalConsent = enabled
                 AyraPreferences.setExternalAiConsent(context, enabled)
                 ExternalAiProviders.clearDynamicModelCache(null)
@@ -129,53 +139,177 @@ fun ProviderKeysSection(
         )
 
         // Intelligent Routing & AI Memory Control
-        AiRoutingAndMemoryCard(context = context)
+        AiRoutingAndMemoryCard(context = context, editsLocked = editsLocked)
 
-        Text(
-            text = "Core LLM Providers",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-
-        providers.forEach { (provider, label, portalUrl) ->
-            SingleProviderKeyCard(
-                context = context,
-                provider = provider,
-                portalLabel = label,
-                portalUrl = portalUrl,
-                hasExternalConsent = hasExternalConsent,
-                isLocalOnly = isLocalOnly,
-                onKeyChanged = notifyActivationChanged
+        OutlinedButton(
+            onClick = { showDeveloperByok = !showDeveloperByok },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .testTag("developer_byok_expand_button")
+        ) {
+            Icon(
+                imageVector = if (editsLocked) Icons.Default.Lock else Icons.Default.Key,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (showDeveloperByok) {
+                    "Hide Developer / BYOK Keys & Custom Endpoints"
+                } else {
+                    "Developer / BYOK API Keys & Custom Endpoints"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = if (showDeveloperByok) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        Text(
-            text = "NVIDIA NIM Multi-Model Engine",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+        if (showDeveloperByok) {
+            Text(
+                text = "Core LLM Providers",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
-        NvidiaNimMultiKeySection(
-            context = context,
-            hasExternalConsent = hasExternalConsent,
-            isLocalOnly = isLocalOnly,
-            onKeyChanged = notifyActivationChanged
-        )
-        FreeAiPoolCard(
-            context = context,
-            hasExternalConsent = hasExternalConsent,
-            isLocalOnly = isLocalOnly,
-            onChanged = notifyActivationChanged
-        )
+            providers.forEach { (provider, label, portalUrl) ->
+                SingleProviderKeyCard(
+                    context = context,
+                    provider = provider,
+                    portalLabel = label,
+                    portalUrl = portalUrl,
+                    hasExternalConsent = hasExternalConsent,
+                    isLocalOnly = isLocalOnly,
+                    editsLocked = editsLocked,
+                    onKeyChanged = notifyActivationChanged
+                )
+            }
 
-        Text(
-            text = "Local Models, Search & Voice Integrations",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+            Text(
+                text = "NVIDIA NIM Multi-Model Engine",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            NvidiaNimMultiKeySection(
+                context = context,
+                hasExternalConsent = hasExternalConsent,
+                isLocalOnly = isLocalOnly,
+                editsLocked = editsLocked,
+                onKeyChanged = notifyActivationChanged
+            )
+            FreeAiPoolCard(
+                context = context,
+                hasExternalConsent = hasExternalConsent,
+                isLocalOnly = isLocalOnly,
+                editsLocked = editsLocked,
+                onChanged = notifyActivationChanged
+            )
+
+            Text(
+                text = "Backend Gateway (Route B), Local Models & Integrations",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            // AYRA Zero-Trust Node/TS Backend Gateway (Route B)
+            SpecializedIntegrationKeyCard(
+                context = context,
+                title = "Ayra Zero-Trust Backend Gateway (Route B)",
+                description = "Optional public HTTPS Cloud Run gateway authenticated with your Firebase ID token & App Check.",
+                portalLabel = "HTTPS Gateway URL",
+                portalUrl = "https://your-ayra-gateway.run.app",
+                icon = Icons.Default.Cloud,
+                initialKey = AyraPreferences.getBackendGatewayUrl(context),
+                placeholder = "https://ayra-gateway.example.com",
+                testTagPrefix = "backend_gateway",
+                editsLocked = editsLocked,
+                statusBadgeOverride = when {
+                    AyraPreferences.getBackendGatewayUrl(context).isBlank() -> "Not set"
+                    isLocalOnly -> "Local-Only Blocked"
+                    !hasExternalConsent -> "Enable Consent"
+                    else -> "Gateway Ready ✓"
+                },
+                onSave = { endpoint ->
+                    val clean = endpoint.trim().trimEnd('/')
+                    if (clean.isNotEmpty()) {
+                        val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrl(clean)
+                        if (!urlCheck.allowed) {
+                            throw IllegalArgumentException(urlCheck.reason ?: "Public HTTPS URL required for Route B Gateway.")
+                        }
+                    }
+                    AyraPreferences.setBackendGatewayUrl(context, clean)
+                    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                    notifyActivationChanged()
+                },
+                onClear = {
+                    AyraPreferences.setBackendGatewayUrl(context, "")
+                    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                    notifyActivationChanged()
+                },
+                onTest = { endpoint ->
+                    com.ayra.ai.app.security.SecureAiGatewayClient.probeBackendGatewayHealth(
+                        context = context,
+                        backendBaseUrl = endpoint.trim()
+                    )
+                }
+            )
+
+            // Custom Proxy Bearer Token (paired with Custom Proxy / LAN Gateway)
+            SpecializedIntegrationKeyCard(
+                context = context,
+                title = "Custom Proxy Bearer Token (Optional)",
+                description = "Bearer token sent in Authorization header when querying your Custom Proxy / LAN Gateway.",
+                portalLabel = "Proxy Secret",
+                portalUrl = "Android Keystore AES-256",
+                icon = Icons.Default.Key,
+                initialKey = AyraPreferences.getCustomEndpointKey(context),
+                placeholder = "Bearer token...",
+                testTagPrefix = "custom_proxy_key",
+                editsLocked = editsLocked,
+                onSave = { token ->
+                    AyraPreferences.setCustomEndpointKey(context, token)
+                    notifyActivationChanged()
+                },
+                onClear = {
+                    AyraPreferences.setCustomEndpointKey(context, "")
+                    notifyActivationChanged()
+                },
+                onTest = {
+                    val customUrl = AyraPreferences.getCustomEndpointUrl(context)
+                    if (customUrl.isBlank()) {
+                        throw IllegalStateException("Save a Custom Proxy / LAN Gateway URL first.")
+                    }
+                    val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, customUrl)
+                    if (!urlCheck.allowed) {
+                        throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
+                    }
+                    val start = System.currentTimeMillis()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient
+                        val req = okhttp3.Request.Builder()
+                            .url("${customUrl.trimEnd('/')}/v1/models")
+                            .header("Authorization", "Bearer ${it.trim()}")
+                            .get()
+                            .build()
+                        client.newCall(req).execute().use { resp ->
+                            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+                        }
+                    }
+                    (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                }
+            )
 
         // Local Ollama / LM Studio Host
         SpecializedIntegrationKeyCard(
@@ -188,6 +322,7 @@ fun ProviderKeysSection(
             initialKey = if (AyraPreferences.hasExplicitOllamaHost(context)) AyraPreferences.getOllamaHost(context) else "",
             placeholder = "http://10.0.2.2:11434",
             testTagPrefix = "local_ollama",
+            editsLocked = editsLocked,
             statusBadgeOverride = if (AyraPreferences.hasExplicitOllamaHost(context)) "Local Ready ✓" else null,
             onSave = { endpoint ->
                 AyraPreferences.setOllamaHost(context, endpoint)
@@ -225,6 +360,7 @@ fun ProviderKeysSection(
             icon = Icons.Default.Language,
             initialKey = AyraPreferences.getTavilySearchKey(context),
             placeholder = "tvly-...",
+            editsLocked = editsLocked,
             onSave = { AyraPreferences.setTavilySearchKey(context, it); notifyActivationChanged() },
             onClear = { AyraPreferences.setTavilySearchKey(context, ""); notifyActivationChanged() },
             onTest = { key -> TavilySearchEngine(context).testConnection(key) }
@@ -240,6 +376,7 @@ fun ProviderKeysSection(
             icon = Icons.Default.RecordVoiceOver,
             initialKey = AyraPreferences.getElevenLabsKey(context),
             placeholder = "sk_...",
+            editsLocked = editsLocked,
             onSave = { AyraPreferences.setElevenLabsKey(context, it); notifyActivationChanged() },
             onClear = { AyraPreferences.setElevenLabsKey(context, ""); notifyActivationChanged() },
             onTest = { key -> ElevenLabsVoiceEngine(context).testConnection(key) }
@@ -255,6 +392,7 @@ fun ProviderKeysSection(
             icon = Icons.Default.AutoAwesome,
             initialKey = AyraPreferences.getCustomEndpointUrl(context),
             placeholder = "http://10.0.2.2:8000/v1",
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setCustomEndpointUrl(context, it)
                 ExternalAiProviders.clearDynamicModelCache(AiProviderType.LOCAL_OLLAMA)
@@ -316,6 +454,7 @@ fun ProviderKeysSection(
             icon = Icons.Default.AutoAwesome,
             initialKey = AyraPreferences.getComfyUiUrl(context),
             placeholder = "http://10.0.2.2:8188",
+            editsLocked = editsLocked,
             onSave = { AyraPreferences.setComfyUiUrl(context, it); notifyActivationChanged() },
             onClear = { AyraPreferences.setComfyUiUrl(context, ""); notifyActivationChanged() },
             onTest = { endpoint ->
@@ -338,6 +477,7 @@ fun ProviderKeysSection(
                 (System.currentTimeMillis() - start).coerceAtLeast(1L)
             }
         )
+        }
     }
 }
 
@@ -347,6 +487,7 @@ private fun AiActivationAndConsentCard(
     hasExternalConsent: Boolean,
     isLocalOnly: Boolean,
     activationRevision: Int,
+    editsLocked: Boolean,
     onConsentChanged: (Boolean) -> Unit,
     onSynced: () -> Unit
 ) {
@@ -412,6 +553,7 @@ private fun AiActivationAndConsentCard(
                 Switch(
                     checked = hasExternalConsent,
                     onCheckedChange = onConsentChanged,
+                    enabled = !editsLocked,
                     modifier = Modifier.testTag("external_cloud_consent_switch"),
                     colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
                 )
@@ -498,12 +640,13 @@ private fun AiActivationAndConsentCard(
 }
 
 @Composable
-fun AiRoutingAndMemoryCard(context: Context) {
+fun AiRoutingAndMemoryCard(context: Context, editsLocked: Boolean = false) {
     var selectedMode by remember { mutableStateOf(AyraPreferences.getRoutingMode(context)) }
     var isMemoryEnabled by remember { mutableStateOf(AyraPreferences.isMemoryEnabled(context)) }
     var userInstructions by remember { mutableStateOf(AyraPreferences.getUserCustomInstructions(context)) }
     var rememberedFactsCount by remember { mutableStateOf(AyraPreferences.getRememberedFacts(context).size) }
     var statusMessage by remember { mutableStateOf("") }
+    var showWipeMemoryDialog by remember { mutableStateOf(false) }
 
     val routingModes = remember {
         listOf(
@@ -547,9 +690,10 @@ fun AiRoutingAndMemoryCard(context: Context) {
                             AyraPreferences.setRoutingMode(context, id)
                             statusMessage = "Routing set to $label ✓"
                         },
+                        enabled = !editsLocked,
                         shape = RoundedCornerShape(10.dp),
                         colors = if (isSelected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.outlinedButtonColors(),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     ) {
                         Text(label, fontSize = 11.sp, maxLines = 1)
                     }
@@ -568,9 +712,10 @@ fun AiRoutingAndMemoryCard(context: Context) {
                             AyraPreferences.setRoutingMode(context, id)
                             statusMessage = "Routing set to $label ✓"
                         },
+                        enabled = !editsLocked,
                         shape = RoundedCornerShape(10.dp),
                         colors = if (isSelected) ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.outlinedButtonColors(),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     ) {
                         Text(label, fontSize = 11.sp, maxLines = 1)
                     }
@@ -585,7 +730,7 @@ fun AiRoutingAndMemoryCard(context: Context) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
                         text = "🧠 Autonomous AI Memory",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -601,11 +746,9 @@ fun AiRoutingAndMemoryCard(context: Context) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (rememberedFactsCount > 0) {
                         TextButton(
-                            onClick = {
-                                AyraPreferences.clearAllMemory(context)
-                                rememberedFactsCount = 0
-                                statusMessage = "All AI memory wiped clean ✓"
-                            }
+                            onClick = { showWipeMemoryDialog = true },
+                            enabled = !editsLocked,
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("wipe_memory_button")
                         ) {
                             Text("Wipe", color = Color(0xFFFF5252), fontSize = 11.sp)
                         }
@@ -617,10 +760,12 @@ fun AiRoutingAndMemoryCard(context: Context) {
                             AyraPreferences.setMemoryEnabled(context, isMemoryEnabled)
                             statusMessage = if (isMemoryEnabled) "AI Memory Enabled ✓" else "AI Memory Disabled ✓"
                         },
+                        enabled = !editsLocked,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isMemoryEnabled) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
+                        ),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text(if (isMemoryEnabled) "Enabled" else "Disabled", fontSize = 11.sp)
                     }
@@ -634,6 +779,8 @@ fun AiRoutingAndMemoryCard(context: Context) {
                     userInstructions = it
                     AyraPreferences.setUserCustomInstructions(context, it)
                 },
+                readOnly = editsLocked,
+                enabled = !editsLocked,
                 label = { Text("Custom Instructions for Ayra AI (optional)", fontSize = 11.sp) },
                 placeholder = { Text("e.g. Always respond in Bengali; prioritize concise code", fontSize = 11.sp) },
                 modifier = Modifier.fillMaxWidth(),
@@ -650,6 +797,36 @@ fun AiRoutingAndMemoryCard(context: Context) {
             }
         }
     }
+
+    if (showWipeMemoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showWipeMemoryDialog = false },
+            title = { Text("Wipe All Remembered Facts?") },
+            text = { Text("This will permanently erase $rememberedFactsCount saved memory facts from encrypted preferences.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        AyraPreferences.clearAllMemory(context)
+                        rememberedFactsCount = 0
+                        statusMessage = "All AI memory wiped clean ✓"
+                        showWipeMemoryDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_wipe_memory_button")
+                ) {
+                    Text("Wipe Memory")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showWipeMemoryDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -660,6 +837,7 @@ fun SingleProviderKeyCard(
     portalUrl: String,
     hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
     isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    editsLocked: Boolean = false,
     onKeyChanged: () -> Unit = {}
 ) {
     val providersEngine = remember { ExternalAiProviders(context) }
@@ -672,6 +850,7 @@ fun SingleProviderKeyCard(
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     val isRetired = provider == AiProviderType.GITHUB_MODELS
     val isConfigured = keyInput.isNotBlank() && !isRetired
@@ -745,7 +924,9 @@ fun SingleProviderKeyCard(
 
             OutlinedTextField(
                 value = keyInput,
-                onValueChange = { keyInput = it },
+                onValueChange = { if (!editsLocked) keyInput = it },
+                readOnly = editsLocked,
+                enabled = !editsLocked,
                 modifier = Modifier.fillMaxWidth().testTag("provider_key_input_${provider.id}"),
                 placeholder = {
                     Text(
@@ -821,6 +1002,7 @@ fun SingleProviderKeyCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
+                    enabled = !editsLocked,
                     onClick = {
                         AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
                             if (it.isNotBlank()) keyInput = it.trim()
@@ -832,12 +1014,9 @@ fun SingleProviderKeyCard(
 
                 if (keyInput.isNotBlank()) {
                     TextButton(
-                        onClick = {
-                            keyInput = ""
-                            saveKey(context, provider, "")
-                            onKeyChanged()
-                            testResult = null
-                        }
+                        enabled = !editsLocked,
+                        onClick = { showClearConfirm = true },
+                        modifier = Modifier.testTag("provider_key_clear_${provider.id}")
                     ) {
                         Text("Clear", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
@@ -892,7 +1071,7 @@ fun SingleProviderKeyCard(
                         }
                         isError = false
                     },
-                    enabled = !isRetired,
+                    enabled = !isRetired && !editsLocked,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.heightIn(min = 48.dp).testTag("provider_key_save_${provider.id}")
@@ -901,6 +1080,37 @@ fun SingleProviderKeyCard(
                 }
             }
         }
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Remove ${provider.displayName} Key?") },
+            text = { Text("This deletes the stored key from Android Keystore.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        keyInput = ""
+                        saveKey(context, provider, "")
+                        onKeyChanged()
+                        testResult = null
+                        showClearConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_clear_key_${provider.id}")
+                ) {
+                    Text("Remove Key")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearConfirm = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -918,7 +1128,8 @@ fun SpecializedIntegrationKeyCard(
     onClear: () -> Unit,
     onTest: suspend (String) -> Long,
     testTagPrefix: String? = null,
-    statusBadgeOverride: String? = null
+    statusBadgeOverride: String? = null,
+    editsLocked: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
 
@@ -927,6 +1138,7 @@ fun SpecializedIntegrationKeyCard(
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     val isConfigured = keyInput.isNotBlank()
 
@@ -986,7 +1198,9 @@ fun SpecializedIntegrationKeyCard(
 
             OutlinedTextField(
                 value = keyInput,
-                onValueChange = { keyInput = it },
+                onValueChange = { if (!editsLocked) keyInput = it },
+                readOnly = editsLocked,
+                enabled = !editsLocked,
                 modifier = Modifier
                     .fillMaxWidth()
                     .let { if (testTagPrefix != null) it.testTag("${testTagPrefix}_input") else it },
@@ -1055,6 +1269,7 @@ fun SpecializedIntegrationKeyCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
+                    enabled = !editsLocked,
                     onClick = {
                         AndroidHardeningHelper.readPlainTextFromClipboard(context)?.let {
                             if (it.isNotBlank()) keyInput = it.trim()
@@ -1066,11 +1281,8 @@ fun SpecializedIntegrationKeyCard(
 
                 if (keyInput.isNotBlank()) {
                     TextButton(
-                        onClick = {
-                            keyInput = ""
-                            onClear()
-                            testResult = null
-                        }
+                        enabled = !editsLocked,
+                        onClick = { showClearConfirm = true }
                     ) {
                         Text("Clear", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
@@ -1115,10 +1327,16 @@ fun SpecializedIntegrationKeyCard(
 
                 Button(
                     onClick = {
-                        onSave(keyInput.trim())
-                        testResult = "Key saved securely to Android Keystore ✓"
-                        isError = false
+                        try {
+                            onSave(keyInput.trim())
+                            testResult = "Saved securely to Android Keystore ✓"
+                            isError = false
+                        } catch (e: Exception) {
+                            testResult = e.message ?: "Validation failed"
+                            isError = true
+                        }
                     },
+                    enabled = !editsLocked,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier
@@ -1129,6 +1347,36 @@ fun SpecializedIntegrationKeyCard(
                 }
             }
         }
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Remove $title?") },
+            text = { Text("This deletes the saved configuration from Android Keystore.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        keyInput = ""
+                        onClear()
+                        testResult = null
+                        showClearConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearConfirm = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -1145,6 +1393,7 @@ fun NvidiaNimMultiKeySection(
     context: Context,
     hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
     isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    editsLocked: Boolean = false,
     onKeyChanged: () -> Unit = {}
 ) {
     fun nimStatusBadge(key: String): String? = when {
@@ -1166,6 +1415,7 @@ fun NvidiaNimMultiKeySection(
             placeholder = "nvapi-...",
             testTagPrefix = "nim_llama",
             statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaKey(context)),
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setNvidiaKey(context, it)
                 invalidateNvidiaNim(context, onKeyChanged)
@@ -1193,6 +1443,7 @@ fun NvidiaNimMultiKeySection(
             placeholder = "nvapi-...",
             testTagPrefix = "nim_minimax",
             statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaMinimaxKey(context)),
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setNvidiaMinimaxKey(context, it)
                 invalidateNvidiaNim(context, onKeyChanged)
@@ -1220,6 +1471,7 @@ fun NvidiaNimMultiKeySection(
             placeholder = "nvapi-...",
             testTagPrefix = "nim_glm",
             statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaGlmKey(context)),
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setNvidiaGlmKey(context, it)
                 invalidateNvidiaNim(context, onKeyChanged)
@@ -1247,6 +1499,7 @@ fun NvidiaNimMultiKeySection(
             placeholder = "nvapi-...",
             testTagPrefix = "nim_muse",
             statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaMuseKey(context)),
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setNvidiaMuseKey(context, it)
                 invalidateNvidiaNim(context, onKeyChanged)
@@ -1274,6 +1527,7 @@ fun NvidiaNimMultiKeySection(
             placeholder = "nvapi-...",
             testTagPrefix = "nim_gemma",
             statusBadgeOverride = nimStatusBadge(AyraPreferences.getNvidiaGemmaKey(context)),
+            editsLocked = editsLocked,
             onSave = {
                 AyraPreferences.setNvidiaGemmaKey(context, it)
                 invalidateNvidiaNim(context, onKeyChanged)
@@ -1298,6 +1552,7 @@ fun FreeAiPoolCard(
     context: Context,
     hasExternalConsent: Boolean = AyraPreferences.hasExternalAiConsent(context),
     isLocalOnly: Boolean = AyraPreferences.isLocalOnlyAiModeEnabled(context),
+    editsLocked: Boolean = false,
     onChanged: () -> Unit = {}
 ) {
     var freePoolEnabled by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
@@ -1332,6 +1587,7 @@ fun FreeAiPoolCard(
             }
             Switch(
                 checked = freePoolEnabled,
+                enabled = !editsLocked,
                 onCheckedChange = {
                     freePoolEnabled = it
                     AyraPreferences.setFreeAiPoolEnabled(context, it)
