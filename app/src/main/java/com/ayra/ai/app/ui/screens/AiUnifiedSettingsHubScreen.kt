@@ -52,6 +52,7 @@ import com.ayra.ai.app.ai.FirebaseAiEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.ai.providers.ModelTier
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkConnectivityManager
 import com.ayra.ai.app.ui.components.ProviderKeysSection
 import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 
@@ -73,6 +74,7 @@ fun AiUnifiedSettingsHubScreen(
     val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsStateWithLifecycle(
         initialValue = AyraPreferences.getThinkingMode(context)
     )
+    val networkState by NetworkConnectivityManager.stateFlow.collectAsStateWithLifecycle()
 
     val isLocalOnly = remember(refreshTick) { AyraPreferences.isLocalOnlyAiModeEnabled(context) }
     val hasConsent = remember(refreshTick) { AyraPreferences.hasExternalAiConsent(context) }
@@ -182,7 +184,9 @@ fun AiUnifiedSettingsHubScreen(
                 }
                 Text(
                     text = buildString {
-                        append("Built-in Firebase AI: ")
+                        append("Network: ")
+                        append(networkState.statusSummary)
+                        append("\nBuilt-in Firebase AI: ")
                         append(if (firebaseAvailable) "Active" else if (isLocalOnly) "Paused (Local-Only)" else "Unavailable")
                         append(" • External Consent: ")
                         append(if (hasConsent) "ON" else "OFF")

@@ -49,7 +49,7 @@ internal object ProviderOpenAiTransport {
             AiProviderType.MISTRAL -> "https://api.mistral.ai/v1/"
             AiProviderType.PERPLEXITY -> "https://api.perplexity.ai/"
             AiProviderType.OPENROUTER -> "https://openrouter.ai/api/v1/"
-            AiProviderType.POLLINATIONS_FREE -> "https://text.pollinations.ai/"
+            AiProviderType.POLLINATIONS_FREE -> "https://gen.pollinations.ai/v1/"
             AiProviderType.LOCAL_OLLAMA -> {
                 val custom = context?.let { AyraPreferences.getCustomEndpointUrl(it).trim() } ?: ""
                 if (custom.isNotBlank()) {
@@ -129,6 +129,27 @@ internal object ProviderOpenAiTransport {
         return true
     }
 
+    private fun executeHttpsAware(
+        client: OkHttpClient,
+        provider: AiProviderType,
+        hasCustomClient: Boolean,
+        hasOverride: Boolean,
+        request: Request
+    ): okhttp3.Response {
+        val url = request.url.toString()
+        return if (!hasCustomClient && !hasOverride && provider != AiProviderType.LOCAL_OLLAMA &&
+            url.startsWith("https://", ignoreCase = true)
+        ) {
+            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                client = client,
+                initialRequest = request,
+                urlValidator = { NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(it) }
+            )
+        } else {
+            client.newCall(request).execute()
+        }
+    }
+
     private fun throwIfOpenAiInlineError(json: JSONObject, provider: AiProviderType, model: String) {
         val errObj = json.optJSONObject("error") ?: return
         val code = errObj.optInt("code", 500)
@@ -184,7 +205,8 @@ internal object ProviderOpenAiTransport {
             reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
-        return client.newCall(reqBuilder.build()).execute().use { response ->
+        val hasOverride = baseUrlOverrides.containsKey(provider)
+        return executeHttpsAware(client, provider, hasCustomClient, hasOverride, reqBuilder.build()).use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404 || response.code == 410) {
@@ -260,7 +282,8 @@ internal object ProviderOpenAiTransport {
             reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
-        return client.newCall(reqBuilder.build()).execute().use { response ->
+        val hasOverride = baseUrlOverrides.containsKey(provider)
+        return executeHttpsAware(client, provider, hasCustomClient, hasOverride, reqBuilder.build()).use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404 || response.code == 410) {
@@ -325,7 +348,8 @@ internal object ProviderOpenAiTransport {
             reqBuilder.addHeader("X-Title", "Ayra AI")
         }
 
-        client.newCall(reqBuilder.build()).execute().use { response ->
+        val hasOverride = baseUrlOverrides.containsKey(provider)
+        executeHttpsAware(client, provider, hasCustomClient, hasOverride, reqBuilder.build()).use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("${provider.displayName} rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(provider)
             if (response.code == 404 || response.code == 410) {
@@ -418,7 +442,8 @@ internal object ProviderOpenAiTransport {
         provider: AiProviderType,
         baseUrlOverrides: Map<AiProviderType, String>,
         key: String,
-        out: MutableList<AiModelInfo>
+        out: MutableList<AiModelInfo>,
+        hasCustomClient: Boolean = false
     ) {
         val baseUrl = getBaseUrlForProvider(provider, context, baseUrlOverrides)
         validateEndpointIfLocal(provider, context, baseUrl, baseUrlOverrides.isNotEmpty())
@@ -459,7 +484,7 @@ internal object ProviderOpenAiTransport {
             reqBuilder.addHeader("HTTP-Referer", "https://ayra.ai")
             reqBuilder.addHeader("X-Title", "Ayra AI Mobile")
         }
-        client.newCall(reqBuilder.get().build()).execute().use { resp ->
+        executeHttpsAware(client, provider, hasCustomClient, baseUrlOverrides.containsKey(provider), reqBuilder.get().build()).use { resp ->
             if (resp.isSuccessful) {
                 parseModelArray(resp.readBounded().trim())
             }

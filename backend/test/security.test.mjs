@@ -999,3 +999,40 @@ test("HTTP 200 inline data.error from Gemini/OpenAI-compatible upstream propagat
   }
 });
 
+test("CORS preflight permits X-Ayra-Device-Id alongside Authorization and X-Firebase-AppCheck", async () => {
+  const allowedOrigin = "https://ayra.ai";
+  const corsApp = createZeroTrustApp({
+    config: {
+      ...testConfig,
+      corsAllowedOrigins: [allowedOrigin],
+    },
+    verifiers: {
+      verifyIdToken: async () => ({ uid: "uid_cors", email: "cors@example.com", role: "user" }),
+      verifyAppCheckToken: async () => undefined,
+    },
+    rateLimitStore: new MemoryRateLimitStore(),
+  });
+  const srv = await new Promise((resolve) => {
+    const s = corsApp.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  try {
+    const u = `http://127.0.0.1:${srv.address().port}`;
+    const preflight = await fetch(`${u}/api/v1/ai/chat`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: allowedOrigin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Authorization, Content-Type, X-Firebase-AppCheck, X-Ayra-Device-Id",
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), allowedOrigin);
+    const allowedHeaders = (preflight.headers.get("access-control-allow-headers") || "").toLowerCase();
+    assert.ok(allowedHeaders.includes("x-ayra-device-id"), `Expected x-ayra-device-id in ${allowedHeaders}`);
+    assert.ok(allowedHeaders.includes("x-firebase-appcheck"), `Expected x-firebase-appcheck in ${allowedHeaders}`);
+  } finally {
+    await new Promise((resolve) => srv.close(() => resolve()));
+  }
+});
+
+

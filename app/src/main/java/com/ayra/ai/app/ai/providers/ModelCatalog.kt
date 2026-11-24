@@ -1,7 +1,6 @@
 package com.ayra.ai.app.ai.providers
 
 import android.content.Context
-import com.ayra.ai.app.ai.FirebaseAiEngine
 import com.ayra.ai.app.data.AyraPreferences
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,6 +63,68 @@ data class ModelCatalogEntry(
  */
 object ModelCatalog {
 
+    // Canonical Single Source of Truth (SSOT) Model IDs across Ayra AI
+    const val GEMINI_FLASH_MODEL = "gemini-3.8-flash"
+    const val GEMINI_FAST_LITE_MODEL = "gemini-3.5-flash-lite"
+    const val GEMINI_PRO_MODEL = "gemini-4-argon"
+    const val GEMINI_GEMMA4_MODEL = "gemma-4-31b-it"
+    const val GEMINI_IMAGE_NANO_BANANA_MODEL = "gemini-nano-banana-2.1"
+    const val GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image"
+    const val GEMINI_FLASH_LITE_IMAGE_MODEL = "gemini-3.1-flash-lite-image"
+    const val GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview"
+
+    const val OPENAI_DEFAULT_MODEL = "gpt-6.2-sol"
+    const val OPENAI_REASONING_MODEL = "gpt-6.2-astra"
+    const val OPENAI_MINI_MODEL = "gpt-6-luna"
+
+    const val ANTHROPIC_SONNET_MODEL = "claude-sonnet-5-5"
+    const val ANTHROPIC_OPUS_MODEL = "claude-opus-5-5"
+    const val ANTHROPIC_HAIKU_MODEL = "claude-haiku-5-5"
+
+    const val DEEPSEEK_CHAT_MODEL = "deepseek-flash"
+    const val DEEPSEEK_REASONER_MODEL = "deepseek-v4-pro"
+
+    const val XAI_DEFAULT_MODEL = "grok-4.7"
+    const val MISTRAL_LARGE_MODEL = "mistral-large-latest"
+    const val MISTRAL_CODESTRAL_MODEL = "codestral-latest"
+    const val PERPLEXITY_REASONING_MODEL = "sonar-reasoning-pro"
+
+    const val OPENROUTER_DEFAULT_MODEL = "openrouter/free"
+    const val OPENROUTER_AUTO_MODEL = "openrouter/auto"
+    const val OPENROUTER_QWEN_FREE_MODEL = "qwen/qwen3.8-27b:free"
+    const val OPENROUTER_CODER_MODEL = "qwen/qwen3-coder:free"
+
+    const val NVIDIA_LLAMA_MODEL = "meta/llama-3.3-70b-instruct"
+    const val NVIDIA_MINIMAX_MODEL = "minimaxai/minimax-m3.1-flash"
+    const val NVIDIA_GLM_MODEL = "z-ai/glm-5.3-flash"
+    const val NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b"
+    const val NVIDIA_GEMMA_MODEL = "google/gemma-4-31b-it"
+
+    const val GROQ_LLAMA_MODEL = "llama-3.1-8b-instant"
+    const val GROQ_QWEN_MODEL = "qwen/qwen3-32b"
+    const val GROQ_GPT_OSS_MODEL = "openai/gpt-oss-120b"
+    const val GROQ_WHISPER_MODEL = "whisper-large-v3-turbo"
+
+    const val CEREBRAS_LLAMA_MODEL = "gpt-oss-120b"
+    const val CEREBRAS_QWEN_MODEL = "qwen-3.8-27b"
+
+    const val SAMBANOVA_DEEPSEEK_MODEL = "DeepSeek-V3.1-Terminus"
+    const val SAMBANOVA_LLAMA_MODEL = "Meta-Llama-3.3-70B-Instruct"
+    const val SAMBANOVA_QWEN_MODEL = "Qwen3-32B"
+    const val SAMBANOVA_WHISPER_MODEL = "Whisper-Large-v3"
+
+    const val HF_QWEN_MODEL = "Qwen/Qwen2.5-72B-Instruct"
+    const val GITHUB_RETIRED_MODEL = "github-models-retired"
+
+    const val OLLAMA_LLAMA_MODEL = "llama3.3"
+    const val OLLAMA_QWEN_MODEL = "qwen2.5:14b"
+
+    const val POLLINATIONS_OPENAI_MODEL = "openai"
+    const val POLLINATIONS_LARGE_MODEL = "openai-large"
+    const val POLLINATIONS_CODER_MODEL = "qwen-coder"
+    const val POLLINATIONS_DEEPSEEK_MODEL = "deepseek"
+    const val COMFYUI_WORKFLOW_MODEL = "comfyui-flux-wan"
+
     private data class HealthBlock(
         val httpStatus: Int,
         val reason: String,
@@ -74,58 +135,58 @@ object ModelCatalog {
     private val baselineCatalog: List<ModelCatalogEntry> = listOf(
         // --- Firebase AI Logic Verified Platform Models ---
         ModelCatalogEntry(
-            id = FirebaseAiEngine.MODEL_FLASH,
+            id = GEMINI_FLASH_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 3.8 Flash",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.AUDIO, ModelCapability.CODE),
             contextTokens = 1_000_000,
             costTier = ModelCostTier.FREE_PLATFORM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = FirebaseAiEngine.MODEL_FAST_LITE,
+            fallbackModelId = GEMINI_FAST_LITE_MODEL,
             notes = "Firebase AI Logic default multimodal engine"
         ),
         ModelCatalogEntry(
-            id = FirebaseAiEngine.MODEL_FAST_LITE,
+            id = GEMINI_FAST_LITE_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 3.5 Flash-Lite",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS),
             contextTokens = 1_000_000,
             costTier = ModelCostTier.FREE_PLATFORM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = FirebaseAiEngine.MODEL_FLASH
+            fallbackModelId = GEMINI_FLASH_MODEL
         ),
         ModelCatalogEntry(
-            id = FirebaseAiEngine.MODEL_PRO_REASONING,
+            id = GEMINI_PRO_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 4 Argon",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 2_000_000,
             costTier = ModelCostTier.MEDIUM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = FirebaseAiEngine.MODEL_FLASH
+            fallbackModelId = GEMINI_FLASH_MODEL
         ),
         ModelCatalogEntry(
-            id = FirebaseAiEngine.MODEL_IMAGE_NANO_BANANA,
+            id = GEMINI_IMAGE_NANO_BANANA_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini Nano Banana 2.1",
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
             contextTokens = 128_000,
             costTier = ModelCostTier.MEDIUM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = "gemini-3-pro-image"
+            fallbackModelId = GEMINI_PRO_IMAGE_MODEL
         ),
         ModelCatalogEntry(
-            id = "gemini-3-pro-image",
+            id = GEMINI_PRO_IMAGE_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 3 Pro Image",
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
             contextTokens = 128_000,
             costTier = ModelCostTier.HIGH,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = "gemini-3.1-flash-lite-image"
+            fallbackModelId = GEMINI_FLASH_LITE_IMAGE_MODEL
         ),
         ModelCatalogEntry(
-            id = "gemini-3.1-flash-lite-image",
+            id = GEMINI_FLASH_LITE_IMAGE_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 3.1 Flash-Lite Image",
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
@@ -134,7 +195,7 @@ object ModelCatalog {
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM
         ),
         ModelCatalogEntry(
-            id = com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_TTS,
+            id = GEMINI_TTS_MODEL,
             provider = AiProviderType.GEMINI,
             displayName = "Gemini 3.1 Flash TTS Preview",
             capabilities = setOf(ModelCapability.AUDIO),
@@ -145,37 +206,37 @@ object ModelCatalog {
 
         // --- Free-Tier & Cloud Open-Weights Configured Models ---
         ModelCatalogEntry(
-            id = ExternalAiProviders.GROQ_QWEN_MODEL,
+            id = GROQ_QWEN_MODEL,
             provider = AiProviderType.GROQ,
-            displayName = "Groq Qwen 3.8 27B",
+            displayName = "Groq Qwen3 32B",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 131_072,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.GROQ_GPT_OSS_MODEL
+            fallbackModelId = GROQ_GPT_OSS_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.GROQ_GPT_OSS_MODEL,
+            id = GROQ_GPT_OSS_MODEL,
             provider = AiProviderType.GROQ,
             displayName = "Groq GPT-OSS 120B",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 131_072,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.GROQ_LLAMA_MODEL
+            fallbackModelId = GROQ_LLAMA_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.GROQ_LLAMA_MODEL,
+            id = GROQ_LLAMA_MODEL,
             provider = AiProviderType.GROQ,
             displayName = "Groq Llama 3.1 8B Instant",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.GROQ_QWEN_MODEL
+            fallbackModelId = GROQ_QWEN_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.GROQ_WHISPER_MODEL,
+            id = GROQ_WHISPER_MODEL,
             provider = AiProviderType.GROQ,
             displayName = "Groq Whisper Large v3 Turbo",
             capabilities = setOf(ModelCapability.AUDIO),
@@ -344,27 +405,27 @@ object ModelCatalog {
             verificationStatus = ModelVerificationStatus.CONFIGURED
         ),
         ModelCatalogEntry(
-            id = "mistral-large-latest",
+            id = MISTRAL_LARGE_MODEL,
             provider = AiProviderType.MISTRAL,
             displayName = "Mistral Large",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.MEDIUM,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "codestral-latest"
+            fallbackModelId = MISTRAL_CODESTRAL_MODEL
         ),
         ModelCatalogEntry(
-            id = "codestral-latest",
+            id = MISTRAL_CODESTRAL_MODEL,
             provider = AiProviderType.MISTRAL,
             displayName = "Codestral",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
             contextTokens = 256_000,
             costTier = ModelCostTier.LOW,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "mistral-large-latest"
+            fallbackModelId = MISTRAL_LARGE_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.PERPLEXITY_REASONING_MODEL,
+            id = PERPLEXITY_REASONING_MODEL,
             provider = AiProviderType.PERPLEXITY,
             displayName = "Perplexity Sonar Reasoning Pro",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.REASONING),
@@ -373,71 +434,113 @@ object ModelCatalog {
             verificationStatus = ModelVerificationStatus.CONFIGURED
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL,
+            id = OPENROUTER_DEFAULT_MODEL,
             provider = AiProviderType.OPENROUTER,
             displayName = "OpenRouter Free Router",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL
+            fallbackModelId = OPENROUTER_QWEN_FREE_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL,
+            id = OPENROUTER_QWEN_FREE_MODEL,
             provider = AiProviderType.OPENROUTER,
             displayName = "Qwen 3.8 27B Free (OpenRouter)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.OPENROUTER_AUTO_MODEL
+            fallbackModelId = OPENROUTER_AUTO_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.OPENROUTER_CODER_MODEL,
+            id = OPENROUTER_CODER_MODEL,
             provider = AiProviderType.OPENROUTER,
             displayName = "Qwen3 Coder Free (OpenRouter)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
+            fallbackModelId = OPENROUTER_DEFAULT_MODEL
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.OPENROUTER_AUTO_MODEL,
+            id = OPENROUTER_AUTO_MODEL,
             provider = AiProviderType.OPENROUTER,
             displayName = "OpenRouter Auto",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 128_000,
             costTier = ModelCostTier.LOW,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
+            fallbackModelId = OPENROUTER_DEFAULT_MODEL
+        ),
+
+        // --- Pollinations Pool ---
+        ModelCatalogEntry(
+            id = POLLINATIONS_OPENAI_MODEL,
+            provider = AiProviderType.POLLINATIONS_FREE,
+            displayName = "Global Free AI Pool (OpenAI/Flux)",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.IMAGE_GEN),
+            contextTokens = 32_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = POLLINATIONS_LARGE_MODEL
+        ),
+        ModelCatalogEntry(
+            id = POLLINATIONS_LARGE_MODEL,
+            provider = AiProviderType.POLLINATIONS_FREE,
+            displayName = "Global Free Flagship (Large)",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.REASONING),
+            contextTokens = 64_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = POLLINATIONS_OPENAI_MODEL
+        ),
+        ModelCatalogEntry(
+            id = POLLINATIONS_CODER_MODEL,
+            provider = AiProviderType.POLLINATIONS_FREE,
+            displayName = "Global Free Qwen Coder",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),
+            contextTokens = 32_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = POLLINATIONS_OPENAI_MODEL
+        ),
+        ModelCatalogEntry(
+            id = POLLINATIONS_DEEPSEEK_MODEL,
+            provider = AiProviderType.POLLINATIONS_FREE,
+            displayName = "Global Free DeepSeek Reasoning",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.REASONING),
+            contextTokens = 64_000,
+            costTier = ModelCostTier.FREE_TIER,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            fallbackModelId = POLLINATIONS_OPENAI_MODEL
         ),
 
         // --- Local / LAN Self-Hosted ---
         ModelCatalogEntry(
-            id = "llama3.3",
+            id = OLLAMA_LLAMA_MODEL,
             provider = AiProviderType.LOCAL_OLLAMA,
             displayName = "Local Ollama Llama 3.3",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE),
             contextTokens = 32_000,
             costTier = ModelCostTier.LOCAL,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "qwen2.5:14b"
+            fallbackModelId = OLLAMA_QWEN_MODEL
         ),
         ModelCatalogEntry(
-            id = "qwen2.5:14b",
+            id = OLLAMA_QWEN_MODEL,
             provider = AiProviderType.LOCAL_OLLAMA,
             displayName = "Local Ollama Qwen 2.5 14B",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 32_000,
             costTier = ModelCostTier.LOCAL,
             verificationStatus = ModelVerificationStatus.CONFIGURED,
-            fallbackModelId = "llama3.3"
+            fallbackModelId = OLLAMA_LLAMA_MODEL
         ),
 
         // --- Unverified / Preview IDs (Explicitly excluded from default routing unless discovered live) ---
         ModelCatalogEntry(
-            id = ExternalAiProviders.NVIDIA_MINIMAX_MODEL,
+            id = NVIDIA_MINIMAX_MODEL,
             provider = AiProviderType.NVIDIA_NIM,
             displayName = "MiniMax M3.1 Flash (NIM)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.CODE),
@@ -445,11 +548,11 @@ object ModelCatalog {
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.UNVERIFIED,
             isDefaultCandidate = false,
-            fallbackModelId = "meta/llama-3.3-70b-instruct",
+            fallbackModelId = NVIDIA_LLAMA_MODEL,
             notes = "Requires live /v1/models verification on NIM endpoint"
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.NVIDIA_GLM_MODEL,
+            id = NVIDIA_GLM_MODEL,
             provider = AiProviderType.NVIDIA_NIM,
             displayName = "Z-AI GLM 5.3 Flash (NIM)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE, ModelCapability.REASONING),
@@ -457,11 +560,11 @@ object ModelCatalog {
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.UNVERIFIED,
             isDefaultCandidate = false,
-            fallbackModelId = "meta/llama-3.3-70b-instruct",
+            fallbackModelId = NVIDIA_LLAMA_MODEL,
             notes = "Requires live /v1/models verification on NIM endpoint"
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.NVIDIA_MUSE_MODEL,
+            id = NVIDIA_MUSE_MODEL,
             provider = AiProviderType.NVIDIA_NIM,
             displayName = "Meta Muse Glimmer 30B (NIM)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.REASONING),
@@ -469,11 +572,11 @@ object ModelCatalog {
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.UNVERIFIED,
             isDefaultCandidate = false,
-            fallbackModelId = "meta/llama-3.3-70b-instruct",
+            fallbackModelId = NVIDIA_LLAMA_MODEL,
             notes = "Requires live /v1/models verification on NIM endpoint"
         ),
         ModelCatalogEntry(
-            id = ExternalAiProviders.NVIDIA_GEMMA_MODEL,
+            id = NVIDIA_GEMMA_MODEL,
             provider = AiProviderType.NVIDIA_NIM,
             displayName = "Gemma 4 31B IT (NIM)",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.CODE, ModelCapability.REASONING),
@@ -481,11 +584,11 @@ object ModelCatalog {
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.UNVERIFIED,
             isDefaultCandidate = false,
-            fallbackModelId = "meta/llama-3.3-70b-instruct",
+            fallbackModelId = NVIDIA_LLAMA_MODEL,
             notes = "Requires live /v1/models verification on NIM endpoint"
         ),
         ModelCatalogEntry(
-            id = "meta/llama-3.3-70b-instruct",
+            id = NVIDIA_LLAMA_MODEL,
             provider = AiProviderType.NVIDIA_NIM,
             displayName = "NVIDIA NIM Llama 3.3 70B",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.CODE),

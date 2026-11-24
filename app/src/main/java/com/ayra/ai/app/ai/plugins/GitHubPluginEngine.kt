@@ -911,7 +911,18 @@ class GitHubPluginEngine @JvmOverloads constructor(
             if (!githubToken.isNullOrBlank() && url.startsWith(githubApiBaseUrl.trimEnd('/'))) {
                 reqBuilder.header("Authorization", "Bearer $githubToken")
             }
-            httpClient.newCall(reqBuilder.get().build()).execute().use { resp ->
+            val request = reqBuilder.get().build()
+            val isLiveHttps = url.startsWith("https://", ignoreCase = true) &&
+                githubApiBaseUrl == "https://api.github.com/"
+            val response = if (isLiveHttps) {
+                com.ayra.ai.app.security.NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                    client = httpClient,
+                    initialRequest = request
+                )
+            } else {
+                httpClient.newCall(request).execute()
+            }
+            response.use { resp ->
                 val bodyStr = resp.readBounded()
                 HttpFetchResult(resp.code, bodyStr)
             }

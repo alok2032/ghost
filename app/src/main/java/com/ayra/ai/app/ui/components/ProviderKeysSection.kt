@@ -243,7 +243,9 @@ fun ProviderKeysSection(
                 onSave = { endpoint ->
                     val clean = endpoint.trim().trimEnd('/')
                     if (clean.isNotEmpty()) {
-                        val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrl(clean)
+                        val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrl(clean)
+                        }
                         if (!urlCheck.allowed) {
                             throw IllegalArgumentException(urlCheck.reason ?: "Public HTTPS URL required for Route B Gateway.")
                         }
@@ -292,19 +294,25 @@ fun ProviderKeysSection(
                     if (customUrl.isBlank()) {
                         throw IllegalStateException("Save a Custom Proxy / LAN Gateway URL first.")
                     }
-                    val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, customUrl)
+                    val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, customUrl)
+                    }
                     if (!urlCheck.allowed) {
                         throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                     }
                     val start = System.currentTimeMillis()
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         val client = com.ayra.ai.app.security.NetworkSecurityHelper.localLanClient
+                        val modelsUrl = com.ayra.ai.app.security.NetworkSecurityHelper.normalizeOpenAiModelsUrl(customUrl)
                         val req = okhttp3.Request.Builder()
-                            .url("${customUrl.trimEnd('/')}/v1/models")
+                            .url(modelsUrl)
                             .header("Authorization", "Bearer ${it.trim()}")
                             .get()
                             .build()
                         client.newCall(req).execute().use { resp ->
+                            com.ayra.ai.app.security.NetworkSecurityHelper.run {
+                                resp.readBounded(maxBytes = 64 * 1024L, truncateOnOverflow = true)
+                            }
                             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
                         }
                     }
@@ -340,7 +348,9 @@ fun ProviderKeysSection(
                 notifyActivationChanged()
             },
             onTest = { endpoint ->
-                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                }
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe Ollama endpoint URL.")
                 }
@@ -409,7 +419,9 @@ fun ProviderKeysSection(
                 notifyActivationChanged()
             },
             onTest = { endpoint ->
-                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                }
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                 }
@@ -459,7 +471,9 @@ fun ProviderKeysSection(
             onSave = { AyraPreferences.setComfyUiUrl(context, it); notifyActivationChanged() },
             onClear = { AyraPreferences.setComfyUiUrl(context, ""); notifyActivationChanged() },
             onTest = { endpoint ->
-                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
+                }
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe ComfyUI URL.")
                 }
@@ -1125,7 +1139,7 @@ fun SpecializedIntegrationKeyCard(
     icon: ImageVector,
     initialKey: String,
     placeholder: String,
-    onSave: (String) -> Unit,
+    onSave: suspend (String) -> Unit,
     onClear: () -> Unit,
     onTest: suspend (String) -> Long,
     testTagPrefix: String? = null,
@@ -1137,6 +1151,7 @@ fun SpecializedIntegrationKeyCard(
     var keyInput by remember { mutableStateOf(initialKey) }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isTesting by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -1328,22 +1343,39 @@ fun SpecializedIntegrationKeyCard(
 
                 Button(
                     onClick = {
-                        try {
-                            onSave(keyInput.trim())
-                            testResult = "Saved securely to Android Keystore ✓"
+                        scope.launch {
+                            isSaving = true
+                            testResult = null
                             isError = false
-                        } catch (e: Exception) {
-                            testResult = e.message ?: "Validation failed"
-                            isError = true
+                            try {
+                                onSave(keyInput.trim())
+                                testResult = "Saved securely to Android Keystore ✓"
+                                isError = false
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                testResult = e.message ?: "Validation failed"
+                                isError = true
+                            } finally {
+                                isSaving = false
+                            }
                         }
                     },
-                    enabled = !editsLocked,
+                    enabled = !editsLocked && !isSaving,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .heightIn(min = 48.dp)
                         .let { if (testTagPrefix != null) it.testTag("${testTagPrefix}_save") else it }
                 ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
                     Text("Save", style = MaterialTheme.typography.labelMedium)
                 }
             }
@@ -1557,48 +1589,108 @@ fun FreeAiPoolCard(
     onChanged: () -> Unit = {}
 ) {
     var freePoolEnabled by remember { mutableStateOf(AyraPreferences.isFreeAiPoolEnabled(context)) }
+    var pollinationsKeyInput by remember { mutableStateOf(AyraPreferences.getPollinationsKey(context)) }
+    var isKeyVisible by remember { mutableStateOf(false) }
+    var keySavedMessage by remember { mutableStateOf<String?>(null) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(
-                    text = "Global Free AI Pool (Auto-Active) 🌐",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = when {
-                        isLocalOnly && freePoolEnabled -> "Enabled, but Local-Only Privacy Mode blocks cloud requests."
-                        freePoolEnabled && !hasExternalConsent -> "Paused — enable External Cloud AI Consent above to activate."
-                        freePoolEnabled -> "Active automatically ✓ Keyless GPT/OSS, Qwen Coder & DeepSeek ensemble ready."
-                        else -> "Optional community multi-AI endpoints when External Cloud AI is active."
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = "Global Free AI Pool (Auto-Active) 🌐",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = when {
+                            isLocalOnly && freePoolEnabled -> "Enabled, but Local-Only Privacy Mode blocks cloud requests."
+                            freePoolEnabled && !hasExternalConsent -> "Paused — enable External Cloud AI Consent above to activate."
+                            freePoolEnabled && pollinationsKeyInput.isNotBlank() -> "Active with Pollinations API key ✓ GPT/OSS, Qwen Coder & DeepSeek via gen.pollinations.ai."
+                            freePoolEnabled -> "Active ✓ Pollinations pool ready (optional API key recommended at enter.pollinations.ai for higher quotas)."
+                            else -> "Optional multi-AI fallback endpoints via gen.pollinations.ai when External Cloud AI is active."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = freePoolEnabled,
+                    enabled = !editsLocked,
+                    onCheckedChange = {
+                        freePoolEnabled = it
+                        AyraPreferences.setFreeAiPoolEnabled(context, it)
+                        ExternalAiProviders.clearDynamicModelCache(AiProviderType.POLLINATIONS_FREE)
+                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                        onChanged()
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
                 )
             }
-            Switch(
-                checked = freePoolEnabled,
-                enabled = !editsLocked,
-                onCheckedChange = {
-                    freePoolEnabled = it
-                    AyraPreferences.setFreeAiPoolEnabled(context, it)
-                    ExternalAiProviders.clearDynamicModelCache(AiProviderType.POLLINATIONS_FREE)
-                    com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
-                    com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
-                    onChanged()
-                },
-                colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
-            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = pollinationsKeyInput,
+                    onValueChange = { if (!editsLocked) pollinationsKeyInput = it },
+                    readOnly = editsLocked,
+                    enabled = !editsLocked,
+                    modifier = Modifier.weight(1f).testTag("pollinations_api_key_input"),
+                    placeholder = { Text("Optional Pollinations key (enter.pollinations.ai)", style = MaterialTheme.typography.bodySmall) },
+                    singleLine = true,
+                    visualTransformation = if (isKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { isKeyVisible = !isKeyVisible }, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                imageVector = if (isKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Toggle Pollinations key visibility",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                )
+                Button(
+                    onClick = {
+                        AyraPreferences.setPollinationsKey(context, pollinationsKeyInput.trim())
+                        ExternalAiProviders.clearDynamicModelCache(AiProviderType.POLLINATIONS_FREE)
+                        com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
+                        com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
+                        runCatching { ExternalAiProviders(context).circuitBreaker.resetProvider(AiProviderType.POLLINATIONS_FREE) }
+                        keySavedMessage = if (pollinationsKeyInput.isBlank()) "Pollinations key cleared." else "Pollinations key saved ✓"
+                        onChanged()
+                    },
+                    enabled = !editsLocked,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("pollinations_api_key_save")
+                ) {
+                    Text("Save", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            keySavedMessage?.let { msg ->
+                Text(
+                    text = msg,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                )
+            }
         }
     }
 }

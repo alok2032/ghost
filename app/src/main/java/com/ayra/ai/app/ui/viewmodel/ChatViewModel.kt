@@ -454,10 +454,17 @@ class ChatViewModel(
                         }
                         is AyraEvent.Error -> {
                             receivedTerminalEvent = true
+                            val code = event.error.shortCode()
+                            val appCheckState = com.ayra.ai.app.AppCheckStatusRegistry.currentState.name
+                            val netStatus = com.ayra.ai.app.security.NetworkConnectivityManager.stateFlow.value.status.name
+                            val redactedDetail = com.ayra.ai.app.security.SecurityAuditLogger
+                                .redactSensitiveText(event.error.diagnosticDetail())
+                                .take(140)
+                            val detailSuffix = if (redactedDetail.isNotBlank()) " • $redactedDetail" else ""
                             persistMessage(
                                 ChatMessage(
                                     role = "assistant",
-                                    content = "⚠️ ${event.error.userFriendlyMessage}"
+                                    content = "⚠️ ${event.error.userFriendlyMessage}\n[Diagnostic: $code • AppCheck=$appCheckState • Net=$netStatus$detailSuffix]"
                                 )
                             )
                         }

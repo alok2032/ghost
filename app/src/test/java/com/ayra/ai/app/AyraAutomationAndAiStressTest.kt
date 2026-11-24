@@ -445,7 +445,7 @@ class AyraAutomationAndAiStressTest {
                 com.ayra.ai.app.ai.AyraIntentClassifier.classifyIntent("রাজকন্যার সুন্দর ছবি আঁকো")
             )
             val fluxUrl = com.ayra.ai.app.ai.AiMediaPromptSynthesizer.buildImageUrl("রাজকন্যার সুন্দর ছবি আঁকো")
-            assertTrue(fluxUrl.contains("image.pollinations.ai/prompt/"))
+            assertTrue(fluxUrl.contains("gen.pollinations.ai/image/"))
 
             // Without Android Context to verify external consent, UnifiedAiEngine refuses unconsented remote image URLs
             val imgRes = aiEngine.generateUnifiedResponse(

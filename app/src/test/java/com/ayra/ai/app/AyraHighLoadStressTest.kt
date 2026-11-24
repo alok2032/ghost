@@ -317,7 +317,7 @@ class AyraHighLoadStressTest {
                     assertTrue(expandedPrompt.contains("8K") || expandedPrompt.contains("photorealistic") || expandedPrompt.contains("octane render"))
 
                     val url = AiMediaPromptSynthesizer.buildImageUrl(p)
-                    assertTrue(url.startsWith("https://image.pollinations.ai/prompt/"))
+                    assertTrue(url.startsWith("https://gen.pollinations.ai/image/"))
                     counter.incrementAndGet()
                 }
             }

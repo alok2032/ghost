@@ -290,7 +290,12 @@ internal fun GlassMessageBubble(
                     }
                 } else {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val isErrorBubble = message.content.trimStart().startsWith("⚠️")
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(onClick = onCopy, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(18.dp))
                         }
@@ -314,6 +319,31 @@ internal fun GlassMessageBubble(
                                 modifier = Modifier.size(48.dp).testTag("delete_message_button")
                             ) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = "Delete message / বার্তা মুছুন", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        if (isErrorBubble) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF1E293B))
+                                    .border(1.dp, NeonRose.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        AndroidHardeningHelper.copyWithSensitivityProtection(
+                                            context = context,
+                                            label = "Ayra AI Diagnostic",
+                                            text = message.content,
+                                            isSensitive = false,
+                                            autoClearMs = 0L
+                                        )
+                                        Toast.makeText(context, "Diagnostic copied! 📋", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                                    .testTag("copy_diagnostic_button"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Diagnostic", tint = NeonRose, modifier = Modifier.size(14.dp))
+                                Text("Copy Diagnostic", color = NeonRose, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

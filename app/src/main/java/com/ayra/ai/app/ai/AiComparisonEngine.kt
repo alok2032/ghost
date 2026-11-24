@@ -150,6 +150,18 @@ class AiComparisonEngine(
                                 success = true
                             )
                         }
+                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                        ArenaCandidateResult(
+                            candidateId = target.id,
+                            displayName = target.displayName,
+                            providerName = target.providerName,
+                            responseText = "",
+                            latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(1L),
+                            success = false,
+                            errorMessage = e.message ?: "Request timed out"
+                        )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         ArenaCandidateResult(
                             candidateId = target.id,

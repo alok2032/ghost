@@ -2,7 +2,11 @@ package com.ayra.ai.app.search
 
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkConnectivityManager
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
+import com.ayra.ai.app.security.NonRetryableHttpException
+import com.ayra.ai.app.security.RetryableHttpException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -69,26 +73,39 @@ class TavilySearchEngine(private val context: Context) {
             put("max_results", maxResults.coerceIn(1, 10))
         }
 
-        val request = Request.Builder()
-            .url("https://api.tavily.com/search")
-            .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
-            .header("Accept", "application/json")
-            .build()
+        val body = try {
+            NetworkSecurityHelper.executeWithSafeRetry(maxAttempts = 2) {
+                val request = Request.Builder()
+                    .url("https://api.tavily.com/search")
+                    .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
+                    .header("Accept", "application/json")
+                    .build()
 
-        val response = httpClient.newCall(request).execute()
-        response.use { resp ->
-            if (resp.code == 401 || resp.code == 403) {
-                throw IOException("Invalid Tavily API Key (HTTP ${resp.code}). Please verify your key at tavily.com.")
+                httpClient.newCall(request).execute().use { resp ->
+                    if (resp.code == 401 || resp.code == 403) {
+                        throw NonRetryableHttpException(resp.code, "Invalid Tavily API Key (HTTP ${resp.code}). Please verify your key at tavily.com.")
+                    }
+                    if (resp.code == 429) {
+                        throw RetryableHttpException(resp.code, "Tavily search rate limit or quota exceeded.")
+                    }
+                    if (resp.code in 502..504) {
+                        throw RetryableHttpException(resp.code, "Tavily Search API temporarily unavailable: HTTP ${resp.code}")
+                    }
+                    if (!resp.isSuccessful) {
+                        throw NonRetryableHttpException(resp.code, "Tavily Search API error: HTTP ${resp.code} ${resp.message}")
+                    }
+                    resp.readBounded().ifBlank { throw IOException("Empty response from Tavily search.") }
+                }
+            }.also {
+                NetworkConnectivityManager.recordObservedNetworkSuccess()
             }
-            if (resp.code == 429) {
-                throw IOException("Tavily search rate limit or quota exceeded.")
-            }
-            if (!resp.isSuccessful) {
-                throw IOException("Tavily Search API error: HTTP ${resp.code} ${resp.message}")
-            }
-
-            val body = resp.readBounded().ifBlank { throw IOException("Empty response from Tavily search.") }
-            val json = JSONObject(body)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            NetworkConnectivityManager.recordObservedNetworkFailure(error = e)
+            throw e
+        }
+        val json = JSONObject(body)
 
             val resultsArray = json.optJSONArray("results") ?: JSONArray()
             val searchResults = mutableListOf<SearchResult>()
@@ -143,7 +160,6 @@ class TavilySearchEngine(private val context: Context) {
                 latencyMs = System.currentTimeMillis() - start,
                 hasConflictingClaims = hasConflict
             )
-        }
     }
 
     private fun detectCrossSourceConflict(results: List<SearchResult>): Boolean {
@@ -177,20 +193,34 @@ class TavilySearchEngine(private val context: Context) {
             put("max_results", 1)
         }
 
-        val request = Request.Builder()
-            .url("https://api.tavily.com/search")
-            .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
-            .header("Accept", "application/json")
-            .build()
+        try {
+            NetworkSecurityHelper.executeWithSafeRetry(maxAttempts = 2) {
+                val request = Request.Builder()
+                    .url("https://api.tavily.com/search")
+                    .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
+                    .header("Accept", "application/json")
+                    .build()
 
-        httpClient.newCall(request).execute().use { resp ->
-            if (resp.code == 401 || resp.code == 403) {
-                throw IOException("Invalid Tavily API key (HTTP ${resp.code})")
+                httpClient.newCall(request).execute().use { resp ->
+                    resp.readBounded()
+                    if (resp.code == 401 || resp.code == 403) {
+                        throw NonRetryableHttpException(resp.code, "Invalid Tavily API key (HTTP ${resp.code})")
+                    }
+                    if (resp.code == 429 || resp.code in 502..504) {
+                        throw RetryableHttpException(resp.code, "Tavily ping error: HTTP ${resp.code}")
+                    }
+                    if (!resp.isSuccessful) {
+                        throw NonRetryableHttpException(resp.code, "Tavily ping error: HTTP ${resp.code}")
+                    }
+                }
             }
-            if (!resp.isSuccessful) {
-                throw IOException("Tavily ping error: HTTP ${resp.code}")
-            }
-            System.currentTimeMillis() - start
+            NetworkConnectivityManager.recordObservedNetworkSuccess()
+            (System.currentTimeMillis() - start).coerceAtLeast(1L)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            NetworkConnectivityManager.recordObservedNetworkFailure(error = e)
+            throw e
         }
     }
 }

@@ -46,12 +46,12 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             action == Intent.ACTION_TIME_CHANGED ||
             action == Intent.ACTION_TIMEZONE_CHANGED
         ) {
-            val pendingResult = goAsync()
+            val pendingResult: PendingResult? = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     AyraTaskScheduler(context).rearmAllPendingTasks()
                 } finally {
-                    pendingResult.finish()
+                    pendingResult?.finish()
                 }
             }
             return
@@ -91,7 +91,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
 
         // 4. Update task status in database to FIRED
         if (taskId > 0) {
-            val pendingResult = goAsync()
+            val pendingResult: PendingResult? = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     ChatDatabase.getDatabase(context).scheduledTaskDao().updateStatus(taskId, "FIRED")
@@ -100,7 +100,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                     try {
                         wakeLock?.release()
                     } catch (_: Exception) {}
-                    pendingResult.finish()
+                    pendingResult?.finish()
                 }
             }
         } else {

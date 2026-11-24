@@ -7,21 +7,34 @@ import android.util.Base64
 import android.util.Log
 import com.ayra.ai.app.ai.providers.AiProviderType
 import com.ayra.ai.app.ai.providers.AiUsageTracker
+import com.ayra.ai.app.ai.providers.ModelCatalog
 import com.ayra.ai.app.data.ChatMessage
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.AspectRatio
+import com.google.firebase.ai.type.ContentBlockedException
+import com.google.firebase.ai.type.FirebaseAIException
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.ImageConfig
 import com.google.firebase.ai.type.ImagePart
 import com.google.firebase.ai.type.ImageSize
+import com.google.firebase.ai.type.InvalidAPIKeyException
+import com.google.firebase.ai.type.InvalidLocationException
+import com.google.firebase.ai.type.PermissionMissingException
+import com.google.firebase.ai.type.PromptBlockedException
+import com.google.firebase.ai.type.QuotaExceededException
+import com.google.firebase.ai.type.RequestTimeoutException
 import com.google.firebase.ai.type.ResponseModality
+import com.google.firebase.ai.type.ResponseStoppedException
+import com.google.firebase.ai.type.ServiceDisabledException
 import com.google.firebase.ai.type.Tool
+import com.google.firebase.ai.type.UnsupportedUserLocationException
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -48,6 +61,24 @@ sealed class FirebaseImageResult {
     ) : FirebaseImageResult()
 }
 
+enum class FirebaseSelfTestOutcome {
+    PASS,
+    AUTH_FAILED,
+    API_DISABLED,
+    APP_CHECK_FAILED,
+    QUOTA_EXCEEDED,
+    TIMEOUT,
+    NETWORK_ERROR,
+    OFFLINE,
+    UNAVAILABLE
+}
+
+data class FirebaseSelfTestResult(
+    val outcome: FirebaseSelfTestOutcome,
+    val latencyMs: Long,
+    val detail: String
+)
+
 /**
  * Unified Firebase AI Logic engine providing zero-key Gemini frontier models
  * (text, streaming, Google Search grounding, multimodal vision, audio transcription,
@@ -58,14 +89,14 @@ class FirebaseAiEngine(private val context: Context?) {
     companion object {
         private const val TAG = "FirebaseAiEngine"
 
-        const val MODEL_FLASH = "gemini-3.8-flash"
-        const val MODEL_FAST_LITE = "gemini-3.5-flash-lite"
-        const val MODEL_PRO_REASONING = "gemini-4-argon"
-        const val MODEL_IMAGE_NANO_BANANA = "gemini-nano-banana-2.1"
-        const val MODEL_TTS = "gemini-3.1-flash-tts-preview"
+        const val MODEL_FLASH = ModelCatalog.GEMINI_FLASH_MODEL
+        const val MODEL_FAST_LITE = ModelCatalog.GEMINI_FAST_LITE_MODEL
+        const val MODEL_PRO_REASONING = ModelCatalog.GEMINI_PRO_MODEL
+        const val MODEL_IMAGE_NANO_BANANA = ModelCatalog.GEMINI_IMAGE_NANO_BANANA_MODEL
+        const val MODEL_TTS = ModelCatalog.GEMINI_TTS_MODEL
 
-        private const val STREAM_SEARCH_TIMEOUT_MS = 14_000L
-        private const val UNARY_SEARCH_TIMEOUT_MS = 11_000L
+        private const val STREAM_SEARCH_TIMEOUT_MS = 18_000L
+        private const val UNARY_SEARCH_TIMEOUT_MS = 15_000L
         private const val TEXT_TIMEOUT_MS = 22_000L
         private const val IMAGE_TIMEOUT_MS = 90_000L
 
@@ -86,6 +117,17 @@ class FirebaseAiEngine(private val context: Context?) {
         }
 
         internal fun isFatalNonRecoverableError(e: Throwable): Boolean {
+            if (e is InvalidAPIKeyException ||
+                e is PermissionMissingException ||
+                e is ServiceDisabledException ||
+                e is UnsupportedUserLocationException ||
+                e is InvalidLocationException ||
+                e is PromptBlockedException ||
+                e is ContentBlockedException ||
+                e is ResponseStoppedException
+            ) {
+                return true
+            }
             if (e is java.net.UnknownHostException || e is java.net.ConnectException) return true
             val msg = (e.message ?: e.localizedMessage ?: "").lowercase()
             return msg.contains("403") ||
@@ -96,7 +138,103 @@ class FirebaseAiEngine(private val context: Context?) {
                 msg.contains("api key not valid") ||
                 msg.contains("billing") ||
                 msg.contains("permission denied") ||
+                msg.contains("service_disabled") ||
+                msg.contains("firebaseai.googleapis.com") ||
                 msg.contains("unable to resolve host")
+        }
+
+        internal fun classifyFirebaseException(e: Throwable): FirebaseSelfTestOutcome {
+            return when {
+                e is InvalidAPIKeyException -> FirebaseSelfTestOutcome.AUTH_FAILED
+                e is ServiceDisabledException -> FirebaseSelfTestOutcome.API_DISABLED
+                e is PermissionMissingException -> {
+                    val msg = (e.message ?: "").lowercase()
+                    if (msg.contains("appcheck") || msg.contains("app check") || msg.contains("attestation")) {
+                        FirebaseSelfTestOutcome.APP_CHECK_FAILED
+                    } else {
+                        FirebaseSelfTestOutcome.AUTH_FAILED
+                    }
+                }
+                e is QuotaExceededException -> FirebaseSelfTestOutcome.QUOTA_EXCEEDED
+                e is RequestTimeoutException || e is TimeoutCancellationException || e is java.net.SocketTimeoutException ->
+                    FirebaseSelfTestOutcome.TIMEOUT
+                e is com.ayra.ai.app.security.BlockedByPolicyException -> FirebaseSelfTestOutcome.NETWORK_ERROR
+                e is java.net.UnknownHostException || e is java.net.ConnectException -> FirebaseSelfTestOutcome.NETWORK_ERROR
+                else -> {
+                    val msg = (e.message ?: e.localizedMessage ?: "").lowercase()
+                    when {
+                        msg.contains("appcheck") || msg.contains("app check") || msg.contains("attestation") ->
+                            FirebaseSelfTestOutcome.APP_CHECK_FAILED
+                        msg.contains("service_disabled") || msg.contains("api has not been used") ->
+                            FirebaseSelfTestOutcome.API_DISABLED
+                        msg.contains("401") || msg.contains("api key") ->
+                            FirebaseSelfTestOutcome.AUTH_FAILED
+                        msg.contains("429") || msg.contains("quota") ->
+                            FirebaseSelfTestOutcome.QUOTA_EXCEEDED
+                        msg.contains("403") || msg.contains("permission") ->
+                            FirebaseSelfTestOutcome.APP_CHECK_FAILED
+                        msg.contains("timeout") || msg.contains("timed out") ->
+                            FirebaseSelfTestOutcome.TIMEOUT
+                        else -> FirebaseSelfTestOutcome.UNAVAILABLE
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun runStartupSelfTest(ctx: Context? = context): FirebaseSelfTestResult = withContext(Dispatchers.IO) {
+        val targetCtx = ctx ?: context
+        if (!isAvailable(targetCtx)) {
+            return@withContext FirebaseSelfTestResult(
+                outcome = FirebaseSelfTestOutcome.UNAVAILABLE,
+                latencyMs = 0L,
+                detail = "FirebaseApp not initialized or Local-Only Privacy Mode active."
+            )
+        }
+        val startMs = System.currentTimeMillis()
+        try {
+            val text = withTimeout(10_000L) {
+                aiClient.generativeModel(modelName = MODEL_FAST_LITE)
+                    .generateContent("Reply with the single word: READY")
+                    .text?.trim().orEmpty()
+            }
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            if (text.isNotBlank()) {
+                FirebaseSelfTestResult(
+                    outcome = FirebaseSelfTestOutcome.PASS,
+                    latencyMs = elapsed,
+                    detail = "Live $MODEL_FAST_LITE response verified (${elapsed}ms)"
+                )
+            } else {
+                FirebaseSelfTestResult(
+                    outcome = FirebaseSelfTestOutcome.UNAVAILABLE,
+                    latencyMs = elapsed,
+                    detail = "Empty response from $MODEL_FAST_LITE"
+                )
+            }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) {
+                val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                FirebaseSelfTestResult(
+                    outcome = FirebaseSelfTestOutcome.TIMEOUT,
+                    latencyMs = elapsed,
+                    detail = "Firebase AI startup probe timed out after ${elapsed}ms"
+                )
+            } else {
+                throw e
+            }
+        } catch (e: Exception) {
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            val outcome = classifyFirebaseException(e)
+            val safeDetail = com.ayra.ai.app.security.SecurityAuditLogger
+                .redactSensitiveText(e.message ?: e::class.java.simpleName)
+                .take(180)
+            Log.w(TAG, "runStartupSelfTest [$outcome] failed: $safeDetail")
+            FirebaseSelfTestResult(
+                outcome = outcome,
+                latencyMs = elapsed,
+                detail = safeDetail
+            )
         }
     }
 
@@ -188,6 +326,11 @@ class FirebaseAiEngine(private val context: Context?) {
                         AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
                         return@withContext FirebaseTextResult(text = text, error = null)
                     }
+                } catch (e: TimeoutCancellationException) {
+                    lastError = e
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                    Log.w(TAG, "generateText timed out for $candidateModel (search=$useSearch): ${e.message}")
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -218,6 +361,7 @@ class FirebaseAiEngine(private val context: Context?) {
         val candidates = modelFallbackChain(modelName)
         var lastError: Exception? = null
         var hitFatalError = false
+        var emittedAnyToken = false
 
         suspend fun collectStream(candidateModel: String, useSearch: Boolean): Boolean {
             val startMs = System.currentTimeMillis()
@@ -233,22 +377,23 @@ class FirebaseAiEngine(private val context: Context?) {
                     image(bitmap)
                 }
             }
-            var emittedAny = false
+            var emittedThisAttempt = false
             val attemptTimeout = if (useSearch) STREAM_SEARCH_TIMEOUT_MS else TEXT_TIMEOUT_MS
             withTimeout(attemptTimeout) {
                 model.generateContentStream(inputContent).collect { chunk ->
                     val txt = chunk.text
                     if (!txt.isNullOrEmpty()) {
-                        emittedAny = true
+                        emittedAnyToken = true
+                        emittedThisAttempt = true
                         emit(txt)
                     }
                 }
             }
             val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
-            if (emittedAny) {
+            if (emittedThisAttempt) {
                 AiUsageTracker.recordCall(context, AiProviderType.GEMINI, true, elapsed)
             }
-            return emittedAny
+            return emittedThisAttempt
         }
 
         candidateLoop@ for (candidateModel in candidates) {
@@ -259,6 +404,12 @@ class FirebaseAiEngine(private val context: Context?) {
                     if (collectStream(candidateModel, useSearch)) {
                         return@flow
                     }
+                } catch (e: TimeoutCancellationException) {
+                    lastError = e
+                    val elapsed = (System.currentTimeMillis() - attemptStart).coerceAtLeast(1L)
+                    AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                    Log.w(TAG, "streamText timed out for $candidateModel (search=$useSearch): ${e.message}")
+                    if (emittedAnyToken) throw e
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -266,6 +417,7 @@ class FirebaseAiEngine(private val context: Context?) {
                     val elapsed = (System.currentTimeMillis() - attemptStart).coerceAtLeast(1L)
                     AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
                     Log.e(TAG, "streamText failed for $candidateModel (search=$useSearch): ${e.message}", e)
+                    if (emittedAnyToken) throw e
                     if (isFatalNonRecoverableError(e)) {
                         hitFatalError = true
                         break@candidateLoop
@@ -274,8 +426,8 @@ class FirebaseAiEngine(private val context: Context?) {
             }
         }
 
-        // Unary fallback on default free-tier Flash without search in case streaming returned empty or threw
-        if (!hitFatalError) {
+        // Unary fallback on default free-tier Flash without search only when zero tokens have streamed
+        if (!hitFatalError && !emittedAnyToken) {
             val unaryStart = System.currentTimeMillis()
             try {
                 val fallbackModel = aiClient.generativeModel(
@@ -297,6 +449,11 @@ class FirebaseAiEngine(private val context: Context?) {
                     emit(unaryText)
                     return@flow
                 }
+            } catch (e: TimeoutCancellationException) {
+                lastError = e
+                val elapsed = (System.currentTimeMillis() - unaryStart).coerceAtLeast(1L)
+                AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, elapsed)
+                Log.w(TAG, "unary fallback timed out for $MODEL_FLASH: ${e.message}")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -307,7 +464,7 @@ class FirebaseAiEngine(private val context: Context?) {
             }
         }
 
-        if (lastError != null) {
+        if (lastError != null && !emittedAnyToken) {
             throw lastError
         }
     }.flowOn(Dispatchers.IO)
@@ -394,6 +551,10 @@ class FirebaseAiEngine(private val context: Context?) {
                     )
                 }
             }
+        } catch (e: TimeoutCancellationException) {
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            AiUsageTracker.recordCall(appContext, AiProviderType.GEMINI, false, elapsed)
+            FirebaseImageResult.Failure("Image generation timed out. Please try again.")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -451,6 +612,9 @@ class FirebaseAiEngine(private val context: Context?) {
                     Result.success(transcript)
                 }
             }
+        } catch (e: TimeoutCancellationException) {
+            AiUsageTracker.recordCall(context, AiProviderType.GEMINI, false, System.currentTimeMillis() - startMs)
+            Result.failure(e)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -2,6 +2,10 @@ package com.ayra.ai.app.security
 
 import android.content.Context
 import com.ayra.ai.app.data.AyraPreferences
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import okhttp3.CertificatePinner
 import okhttp3.CipherSuite
 import okhttp3.ConnectionPool
@@ -16,20 +20,74 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.ConnectException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
+import java.security.cert.CertificateException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 data class UrlValidationResult(
     val allowed: Boolean,
     val reason: String? = null,
     val resolvedAddresses: List<String> = emptyList()
 )
+
+enum class NetworkFailureCategory(val label: String) {
+    NONE("Healthy"),
+    NO_NETWORK("Offline / No Network"),
+    CAPTIVE_PORTAL("Captive Portal Login Required"),
+    NO_VALIDATED_INTERNET("Connected (No Internet Validation)"),
+    DNS_FAILURE("DNS Resolution Failed"),
+    TLS_HANDSHAKE_FAILURE("TLS Handshake Failed"),
+    SSL_CERTIFICATE_FAILURE("SSL Certificate Verification Failed"),
+    TIMEOUT("Connection Timed Out"),
+    CONNECTION_REFUSED("Connection Refused"),
+    AUTH_FAILURE("Authentication / Key Rejected"),
+    RATE_LIMITED("Rate Limited (HTTP 429)"),
+    BACKEND_UNAVAILABLE("Backend Gateway Unavailable"),
+    PROVIDER_OUTAGE("AI Provider Service Error"),
+    SSRF_BLOCKED("Blocked by Security Policy"),
+    CLIENT_ERROR("Invalid Request / Endpoint"),
+    UNKNOWN("Network Error")
+}
+
+data class NetworkFailureClassification(
+    val category: NetworkFailureCategory,
+    val userMessage: String,
+    val technicalDetail: String,
+    val retryable: Boolean,
+    val httpCode: Int? = null
+)
+
+data class EndpointProbeResult(
+    val ok: Boolean,
+    val latencyMs: Long,
+    val httpCode: Int? = null,
+    val dnsAddresses: List<String> = emptyList(),
+    val tlsProtocol: String? = null,
+    val category: NetworkFailureCategory = NetworkFailureCategory.NONE,
+    val message: String = ""
+)
+
+class RetryableHttpException(val httpCode: Int, message: String) : IOException(message)
+
+class NonRetryableHttpException(val httpCode: Int, message: String) : IOException(message)
+
+/**
+ * Thrown by [NetworkSecurityHelper] when a request is rejected by client-side SSRF,
+ * DNS-rebinding, Fake-IP VPN, or Local-Only security policies. Extends [UnknownHostException]
+ * so OkHttp's [Dns.lookup] contract is honored cleanly while remaining distinct from offline DNS errors.
+ */
+class BlockedByPolicyException(val reasonCode: String, message: String) : UnknownHostException(message)
 
 /**
  * Network & Transport Hardening Engine.
@@ -51,13 +109,19 @@ object NetworkSecurityHelper {
 
     private val sharedDispatcher: Dispatcher by lazy {
         Dispatcher().apply {
-            maxRequests = 64
-            maxRequestsPerHost = 16
+            maxRequests = 96
+            maxRequestsPerHost = 24
         }
     }
 
     private val sharedConnectionPool: ConnectionPool by lazy {
-        ConnectionPool(16, 5, TimeUnit.MINUTES)
+        ConnectionPool(24, 5, TimeUnit.MINUTES)
+    }
+
+    internal fun preferIpv4Order(addresses: List<InetAddress>): List<InetAddress> {
+        if (addresses.size <= 1) return addresses
+        val (v4, v6) = addresses.partition { it is Inet4Address }
+        return v4 + v6
     }
 
     val strictTlsConnectionSpec: ConnectionSpec = ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
@@ -83,7 +147,8 @@ object NetworkSecurityHelper {
         override fun lookup(hostname: String): List<InetAddress> {
             val clean = hostname.trim().lowercase(Locale.ROOT).trimEnd('.')
             if (clean.isEmpty() || isForbiddenInternalHostLiteral(clean)) {
-                throw UnknownHostException("Blocked internal/metadata hostname: $hostname")
+                val code = if (isCloudMetadataHost(clean)) "METADATA_HOST" else "INTERNAL_HOST"
+                throw BlockedByPolicyException(code, "Blocked internal/metadata hostname: $hostname")
             }
             val addresses = Dns.SYSTEM.lookup(clean)
             if (addresses.isEmpty()) {
@@ -91,12 +156,19 @@ object NetworkSecurityHelper {
             }
             for (addr in addresses) {
                 if (isPrivateOrSpecialAddress(addr)) {
-                    throw UnknownHostException(
+                    if (isFakeIpOrCarrierCgnatAddress(addr)) {
+                        throw BlockedByPolicyException(
+                            "FAKE_IP_VPN",
+                            "DNS returned VPN Fake-IP or Private DNS address ${addr.hostAddress} for $hostname; disable VPN Fake-IP mode or check Private DNS."
+                        )
+                    }
+                    throw BlockedByPolicyException(
+                        "NON_PUBLIC_IP",
                         "DNS rebinding guard blocked non-public address ${addr.hostAddress} for $hostname"
                     )
                 }
             }
-            return addresses
+            return preferIpv4Order(addresses)
         }
     }
 
@@ -108,15 +180,15 @@ object NetworkSecurityHelper {
         override fun lookup(hostname: String): List<InetAddress> {
             val clean = hostname.trim().lowercase(Locale.ROOT).trimEnd('.')
             if (isCloudMetadataHost(clean)) {
-                throw UnknownHostException("Blocked cloud metadata hostname: $hostname")
+                throw BlockedByPolicyException("METADATA_HOST", "Blocked cloud metadata hostname: $hostname")
             }
             val addresses = Dns.SYSTEM.lookup(clean)
             for (addr in addresses) {
                 if (isCloudMetadataOrUnspecifiedAddress(addr)) {
-                    throw UnknownHostException("Blocked metadata/unspecified IP ${addr.hostAddress}")
+                    throw BlockedByPolicyException("METADATA_HOST", "Blocked metadata/unspecified IP ${addr.hostAddress}")
                 }
             }
-            return addresses
+            return preferIpv4Order(addresses)
         }
     }
 
@@ -126,13 +198,14 @@ object NetworkSecurityHelper {
             .connectionPool(sharedConnectionPool)
             .dns(PublicHttpsDnsGuard)
             .connectionSpecs(listOf(strictTlsConnectionSpec))
-            .connectTimeout(8, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .readTimeout(35, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
+            .pingInterval(25, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
-            .retryOnConnectionFailure(false)
+            .retryOnConnectionFailure(true)
             .build()
     }
 
@@ -158,7 +231,7 @@ object NetworkSecurityHelper {
 
     @JvmOverloads
     fun newClient(
-        connectTimeoutSec: Long = 8L,
+        connectTimeoutSec: Long = 15L,
         readTimeoutSec: Long = 35L,
         writeTimeoutSec: Long = 15L,
         callTimeoutSec: Long = 60L,
@@ -368,8 +441,8 @@ object NetworkSecurityHelper {
         if (!uri.rawUserInfo.isNullOrEmpty() || uri.rawAuthority?.contains("@") == true) {
             return UrlValidationResult(false, "Embedded credentials in URLs are prohibited.")
         }
-        if (uri.port != -1 && uri.port != 443) {
-            return UrlValidationResult(false, "Only standard HTTPS port 443 is permitted.")
+        if (uri.port !in setOf(-1, 443, 8443)) {
+            return UrlValidationResult(false, "Blocked HTTPS port ${uri.port}; only ports 443 and 8443 are permitted.")
         }
 
         val host = uri.host?.lowercase(Locale.ROOT)?.trimEnd('.')
@@ -387,7 +460,12 @@ object NetworkSecurityHelper {
         val verifiedIps = mutableListOf<String>()
         for (addr in resolved) {
             if (isPrivateOrSpecialAddress(addr)) {
-                return UrlValidationResult(false, "Blocked resolution to non-public IP ${addr.hostAddress} (SSRF defense).")
+                val hint = if (isFakeIpOrCarrierCgnatAddress(addr)) {
+                    "VPN Fake-IP or CGNAT address"
+                } else {
+                    "non-public IP"
+                }
+                return UrlValidationResult(false, "Blocked resolution to $hint ${addr.hostAddress} (SSRF defense).")
             }
             addr.hostAddress?.let { verifiedIps.add(it) }
         }
@@ -460,38 +538,64 @@ object NetworkSecurityHelper {
     private fun isPrivateHostOrLanLiteral(clean: String): Boolean =
         isForbiddenInternalHostLiteral(clean)
 
-    private fun isForbiddenInternalHostLiteral(host: String): Boolean {
-        val clean = host.removePrefix("[").removeSuffix("]").trimEnd('.')
+    private fun isValidIpv4Literal(cleanHost: String): Boolean {
+        val parts = cleanHost.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val n = part.toIntOrNull()
+            n != null && n in 0..255
+        }
+    }
+
+    private fun isFakeIpOrCarrierCgnatAddress(addr: InetAddress): Boolean {
+        val b = addr.address
+        if (addr is Inet4Address && b.size == 4) {
+            val b0 = b[0].toInt() and 0xFF
+            val b1 = b[1].toInt() and 0xFF
+            if (b0 == 198 && (b1 == 18 || b1 == 19)) return true
+            if (b0 == 100 && b1 in 64..127) return true
+        }
+        return false
+    }
+
+    internal fun isForbiddenInternalHostLiteral(host: String): Boolean {
+        val clean = host.trim().lowercase(Locale.ROOT).removePrefix("[").removeSuffix("]").trimEnd('.')
+        if (clean.isEmpty()) return true
         if (clean == "localhost" ||
             clean.endsWith(".local") ||
             clean.endsWith(".internal") ||
             clean.endsWith(".localhost") ||
             clean.endsWith(".arpa") ||
             isCloudMetadataHost(clean) ||
-            clean == "127.0.0.1" ||
             clean == "::1" ||
             clean == "::" ||
-            clean == "0.0.0.0" ||
-            clean == "10.0.2.2" ||
-            clean.startsWith("127.") ||
-            clean.startsWith("10.") ||
-            clean.startsWith("192.168.") ||
-            clean.startsWith("fc") ||
-            clean.startsWith("fd") ||
-            clean.startsWith("fe80:") ||
-            clean.startsWith("64:ff9b:") ||
-            clean.startsWith("2001:db8:") ||
-            clean.startsWith("ff")
+            clean == "0.0.0.0"
         ) {
             return true
         }
-        if (clean.startsWith("172.")) {
-            val second = clean.split(".").getOrNull(1)?.toIntOrNull()
-            if (second != null && second in 16..31) return true
+        if (clean.contains(':')) {
+            // Apply IPv6 prefix checks strictly to colon-containing IPv6 literals, never domain names like fd-example.com or ffmpeg.org.
+            if (clean.startsWith("fc") ||
+                clean.startsWith("fd") ||
+                clean.startsWith("fe80:") ||
+                clean.startsWith("fec0:") ||
+                clean.startsWith("64:ff9b:") ||
+                clean.startsWith("2001:db8:") ||
+                clean.startsWith("ff")
+            ) {
+                return true
+            }
+            val parsedV6 = runCatching {
+                if (clean.all { it.isDigit() || it in 'a'..'f' || it == ':' || it == '.' }) {
+                    InetAddress.getByName(clean)
+                } else null
+            }.getOrNull()
+            if (parsedV6 != null && isPrivateOrSpecialAddress(parsedV6)) return true
+            return false
         }
-        if (clean.startsWith("100.")) {
-            val second = clean.split(".").getOrNull(1)?.toIntOrNull()
-            if (second != null && second in 64..127) return true
+        if (isValidIpv4Literal(clean)) {
+            val octets = clean.split('.').map { it.toInt() }
+            return isPrivateOrSpecialIpv4Bytes(octets[0], octets[1], octets[2])
         }
         return false
     }
@@ -568,5 +672,367 @@ object NetworkSecurityHelper {
             if (bytes[0] == 0xFF) return true
         }
         return false
+    }
+
+    /**
+     * Normalizes an OpenAI-compatible custom endpoint or proxy URL to its `/v1/models` health path
+     * without duplicating `/v1/v1/models`.
+     */
+    @JvmStatic
+    fun normalizeOpenAiModelsUrl(rawEndpoint: String): String {
+        val clean = rawEndpoint.trim()
+            .removeSuffix("/chat/completions")
+            .trimEnd('/')
+            .removeSuffix("/v1")
+        return "$clean/v1/models"
+    }
+
+    /**
+     * Validates HTTPS URL syntax and forbids internal host literals without performing DNS I/O.
+     * Intended strictly for OkHttp clients already hardened with [PublicHttpsDnsGuard].
+     */
+    @JvmStatic
+    fun validatePublicHttpsSyntaxOnly(rawUrl: String): UrlValidationResult {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) return UrlValidationResult(false, "URL is empty.")
+        val uri = runCatching { URI(trimmed) }.getOrNull()
+            ?: return UrlValidationResult(false, "Malformed URL syntax.")
+
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
+        if (scheme != "https") {
+            return UrlValidationResult(false, "Blocked non-HTTPS scheme '${scheme ?: "none"}'. Only HTTPS is allowed for external requests.")
+        }
+        if (!uri.rawUserInfo.isNullOrEmpty() || uri.rawAuthority?.contains("@") == true) {
+            return UrlValidationResult(false, "Embedded credentials in URLs are prohibited.")
+        }
+        if (uri.port !in setOf(-1, 443, 8443)) {
+            return UrlValidationResult(false, "Blocked HTTPS port ${uri.port}; only ports 443 and 8443 are permitted.")
+        }
+        val host = uri.host?.lowercase(Locale.ROOT)?.trimEnd('.')
+            ?: return UrlValidationResult(false, "URL missing host.")
+        if (isForbiddenInternalHostLiteral(host)) {
+            return UrlValidationResult(false, "Blocked internal/metadata host '$host' (SSRF defense).")
+        }
+        return UrlValidationResult(true)
+    }
+
+    /**
+     * Classifies transport, TLS, DNS, security-policy, and HTTP status failures into actionable diagnostics.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun classifyNetworkFailure(
+        error: Throwable? = null,
+        httpCode: Int? = null,
+        responseSnippet: String? = null
+    ): NetworkFailureClassification {
+        val extractedCode = httpCode
+            ?: (error as? RetryableHttpException)?.httpCode
+            ?: (error as? NonRetryableHttpException)?.httpCode
+        val rawDetail = SecurityAuditLogger.redactSensitiveText(
+            error?.message ?: error?.javaClass?.simpleName ?: responseSnippet.orEmpty()
+        )
+        val lower = rawDetail.lowercase(Locale.ROOT)
+
+        if (error is BlockedByPolicyException ||
+            error is SecurityException ||
+            lower.contains("ssrf") ||
+            lower.contains("dns rebinding guard") ||
+            lower.contains("blocked internal/metadata") ||
+            lower.contains("blocked cloud metadata") ||
+            lower.contains("fake-ip") ||
+            lower.contains("local-only privacy mode")
+        ) {
+            val policyMsg = if ((error as? BlockedByPolicyException)?.reasonCode == "FAKE_IP_VPN" || lower.contains("fake-ip")) {
+                "DNS returned a VPN Fake-IP or Private DNS address. Disable VPN Fake-IP mode or check DNS."
+            } else {
+                "Blocked by network security policy."
+            }
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.SSRF_BLOCKED,
+                userMessage = policyMsg,
+                technicalDetail = rawDetail.ifBlank { "Security policy restriction" },
+                retryable = false,
+                httpCode = extractedCode
+            )
+        }
+
+        if (error is SSLPeerUnverifiedException ||
+            error is CertificateException ||
+            error?.cause is CertificateException
+        ) {
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.SSL_CERTIFICATE_FAILURE,
+                userMessage = "SSL certificate verification failed. Connection refused for safety.",
+                technicalDetail = rawDetail.ifBlank { "Certificate validation failure" },
+                retryable = false,
+                httpCode = extractedCode
+            )
+        }
+
+        if (error is SSLHandshakeException || error is SSLException) {
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.TLS_HANDSHAKE_FAILURE,
+                userMessage = "Secure TLS 1.2/1.3 handshake failed.",
+                technicalDetail = rawDetail.ifBlank { "TLS handshake failure" },
+                retryable = false,
+                httpCode = extractedCode
+            )
+        }
+
+        if (error is UnknownHostException || lower.contains("unable to resolve host")) {
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.DNS_FAILURE,
+                userMessage = "DNS lookup failed. Check internet connection or Private DNS settings.",
+                technicalDetail = rawDetail.ifBlank { "UnknownHostException" },
+                retryable = true,
+                httpCode = extractedCode
+            )
+        }
+
+        if (error is SocketTimeoutException ||
+            error is kotlinx.coroutines.TimeoutCancellationException ||
+            lower.contains("timed out") ||
+            lower.contains("timeout")
+        ) {
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.TIMEOUT,
+                userMessage = "Network request timed out waiting for server response.",
+                technicalDetail = rawDetail.ifBlank { "SocketTimeoutException" },
+                retryable = true,
+                httpCode = extractedCode
+            )
+        }
+
+        if (error is ConnectException || lower.contains("failed to connect") || lower.contains("connection refused")) {
+            return NetworkFailureClassification(
+                category = NetworkFailureCategory.CONNECTION_REFUSED,
+                userMessage = "Remote host refused the connection or is unreachable.",
+                technicalDetail = rawDetail.ifBlank { "ConnectException" },
+                retryable = true,
+                httpCode = extractedCode
+            )
+        }
+
+        if (extractedCode != null) {
+            return when (extractedCode) {
+                401, 403 -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.AUTH_FAILURE,
+                    userMessage = "Authentication or API key was rejected (HTTP $extractedCode).",
+                    technicalDetail = rawDetail.ifBlank { "HTTP $extractedCode" },
+                    retryable = false,
+                    httpCode = extractedCode
+                )
+                429 -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.RATE_LIMITED,
+                    userMessage = "Rate limit exceeded (HTTP 429). Retry after a brief pause.",
+                    technicalDetail = rawDetail.ifBlank { "HTTP 429 Too Many Requests" },
+                    retryable = true,
+                    httpCode = extractedCode
+                )
+                400, 404, 410, 422 -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.CLIENT_ERROR,
+                    userMessage = "Endpoint or model rejected request (HTTP $extractedCode).",
+                    technicalDetail = rawDetail.ifBlank { "HTTP $extractedCode" },
+                    retryable = false,
+                    httpCode = extractedCode
+                )
+                502, 503, 504 -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.BACKEND_UNAVAILABLE,
+                    userMessage = "Service temporarily unavailable (HTTP $extractedCode).",
+                    technicalDetail = rawDetail.ifBlank { "HTTP $extractedCode" },
+                    retryable = true,
+                    httpCode = extractedCode
+                )
+                in 500..599 -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.PROVIDER_OUTAGE,
+                    userMessage = "Upstream server error (HTTP $extractedCode).",
+                    technicalDetail = rawDetail.ifBlank { "HTTP $extractedCode" },
+                    retryable = true,
+                    httpCode = extractedCode
+                )
+                else -> NetworkFailureClassification(
+                    category = NetworkFailureCategory.UNKNOWN,
+                    userMessage = "Unexpected HTTP $extractedCode response.",
+                    technicalDetail = rawDetail.ifBlank { "HTTP $extractedCode" },
+                    retryable = false,
+                    httpCode = extractedCode
+                )
+            }
+        }
+
+        return NetworkFailureClassification(
+            category = NetworkFailureCategory.UNKNOWN,
+            userMessage = rawDetail.ifBlank { "Network connection failed." },
+            technicalDetail = rawDetail,
+            retryable = error is IOException,
+            httpCode = null
+        )
+    }
+
+    @JvmStatic
+    fun isRetryableFailure(error: Throwable): Boolean {
+        if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) return false
+        if (error is BlockedByPolicyException || error is SecurityException) return false
+        if (error is NonRetryableHttpException) return false
+        if (error is IllegalArgumentException) return false
+        if (error is SSLHandshakeException ||
+            error is SSLPeerUnverifiedException ||
+            error is CertificateException ||
+            error is SSLException
+        ) {
+            return false
+        }
+        if (error is RetryableHttpException) {
+            return error.httpCode == 429 || error.httpCode == 502 || error.httpCode == 503 || error.httpCode == 504
+        }
+        val msg = (error.message ?: "").lowercase(Locale.ROOT)
+        if (msg.contains("ssrf") ||
+            msg.contains("dns rebinding guard") ||
+            msg.contains("blocked internal/metadata") ||
+            msg.contains("blocked cloud metadata") ||
+            msg.contains("fake-ip") ||
+            msg.contains("local-only privacy mode")
+        ) {
+            return false
+        }
+        return error is SocketTimeoutException ||
+            error is ConnectException ||
+            error is UnknownHostException ||
+            error is kotlinx.coroutines.TimeoutCancellationException ||
+            error is IOException
+    }
+
+    /**
+     * Executes [block] with bounded exponential backoff and jitter strictly for transient network
+     * errors or retryable HTTP status codes (`429`, `502`, `503`, `504`).
+     * Never retries 4xx non-429 errors, SSL/certificate failures, SecurityExceptions, or CancellationExceptions.
+     */
+    suspend fun <T> executeWithSafeRetry(
+        maxAttempts: Int = 3,
+        initialDelayMs: Long = 200L,
+        maxDelayMs: Long = 2_000L,
+        jitterFactor: Double = 0.25,
+        sleeper: suspend (Long) -> Unit = { delay(it) },
+        randomFactor: () -> Double = { Math.random() },
+        block: suspend (attempt: Int) -> T
+    ): T {
+        val boundedAttempts = maxAttempts.coerceIn(1, 5)
+        val safeInitial = initialDelayMs.coerceIn(0L, 5_000L)
+        val safeMax = maxDelayMs.coerceAtLeast(safeInitial).coerceAtMost(10_000L)
+        val clampedJitter = jitterFactor.coerceIn(0.0, 0.5)
+
+        var lastError: Throwable? = null
+        for (attempt in 1..boundedAttempts) {
+            try {
+                return block(attempt)
+            } catch (e: Throwable) {
+                if (e is CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) {
+                    throw e
+                }
+                lastError = e
+                if (attempt >= boundedAttempts || !isRetryableFailure(e)) {
+                    throw e
+                }
+                val shift = (attempt - 1).coerceIn(0, 6)
+                val baseDelay = (safeInitial * (1L shl shift)).coerceAtMost(safeMax)
+                val jitterMultiplier = 1.0 + ((randomFactor().coerceIn(0.0, 1.0) * 2.0 - 1.0) * clampedJitter)
+                val finalDelay = (baseDelay * jitterMultiplier).toLong().coerceIn(0L, safeMax)
+                if (finalDelay > 0L) {
+                    sleeper(finalDelay)
+                }
+            }
+        }
+        throw lastError ?: IOException("Retry budget exhausted.")
+    }
+
+    /**
+     * Performs a real bounded DNS + TLS/HTTPS probe against [url].
+     */
+    @JvmOverloads
+    suspend fun probeHttpsEndpoint(
+        url: String,
+        client: OkHttpClient = hardenedPooledClient,
+        maxAttempts: Int = 2,
+        validatePublicUrl: Boolean = true
+    ): EndpointProbeResult = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
+        val uri = runCatching { URI(url.trim()) }.getOrNull()
+            ?: return@withContext EndpointProbeResult(
+                ok = false,
+                latencyMs = 0L,
+                category = NetworkFailureCategory.CLIENT_ERROR,
+                message = "Malformed probe URL."
+            )
+
+        val resolvedIps = if (validatePublicUrl) {
+            val validation = validatePublicHttpsUrl(url)
+            if (!validation.allowed) {
+                val cls = classifyNetworkFailure(
+                    error = if (validation.reason?.contains("DNS", ignoreCase = true) == true) {
+                        UnknownHostException(validation.reason)
+                    } else {
+                        SecurityException(validation.reason ?: "Blocked probe URL")
+                    }
+                )
+                return@withContext EndpointProbeResult(
+                    ok = false,
+                    latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(1L),
+                    category = cls.category,
+                    message = cls.userMessage
+                )
+            }
+            validation.resolvedAddresses
+        } else {
+            uri.host?.takeIf { it.isNotBlank() }?.let { host ->
+                runCatching {
+                    preferIpv4Order(InetAddress.getAllByName(host).toList()).mapNotNull { it.hostAddress }
+                }.getOrDefault(emptyList())
+            }.orEmpty()
+        }
+
+        try {
+            val (code, tlsProto) = executeWithSafeRetry(maxAttempts = maxAttempts) {
+                val req = Request.Builder()
+                    .url(url)
+                    .get()
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    resp.readBounded(maxBytes = 64 * 1024L, truncateOnOverflow = true)
+                    val proto = resp.handshake?.tlsVersion?.javaName
+                    when {
+                        resp.isSuccessful -> resp.code to proto
+                        resp.code == 429 || resp.code in 502..504 ->
+                            throw RetryableHttpException(resp.code, "HTTP ${resp.code}")
+                        else ->
+                            throw NonRetryableHttpException(resp.code, "HTTP ${resp.code}")
+                    }
+                }
+            }
+            EndpointProbeResult(
+                ok = true,
+                latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(1L),
+                httpCode = code,
+                dnsAddresses = resolvedIps,
+                tlsProtocol = tlsProto,
+                category = NetworkFailureCategory.NONE,
+                message = buildString {
+                    append("HTTP $code")
+                    if (!tlsProto.isNullOrBlank()) append(" • $tlsProto")
+                }
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val cls = classifyNetworkFailure(error = e)
+            EndpointProbeResult(
+                ok = false,
+                latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(1L),
+                httpCode = cls.httpCode,
+                dnsAddresses = resolvedIps,
+                category = cls.category,
+                message = cls.userMessage
+            )
+        }
     }
 }

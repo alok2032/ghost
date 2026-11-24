@@ -86,7 +86,7 @@ export function createZeroTrustApp(deps: AppDependencies) {
         }
       },
       methods: ["GET", "POST"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Firebase-AppCheck"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Firebase-AppCheck", "X-Ayra-Device-Id"],
       maxAge: 600,
     })
   );

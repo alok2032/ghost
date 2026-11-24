@@ -6,6 +6,7 @@ import com.ayra.ai.app.ai.plugins.GitHubPluginEngine
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDatabase
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -109,6 +111,22 @@ object AutonomousKnowledgeEngine {
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val MATH_REGEX = Regex("^(\\d+(?:\\.\\d+)?)\\s*([+\\-*/xX×÷^%]|যোগ|বিয়োগ|গুণ|ভাগ)\\s*(\\d+(?:\\.\\d+)?)$")
     private val USER_AGENT = "AyraAiAssistant/3.2 (Linux; Android 14; Mobile; https://ayra-ai.app/assistant)"
+
+    private fun executeGet(
+        httpClient: OkHttpClient,
+        req: Request,
+        isTestOverride: Boolean
+    ): Response {
+        val url = req.url.toString()
+        return if (!isTestOverride && url.startsWith("https://", ignoreCase = true)) {
+            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                client = httpClient,
+                initialRequest = req
+            )
+        } else {
+            httpClient.newCall(req).execute()
+        }
+    }
 
     internal fun getCache(key: String): String? = synchronized(cacheLock) {
         val entry = knowledgeCache[key] ?: return@synchronized null
@@ -434,7 +452,7 @@ object AutonomousKnowledgeEngine {
                 .header("Accept", "application/json")
                 .get()
                 .build()
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return Pair("", null)
                 val body = resp.readBounded().ifBlank { return Pair("", null) }
                 val json = JSONObject(body)
@@ -475,7 +493,7 @@ object AutonomousKnowledgeEngine {
                 .header("Accept", "application/json")
                 .get()
                 .build()
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
                 val body = resp.readBounded().trim()
                 if (body.isBlank()) return Pair("", emptyList())
@@ -522,7 +540,7 @@ object AutonomousKnowledgeEngine {
             val encoded = URLEncoder.encode(query, "UTF-8")
             val url = "${base}w/api.php?action=wbsearchentities&search=$encoded&language=$lang&format=json&limit=2"
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
                 val body = resp.readBounded().ifBlank { return Pair("", emptyList()) }
                 val arr = JSONObject(body).optJSONArray("search") ?: return Pair("", emptyList())
@@ -559,7 +577,7 @@ object AutonomousKnowledgeEngine {
             val encoded = URLEncoder.encode(query, "UTF-8")
             val url = "${base}esearch.fcgi?db=pubmed&term=$encoded&retmax=2&retmode=json"
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-            val pmids = httpClient.newCall(req).execute().use { resp ->
+            val pmids = executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return Pair("", emptyList())
                 val body = resp.readBounded().ifBlank { return Pair("", emptyList()) }
                 val ids = JSONObject(body).optJSONObject("esearchresult")?.optJSONArray("idlist")
@@ -573,7 +591,7 @@ object AutonomousKnowledgeEngine {
             val summaryUrl = "${base}esummary.fcgi?db=pubmed&id=${pmids.joinToString(",")}&retmode=json"
             val summaryReq = Request.Builder().url(summaryUrl).header("User-Agent", USER_AGENT).get().build()
             val summaryResult = try {
-                httpClient.newCall(summaryReq).execute().use { sResp ->
+                executeGet(httpClient, summaryReq, isTestOverride = baseUrlOverride != null).use { sResp ->
                     if (sResp.isSuccessful) {
                         val sBody = sResp.readBounded()
                         if (sBody.isNotBlank()) JSONObject(sBody).optJSONObject("result") else null
@@ -653,7 +671,7 @@ object AutonomousKnowledgeEngine {
                     .get()
                     .build()
 
-                httpClient.newCall(req).execute().use { resp ->
+                executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                     if (!resp.isSuccessful) return null
                     val body = resp.readBounded()
                     val root = JSONObject(body)
@@ -681,7 +699,7 @@ object AutonomousKnowledgeEngine {
                     .get()
                     .build()
 
-                httpClient.newCall(req).execute().use { resp ->
+                executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                     if (!resp.isSuccessful) return null
                     val body = resp.readBounded()
                     val json = JSONObject(body)
@@ -741,7 +759,7 @@ object AutonomousKnowledgeEngine {
                 .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return ""
                 val body = resp.readBounded().ifBlank { return "" }
                 val json = JSONObject(body)
@@ -795,7 +813,7 @@ object AutonomousKnowledgeEngine {
                 .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return ""
                 val body = resp.readBounded().ifBlank { return "" }
                 val results = JSONObject(body).optJSONArray("results") ?: JSONArray()
@@ -857,7 +875,7 @@ object AutonomousKnowledgeEngine {
                 .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return ""
                 val xml = resp.readBounded().ifBlank { return "" }
                 val entryRegex = Regex("<entry>([\\s\\S]*?)</entry>")
@@ -898,7 +916,7 @@ object AutonomousKnowledgeEngine {
                 .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            executeGet(httpClient, req, isTestOverride = baseUrlOverride != null).use { resp ->
                 if (!resp.isSuccessful) return ""
                 val body = resp.readBounded().ifBlank { return "" }
                 val items = JSONObject(body).optJSONObject("message")?.optJSONArray("items") ?: JSONArray()
@@ -957,7 +975,8 @@ object AutonomousKnowledgeEngine {
                 .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            val isLocalTestUrl = url.trim().startsWith("http://127.0.0.1") || url.trim().startsWith("http://localhost")
+            executeGet(httpClient, req, isTestOverride = isLocalTestUrl).use { resp ->
                 if (!resp.isSuccessful) {
                     return Result.failure(RuntimeException("HTTP ${resp.code}"))
                 }

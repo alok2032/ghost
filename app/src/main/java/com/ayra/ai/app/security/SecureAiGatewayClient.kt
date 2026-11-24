@@ -124,17 +124,31 @@ object SecureAiGatewayClient {
         }
         val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
         val start = System.currentTimeMillis()
-        val req = Request.Builder()
-            .url("${backendBaseUrl.trimEnd('/')}/health")
-            .get()
-            .build()
-        activeClient.newCall(req).execute().use { resp ->
-            val raw = resp.readBounded()
-            if (!resp.isSuccessful) {
-                throw IllegalStateException("Backend gateway /health HTTP ${resp.code}: ${raw.take(150)}")
+        try {
+            NetworkSecurityHelper.executeWithSafeRetry(maxAttempts = 2) {
+                val req = Request.Builder()
+                    .url("${backendBaseUrl.trimEnd('/')}/health")
+                    .get()
+                    .build()
+                activeClient.newCall(req).execute().use { resp ->
+                    val raw = resp.readBounded()
+                    if (!resp.isSuccessful) {
+                        val msg = "Backend gateway /health HTTP ${resp.code}: ${raw.take(150)}"
+                        if (resp.code == 429 || resp.code in 502..504) {
+                            throw RetryableHttpException(resp.code, msg)
+                        }
+                        throw NonRetryableHttpException(resp.code, msg)
+                    }
+                }
             }
+            NetworkConnectivityManager.recordObservedNetworkSuccess()
+            (System.currentTimeMillis() - start).coerceAtLeast(1L)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            NetworkConnectivityManager.recordObservedNetworkFailure(error = e)
+            throw e
         }
-        (System.currentTimeMillis() - start).coerceAtLeast(1L)
     }
 
     suspend fun fetchBackendModelCatalog(
@@ -177,25 +191,35 @@ object SecureAiGatewayClient {
             com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false)).token
         }.getOrNull()
 
-        val reqBuilder = Request.Builder()
-            .url("${backendBaseUrl.trimEnd('/')}/api/v1/models/catalog")
-            .header("Authorization", "Bearer $tokenResult")
-            .header("X-Ayra-Device-Id", AyraPreferences.getOrCreateDeviceId(context))
-            .get()
-
-        if (!resolvedAppCheckToken.isNullOrBlank()) {
-            reqBuilder.header("X-Firebase-AppCheck", resolvedAppCheckToken)
-        }
-
         val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
         runCatching {
-            activeClient.newCall(reqBuilder.build()).execute().use { resp ->
-                val raw = resp.readBounded()
-                if (!resp.isSuccessful) {
-                    throw IllegalStateException("Backend catalog HTTP ${resp.code}: ${raw.take(200)}")
+            NetworkSecurityHelper.executeWithSafeRetry(maxAttempts = 2) {
+                val reqBuilder = Request.Builder()
+                    .url("${backendBaseUrl.trimEnd('/')}/api/v1/models/catalog")
+                    .header("Authorization", "Bearer $tokenResult")
+                    .header("X-Ayra-Device-Id", AyraPreferences.getOrCreateDeviceId(context))
+                    .get()
+
+                if (!resolvedAppCheckToken.isNullOrBlank()) {
+                    reqBuilder.header("X-Firebase-AppCheck", resolvedAppCheckToken)
                 }
-                JSONObject(raw)
+
+                activeClient.newCall(reqBuilder.build()).execute().use { resp ->
+                    val raw = resp.readBounded()
+                    if (!resp.isSuccessful) {
+                        val msg = "Backend catalog HTTP ${resp.code}: ${raw.take(200)}"
+                        if (resp.code == 429 || resp.code in 502..504) {
+                            throw RetryableHttpException(resp.code, msg)
+                        }
+                        throw NonRetryableHttpException(resp.code, msg)
+                    }
+                    JSONObject(raw)
+                }
+            }.also {
+                NetworkConnectivityManager.recordObservedNetworkSuccess()
             }
+        }.onFailure { err ->
+            NetworkConnectivityManager.recordObservedNetworkFailure(error = err)
         }
     }
 

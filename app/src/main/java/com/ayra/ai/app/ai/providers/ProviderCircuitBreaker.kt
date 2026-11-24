@@ -24,7 +24,8 @@ class ProviderCircuitBreaker(
     private data class ProviderStatus(
         var state: State = State.CLOSED,
         var consecutiveFailures: Int = 0,
-        var lastFailureTime: Long = 0L
+        var lastFailureTime: Long = 0L,
+        var halfOpenProbeInFlight: Boolean = false
     )
 
     private val providerStates = ConcurrentHashMap<AiProviderType, ProviderStatus>()
@@ -39,26 +40,57 @@ class ProviderCircuitBreaker(
         }
     )
 
+    private fun tryEnterOrCheck(status: ProviderStatus, now: Long): Boolean {
+        synchronized(status) {
+            return when (status.state) {
+                State.CLOSED -> true
+                State.OPEN -> {
+                    if (now - status.lastFailureTime > cooldownPeriodMs) {
+                        status.state = State.HALF_OPEN
+                        status.halfOpenProbeInFlight = true
+                        true
+                    } else {
+                        false
+                    }
+                }
+                State.HALF_OPEN -> {
+                    if (!status.halfOpenProbeInFlight) {
+                        status.halfOpenProbeInFlight = true
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    private fun markSuccess(status: ProviderStatus) {
+        synchronized(status) {
+            status.state = State.CLOSED
+            status.consecutiveFailures = 0
+            status.halfOpenProbeInFlight = false
+        }
+    }
+
+    private fun markFailure(status: ProviderStatus, now: Long) {
+        synchronized(status) {
+            status.consecutiveFailures++
+            status.lastFailureTime = now
+            status.halfOpenProbeInFlight = false
+            if (status.state == State.HALF_OPEN || status.consecutiveFailures >= failureThreshold) {
+                status.state = State.OPEN
+            }
+        }
+    }
+
     /**
      * Checks if provider is allowed to execute a request.
-     * Returns true if provider is CLOSED or cooldown has elapsed (HALF_OPEN).
+     * Returns true if provider is CLOSED or if cooldown elapsed and this caller acquired the single HALF_OPEN probe slot.
      */
     fun canExecute(provider: AiProviderType): Boolean {
         val status = providerStates.computeIfAbsent(provider) { ProviderStatus() }
-        val now = System.currentTimeMillis()
-
-        return when (status.state) {
-            State.CLOSED -> true
-            State.OPEN -> {
-                if (now - status.lastFailureTime > cooldownPeriodMs) {
-                    status.state = State.HALF_OPEN
-                    true
-                } else {
-                    false
-                }
-            }
-            State.HALF_OPEN -> true
-        }
+        return tryEnterOrCheck(status, System.currentTimeMillis())
     }
 
     /**
@@ -67,19 +99,7 @@ class ProviderCircuitBreaker(
      */
     fun canExecuteChannel(channelId: String): Boolean {
         val status = channelStates.computeIfAbsent(channelId) { ProviderStatus() }
-        val now = System.currentTimeMillis()
-        return when (status.state) {
-            State.CLOSED -> true
-            State.OPEN -> {
-                if (now - status.lastFailureTime > cooldownPeriodMs) {
-                    status.state = State.HALF_OPEN
-                    true
-                } else {
-                    false
-                }
-            }
-            State.HALF_OPEN -> true
-        }
+        return tryEnterOrCheck(status, System.currentTimeMillis())
     }
 
     /**
@@ -87,37 +107,25 @@ class ProviderCircuitBreaker(
      */
     fun recordSuccess(provider: AiProviderType) {
         val status = providerStates.computeIfAbsent(provider) { ProviderStatus() }
-        status.state = State.CLOSED
-        status.consecutiveFailures = 0
+        markSuccess(status)
     }
 
     fun recordChannelSuccess(channelId: String) {
         val status = channelStates.computeIfAbsent(channelId) { ProviderStatus() }
-        status.state = State.CLOSED
-        status.consecutiveFailures = 0
+        markSuccess(status)
     }
 
     /**
-     * Records a failure. If consecutive failures reach threshold, trips circuit to OPEN.
+     * Records a failure. If consecutive failures reach threshold or HALF_OPEN probe failed, trips circuit to OPEN.
      */
     fun recordFailure(provider: AiProviderType) {
         val status = providerStates.computeIfAbsent(provider) { ProviderStatus() }
-        status.consecutiveFailures++
-        status.lastFailureTime = System.currentTimeMillis()
-
-        if (status.consecutiveFailures >= failureThreshold) {
-            status.state = State.OPEN
-        }
+        markFailure(status, System.currentTimeMillis())
     }
 
     fun recordChannelFailure(channelId: String) {
         val status = channelStates.computeIfAbsent(channelId) { ProviderStatus() }
-        status.consecutiveFailures++
-        status.lastFailureTime = System.currentTimeMillis()
-
-        if (status.consecutiveFailures >= failureThreshold) {
-            status.state = State.OPEN
-        }
+        markFailure(status, System.currentTimeMillis())
     }
 
     /**

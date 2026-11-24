@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
@@ -79,6 +80,7 @@ import kotlinx.coroutines.withContext
 
 private enum class ToolsSubTab(val label: String) {
     SECURITY("Security Vault"),
+    NETWORK("Network & Diag"),
     KEYS("API Keys Vault"),
     WORKSPACE("Files & Backup"),
     TERMINAL("Cyber Terminal"),
@@ -144,6 +146,13 @@ fun DiagnosticsToolsScreen(
                 modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_security")
             )
             FilterChip(
+                selected = activeTab == ToolsSubTab.NETWORK,
+                onClick = { activeTab = ToolsSubTab.NETWORK },
+                leadingIcon = { Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Network & Diag", fontSize = 12.sp) },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tools_subtab_network")
+            )
+            FilterChip(
                 selected = activeTab == ToolsSubTab.KEYS,
                 onClick = { activeTab = ToolsSubTab.KEYS },
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
@@ -187,6 +196,15 @@ fun DiagnosticsToolsScreen(
                     onVaultWiped = onVaultWiped,
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 )
+            }
+            ToolsSubTab.NETWORK -> {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AyraDiagnosticsSection(context = context)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
             ToolsSubTab.KEYS -> {
                 Column(

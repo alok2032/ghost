@@ -20,7 +20,7 @@ enum class AiProviderType(val id: String, val displayName: String, val defaultBa
     PERPLEXITY("perplexity", "Perplexity AI", "https://api.perplexity.ai/"),
     OPENROUTER("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/"),
     LOCAL_OLLAMA("local_ollama", "Local Ollama / LAN", "http://10.0.2.2:11434/v1/"),
-    POLLINATIONS_FREE("pollinations_free", "Global Free AI Pool", "https://text.pollinations.ai/"),
+    POLLINATIONS_FREE("pollinations_free", "Global Free AI Pool", "https://gen.pollinations.ai/"),
     OMNI_ROUTE("omniroute", "OmniRoute Ensemble ⚡👑", "")
 }
 
@@ -299,7 +299,7 @@ internal object DefaultAiChannelRegistry {
         AiModelChannel(
             id = "mistral_large",
             provider = AiProviderType.MISTRAL,
-            modelId = if (domainName == "CODING_AGENT") "codestral-latest" else "mistral-large-latest",
+            modelId = if (domainName == "CODING_AGENT") ModelCatalog.MISTRAL_CODESTRAL_MODEL else ModelCatalog.MISTRAL_LARGE_MODEL,
             displayName = if (domainName == "CODING_AGENT") "Mistral Codestral" else "Mistral Large",
             specialties = setOf("coding", "multilingual", "general"),
             supportsVision = false,
@@ -332,7 +332,7 @@ internal object DefaultAiChannelRegistry {
         AiModelChannel(
             id = "local_ollama",
             provider = AiProviderType.LOCAL_OLLAMA,
-            modelId = "llama3.3",
+            modelId = ModelCatalog.OLLAMA_LLAMA_MODEL,
             displayName = "Local Ollama / Qwen",
             specialties = setOf("general", "coding", "privacy"),
             supportsVision = false,
@@ -349,7 +349,7 @@ internal object DefaultAiChannelRegistry {
         AiModelChannel(
             id = "pollinations_free_openai",
             provider = AiProviderType.POLLINATIONS_FREE,
-            modelId = "openai",
+            modelId = ModelCatalog.POLLINATIONS_OPENAI_MODEL,
             displayName = "Free AI Pool (GPT)",
             specialties = setOf("general", "fast", "creative", "education"),
             supportsVision = false,
@@ -360,14 +360,14 @@ internal object DefaultAiChannelRegistry {
                     channelKeyOverrides["pollinations_free_openai"] ?: ""
                 } else {
                     val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-                    if (enabled) "free" else ""
+                    if (enabled) AyraPreferences.getPollinationsKey(c).ifBlank { "free" } else ""
                 }
             }
         ),
         AiModelChannel(
             id = "pollinations_free_openai_large",
             provider = AiProviderType.POLLINATIONS_FREE,
-            modelId = "openai-large",
+            modelId = ModelCatalog.POLLINATIONS_LARGE_MODEL,
             displayName = "Free AI Flagship (Large)",
             specialties = setOf("general", "research", "reasoning", "document", "creative"),
             supportsVision = false,
@@ -378,14 +378,14 @@ internal object DefaultAiChannelRegistry {
                     channelKeyOverrides["pollinations_free_openai_large"] ?: ""
                 } else {
                     val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-                    if (enabled) "free" else ""
+                    if (enabled) AyraPreferences.getPollinationsKey(c).ifBlank { "free" } else ""
                 }
             }
         ),
         AiModelChannel(
             id = "pollinations_free_qwen_coder",
             provider = AiProviderType.POLLINATIONS_FREE,
-            modelId = "qwen-coder",
+            modelId = ModelCatalog.POLLINATIONS_CODER_MODEL,
             displayName = "Free Qwen Coder",
             specialties = setOf("coding", "data", "cyber"),
             supportsVision = false,
@@ -396,14 +396,14 @@ internal object DefaultAiChannelRegistry {
                     channelKeyOverrides["pollinations_free_qwen_coder"] ?: ""
                 } else {
                     val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-                    if (enabled) "free" else ""
+                    if (enabled) AyraPreferences.getPollinationsKey(c).ifBlank { "free" } else ""
                 }
             }
         ),
         AiModelChannel(
             id = "pollinations_free_deepseek",
             provider = AiProviderType.POLLINATIONS_FREE,
-            modelId = "deepseek",
+            modelId = ModelCatalog.POLLINATIONS_DEEPSEEK_MODEL,
             displayName = "Free DeepSeek Reasoning",
             specialties = setOf("math", "reasoning", "research", "cyber"),
             supportsVision = false,
@@ -414,7 +414,7 @@ internal object DefaultAiChannelRegistry {
                     channelKeyOverrides["pollinations_free_deepseek"] ?: ""
                 } else {
                     val enabled = c?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-                    if (enabled) "free" else ""
+                    if (enabled) AyraPreferences.getPollinationsKey(c).ifBlank { "free" } else ""
                 }
             }
         )

@@ -134,6 +134,40 @@ class AyraComposeUiTest {
     }
 
     @Test
+    fun freshWorkspaceBootsDirectlyIntoChatWithoutOnboardingPopup() {
+        AyraPreferences.setOnboardingCompleted(context, false)
+        val db = ChatDatabase.getDatabase(context)
+        val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
+        val vm = ChatViewModel(repo)
+        var mountWorkspace by mutableStateOf(true)
+        try {
+            composeRule.setContent {
+                AyraTheme {
+                    if (mountWorkspace) {
+                        AyraWorkspaceHost(
+                            chatDao = db.chatDao(),
+                            viewModel = vm,
+                            currentUser = null,
+                            onSignOut = {}
+                        )
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+
+            assertTrue(
+                "Startup onboarding popup must not auto-appear on fresh launch",
+                composeRule.onAllNodesWithTag("onboarding_overlay").fetchSemanticsNodes().isEmpty()
+            )
+            composeRule.onNodeWithTag("chat_input_text_field").assertIsDisplayed()
+        } finally {
+            mountWorkspace = false
+            composeRule.waitForIdle()
+            vm.releaseForTests()
+        }
+    }
+
+    @Test
     fun onboardingOverlayNextFlowAndFinishPersistCompletionAndPrivacyToggle() {
         AyraPreferences.setOnboardingCompleted(context, false)
         AyraPreferences.setLocalOnlyAiModeEnabled(context, false)

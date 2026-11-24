@@ -24,7 +24,7 @@ class OpenModelEngine(private val context: Context? = null) {
     private val externalProviders by lazy { ExternalAiProviders(context) }
 
     companion object {
-        const val OLLAMA_DEFAULT_SERVING = "qwen2.5:14b"
+        const val OLLAMA_DEFAULT_SERVING = ModelCatalog.OLLAMA_QWEN_MODEL
         const val SAFE_SYSTEM_PROMPT =
             "You are Ayra Open-Weights Engine. Provide objective, accurate, technical, scientific, and educational answers in the user's language. Do not assist with malware creation, actionable cyber exploits, weapons, self-harm instruction, or unauthorized access to private systems or data."
     }

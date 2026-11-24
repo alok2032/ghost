@@ -1,5 +1,7 @@
 package com.ayra.ai.app.ai.providers
 
+import com.ayra.ai.app.security.BlockedByPolicyException
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
@@ -27,6 +29,24 @@ internal object ProviderAnthropicAndFreeTransport {
         return "${base}messages"
     }
 
+    private fun executeHttpsAware(
+        httpClient: OkHttpClient,
+        baseUrlOverride: String?,
+        hasCustomClient: Boolean,
+        request: Request
+    ): okhttp3.Response {
+        val url = request.url.toString()
+        return if (baseUrlOverride == null && !hasCustomClient && url.startsWith("https://", ignoreCase = true)) {
+            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                client = httpClient,
+                initialRequest = request,
+                urlValidator = { NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(it) }
+            )
+        } else {
+            httpClient.newCall(request).execute()
+        }
+    }
+
     private fun throwIfAnthropicInlineError(json: JSONObject, model: String) {
         val errObj = json.optJSONObject("error")
         val type = json.optString("type", "")
@@ -51,8 +71,10 @@ internal object ProviderAnthropicAndFreeTransport {
         baseUrlOverrides: Map<AiProviderType, String>,
         turns: List<ChatTurn>,
         model: String,
-        apiKey: String
+        apiKey: String,
+        hasCustomClient: Boolean = false
     ): String {
+        val baseOverride = baseUrlOverrides[AiProviderType.ANTHROPIC]
         val url = getAnthropicEndpoint(baseUrlOverrides)
         val systemTurn = turns.firstOrNull { it.role == "system" }
 
@@ -96,7 +118,7 @@ internal object ProviderAnthropicAndFreeTransport {
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        return httpClient.newCall(request).execute().use { response ->
+        return executeHttpsAware(httpClient, baseOverride, hasCustomClient, request).use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
             if (response.code == 404 || response.code == 410) {
@@ -141,8 +163,10 @@ internal object ProviderAnthropicAndFreeTransport {
         turns: List<ChatTurn>,
         model: String,
         apiKey: String,
-        collector: FlowCollector<String>
+        collector: FlowCollector<String>,
+        hasCustomClient: Boolean = false
     ) {
+        val baseOverride = baseUrlOverrides[AiProviderType.ANTHROPIC]
         val url = getAnthropicEndpoint(baseUrlOverrides)
         val systemTurn = turns.firstOrNull { it.role == "system" }
 
@@ -169,7 +193,7 @@ internal object ProviderAnthropicAndFreeTransport {
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        httpClient.newCall(request).execute().use { response ->
+        executeHttpsAware(httpClient, baseOverride, hasCustomClient, request).use { response ->
             if (response.code == 429) throw ProviderError.RateLimited("Anthropic Claude rate limit reached.")
             if (response.code == 401 || response.code == 403) throw ProviderError.Unauthorized(AiProviderType.ANTHROPIC)
             if (response.code == 404 || response.code == 410) {
@@ -217,7 +241,12 @@ internal object ProviderAnthropicAndFreeTransport {
         }
     }
 
-    fun discoverAnthropicModels(httpClient: OkHttpClient, key: String, out: MutableList<AiModelInfo>) {
+    fun discoverAnthropicModels(
+        httpClient: OkHttpClient,
+        key: String,
+        out: MutableList<AiModelInfo>,
+        hasCustomClient: Boolean = false
+    ) {
         if (key.isBlank()) return
         val req = Request.Builder()
             .url("https://api.anthropic.com/v1/models")
@@ -225,7 +254,7 @@ internal object ProviderAnthropicAndFreeTransport {
             .header("anthropic-version", "2023-06-01")
             .get()
             .build()
-        httpClient.newCall(req).execute().use { resp ->
+        executeHttpsAware(httpClient, null, hasCustomClient, req).use { resp ->
             if (!resp.isSuccessful) return
             val bodyStr = resp.readBounded().trim()
             if (bodyStr.isBlank()) return
@@ -291,8 +320,9 @@ internal object ProviderAnthropicAndFreeTransport {
         baseUrlOverrides: Map<AiProviderType, String>,
         prompt: String,
         systemPrompt: String,
-        preferredModel: String = "openai",
-        preserveReasoning: Boolean = false
+        preferredModel: String = ModelCatalog.POLLINATIONS_OPENAI_MODEL,
+        preserveReasoning: Boolean = false,
+        apiKey: String = ""
     ): String {
         val turns = buildList {
             if (systemPrompt.isNotBlank()) add(ChatTurn(role = "system", content = systemPrompt))
@@ -303,7 +333,8 @@ internal object ProviderAnthropicAndFreeTransport {
             baseUrlOverrides = baseUrlOverrides,
             turns = turns,
             preferredModel = preferredModel,
-            preserveReasoning = preserveReasoning
+            preserveReasoning = preserveReasoning,
+            apiKey = apiKey
         )
     }
 
@@ -311,19 +342,26 @@ internal object ProviderAnthropicAndFreeTransport {
         httpClient: OkHttpClient,
         baseUrlOverrides: Map<AiProviderType, String>,
         turns: List<ChatTurn>,
-        preferredModel: String = "openai",
-        preserveReasoning: Boolean = false
+        preferredModel: String = ModelCatalog.POLLINATIONS_OPENAI_MODEL,
+        preserveReasoning: Boolean = false,
+        apiKey: String = ""
     ): String {
-        val url = baseUrlOverrides[AiProviderType.POLLINATIONS_FREE]?.let {
-            if (it.endsWith("/")) it else "$it/"
-        } ?: "https://text.pollinations.ai/"
+        val url = baseUrlOverrides[AiProviderType.POLLINATIONS_FREE]?.let { overrideUrl ->
+            if (overrideUrl.endsWith("/")) overrideUrl else "$overrideUrl/"
+        } ?: "https://gen.pollinations.ai/v1/chat/completions"
+        val isTestOverride = baseUrlOverrides.containsKey(AiProviderType.POLLINATIONS_FREE)
         val fastFreeClient = httpClient.newBuilder()
-            .connectTimeout(6, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(18, TimeUnit.SECONDS)
             .build()
-        val models = listOf(preferredModel.ifBlank { "openai" }, "openai", "openai-large", "qwen-coder", "deepseek")
-            .distinct()
-            .take(4)
+        val candidateModel = preferredModel.ifBlank { ModelCatalog.POLLINATIONS_OPENAI_MODEL }
+        val models = if (candidateModel == ModelCatalog.POLLINATIONS_OPENAI_MODEL) {
+            listOf(ModelCatalog.POLLINATIONS_OPENAI_MODEL)
+        } else {
+            listOf(candidateModel, ModelCatalog.POLLINATIONS_OPENAI_MODEL)
+        }
+        val cleanKey = apiKey.trim().takeUnless { it.equals("free", ignoreCase = true) }.orEmpty()
         val filteredTurns = turns.filter { it.content.isNotBlank() }.map { t ->
             if (t.role == "system" && t.content.length > 2400) {
                 val head = t.content.take(900)
@@ -345,22 +383,50 @@ internal object ProviderAnthropicAndFreeTransport {
                     put("model", m)
                 }
 
-                val req = Request.Builder()
+                val reqBuilder = Request.Builder()
                     .url(url)
                     .post(jsonPayload.toString().toRequestBody("application/json".toMediaType()))
                     .header("User-Agent", "AyraAi/3.1")
-                    .build()
+                if (cleanKey.isNotBlank()) {
+                    reqBuilder.header("Authorization", "Bearer $cleanKey")
+                }
+                val req = reqBuilder.build()
 
-                val result = fastFreeClient.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val parsed = extractPollinationsText(resp.readBounded(truncateOnOverflow = true))
-                        if (!isPollinationsGatewayError(parsed)) parsed else ""
-                    } else ""
+                val callResponse = if (!isTestOverride && url.startsWith("https://", ignoreCase = true)) {
+                    NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                        client = fastFreeClient,
+                        initialRequest = req,
+                        urlValidator = { NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(it) }
+                    )
+                } else {
+                    fastFreeClient.newCall(req).execute()
+                }
+                val result = callResponse.use { resp ->
+                    when (resp.code) {
+                        401, 403 -> throw ProviderError.Unauthorized(AiProviderType.POLLINATIONS_FREE)
+                        402 -> throw ProviderError.ServerError(
+                            402,
+                            "Pollinations balance/quota required (HTTP 402). Add a key from enter.pollinations.ai in Settings -> Keys."
+                        )
+                        else -> if (resp.isSuccessful) {
+                            val parsed = extractPollinationsText(resp.readBounded(truncateOnOverflow = true))
+                            if (!isPollinationsGatewayError(parsed)) parsed else ""
+                        } else {
+                            android.util.Log.w("PollinationsTransport", "Free AI HTTP ${resp.code} ($m)")
+                            ""
+                        }
+                    }
                 }
                 if (result.isNotBlank()) {
                     return if (preserveReasoning) result else ExternalAiProviders.sanitizeModelOutput(result)
                 }
             } catch (e: CancellationException) {
+                throw e
+            } catch (e: BlockedByPolicyException) {
+                throw e
+            } catch (e: SecurityException) {
+                throw e
+            } catch (e: ProviderError) {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("PollinationsTransport", "Free AI call failed ($m): ${e.message}")
@@ -416,7 +482,7 @@ internal object ProviderAnthropicAndFreeTransport {
         }
         AiRoutingMode.CODING -> when {
             configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, ExternalAiProviders.ANTHROPIC_SONNET_MODEL)
-            configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, "codestral-latest")
+            configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, ModelCatalog.MISTRAL_CODESTRAL_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
@@ -427,7 +493,7 @@ internal object ProviderAnthropicAndFreeTransport {
             else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_CODER_MODEL)
         }
         AiRoutingMode.PRIVACY_LOCAL -> when {
-            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "llama3.3")
+            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.OLLAMA_LLAMA_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_DEFAULT_MODEL)
         }
@@ -436,12 +502,12 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_LLAMA_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
-            configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, "openai")
+            configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, ModelCatalog.POLLINATIONS_OPENAI_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ModelCatalog.defaultModelFor(AiProviderType.NVIDIA_NIM)?.id ?: ExternalAiProviders.NVIDIA_LLAMA_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_LITE_MODEL)
         }
         AiRoutingMode.OPEN_WEIGHTS -> when {
-            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: "qwen2.5:14b")
+            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: ModelCatalog.OLLAMA_QWEN_MODEL)
             configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL)
             configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, ExternalAiProviders.HF_QWEN_MODEL)
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)

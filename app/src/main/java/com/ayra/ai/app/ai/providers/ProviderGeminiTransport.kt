@@ -1,5 +1,6 @@
 package com.ayra.ai.app.ai.providers
 
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import kotlinx.coroutines.flow.FlowCollector
 import okhttp3.MediaType.Companion.toMediaType
@@ -23,6 +24,24 @@ internal object ProviderGeminiTransport {
             ExternalAiProviders.GEMINI_FLASH_MODEL -> ExternalAiProviders.GEMINI_FLASH_LITE_MODEL
             ExternalAiProviders.GEMINI_FLASH_LITE_MODEL -> null
             else -> ExternalAiProviders.GEMINI_FLASH_MODEL
+        }
+    }
+
+    private fun executeHttpsAware(
+        httpClient: OkHttpClient,
+        baseUrlOverride: String?,
+        hasCustomClient: Boolean,
+        request: Request
+    ): okhttp3.Response {
+        val url = request.url.toString()
+        return if (baseUrlOverride == null && !hasCustomClient && url.startsWith("https://", ignoreCase = true)) {
+            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                client = httpClient,
+                initialRequest = request,
+                urlValidator = { NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(it) }
+            )
+        } else {
+            httpClient.newCall(request).execute()
         }
     }
 
@@ -119,7 +138,8 @@ internal object ProviderGeminiTransport {
         model: String,
         apiKey: String,
         withSearchGrounding: Boolean,
-        visitedModels: Set<String> = emptySet()
+        visitedModels: Set<String> = emptySet(),
+        hasCustomClient: Boolean = false
     ): String {
         val actualModel = ExternalAiProviders.resolveGeminiModel(model)
         val allowGrounding = withSearchGrounding && !actualModel.startsWith("gemma")
@@ -133,9 +153,9 @@ internal object ProviderGeminiTransport {
             reqBuilder.addHeader("x-goog-api-key", apiKey)
         }
 
-        return httpClient.newCall(reqBuilder.build()).execute().use { response ->
+        return executeHttpsAware(httpClient, baseUrlOverride, hasCustomClient, reqBuilder.build()).use { response ->
             if (response.code == 400 && allowGrounding) {
-                return callGemini(httpClient, baseUrlOverride, turns, actualModel, apiKey, false, visitedModels)
+                return callGemini(httpClient, baseUrlOverride, turns, actualModel, apiKey, false, visitedModels, hasCustomClient)
             }
             if (response.code == 404 || response.code == 410) {
                 if (response.code == 410) {
@@ -143,7 +163,7 @@ internal object ProviderGeminiTransport {
                 }
                 val nextModel = nextGeminiFallback(actualModel)
                 if (nextModel != null && nextModel !in visitedModels) {
-                    return callGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, withSearchGrounding, visitedModels + actualModel)
+                    return callGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, withSearchGrounding, visitedModels + actualModel, hasCustomClient)
                 }
                 throw ProviderError.ModelNotFound(
                     AiProviderType.GEMINI,
@@ -192,7 +212,8 @@ internal object ProviderGeminiTransport {
         apiKey: String,
         collector: FlowCollector<String>,
         visitedModels: Set<String> = emptySet(),
-        withSearchGrounding: Boolean = true
+        withSearchGrounding: Boolean = true,
+        hasCustomClient: Boolean = false
     ) {
         val actualModel = ExternalAiProviders.resolveGeminiModel(model)
         val allowGrounding = withSearchGrounding && !actualModel.startsWith("gemma")
@@ -206,7 +227,7 @@ internal object ProviderGeminiTransport {
             reqBuilder.addHeader("x-goog-api-key", apiKey)
         }
 
-        httpClient.newCall(reqBuilder.build()).execute().use { response ->
+        executeHttpsAware(httpClient, baseUrlOverride, hasCustomClient, reqBuilder.build()).use { response ->
             if (response.code == 400 && allowGrounding) {
                 return streamGemini(
                     httpClient = httpClient,
@@ -216,7 +237,8 @@ internal object ProviderGeminiTransport {
                     apiKey = apiKey,
                     collector = collector,
                     visitedModels = visitedModels,
-                    withSearchGrounding = false
+                    withSearchGrounding = false,
+                    hasCustomClient = hasCustomClient
                 )
             }
             if (response.code == 404 || response.code == 410) {
@@ -225,7 +247,7 @@ internal object ProviderGeminiTransport {
                 }
                 val nextModel = nextGeminiFallback(actualModel)
                 if (nextModel != null && nextModel !in visitedModels) {
-                    return streamGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, collector, visitedModels + actualModel, withSearchGrounding)
+                    return streamGemini(httpClient, baseUrlOverride, turns, nextModel, apiKey, collector, visitedModels + actualModel, withSearchGrounding, hasCustomClient)
                 }
                 throw ProviderError.ModelNotFound(
                     AiProviderType.GEMINI,
@@ -318,11 +340,16 @@ internal object ProviderGeminiTransport {
         }
     }
 
-    fun discoverModels(httpClient: OkHttpClient, key: String, out: MutableList<AiModelInfo>) {
+    fun discoverModels(
+        httpClient: OkHttpClient,
+        key: String,
+        out: MutableList<AiModelInfo>,
+        hasCustomClient: Boolean = false
+    ) {
         if (key.isBlank()) return
         val url = "https://generativelanguage.googleapis.com/v1beta/models"
         val req = Request.Builder().url(url).header("x-goog-api-key", key).get().build()
-        httpClient.newCall(req).execute().use { resp ->
+        executeHttpsAware(httpClient, null, hasCustomClient, req).use { resp ->
             if (!resp.isSuccessful) return
             val root = JSONObject(resp.readBounded())
             val arr = root.optJSONArray("models") ?: JSONArray()

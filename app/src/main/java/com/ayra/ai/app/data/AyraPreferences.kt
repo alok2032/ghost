@@ -495,6 +495,13 @@ object AyraPreferences {
         writeSecretOnly(context, SecureKeyStore.KEY_COMFYUI_URL, EncryptedPreferences.KEY_COMFYUI_URL, clean, markExternalConsent = false)
     }
 
+    fun getPollinationsKey(context: Context): String =
+        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_POLLINATIONS)
+
+    fun setPollinationsKey(context: Context, key: String) {
+        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_POLLINATIONS, key)
+    }
+
     fun hasAnyCustomKeyConfigured(context: Context): Boolean {
         return getCustomGeminiKey(context).isNotBlank() ||
             getNvidiaKey(context).isNotBlank() ||
@@ -516,7 +523,8 @@ object AyraPreferences {
             getSambaNovaKey(context).isNotBlank() ||
             getTavilySearchKey(context).isNotBlank() ||
             getElevenLabsKey(context).isNotBlank() ||
-            getCustomEndpointUrl(context).isNotBlank()
+            getCustomEndpointUrl(context).isNotBlank() ||
+            getPollinationsKey(context).isNotBlank()
     }
 
     fun hasCustomKeyConfigured(context: Context): Boolean = hasAnyCustomKeyConfigured(context)

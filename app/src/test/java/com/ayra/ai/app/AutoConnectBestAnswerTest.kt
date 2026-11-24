@@ -15,7 +15,10 @@ import com.ayra.ai.app.ai.providers.ProviderAnthropicAndFreeTransport
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.providers.ProviderPoolMode
 import com.ayra.ai.app.data.AyraPreferences
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.SecureKeyStore
+import java.net.Inet4Address
+import java.net.InetAddress
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.Dispatcher
@@ -313,6 +316,28 @@ class AutoConnectBestAnswerTest {
         assertTrue(
             "HTML error page must still be rejected as gateway error",
             ProviderAnthropicAndFreeTransport.isPollinationsGatewayError("<!DOCTYPE html><html><body>502 Bad Gateway</body></html>")
+        )
+    }
+
+    @Test
+    fun networkSecurityHelperOrdersIpv4FirstAndEnablesConnectionRetries() {
+        assertTrue(
+            "hardenedPooledClient must enable retryOnConnectionFailure for reliable mobile connections",
+            NetworkSecurityHelper.hardenedPooledClient.retryOnConnectionFailure
+        )
+        val ipv6 = InetAddress.getByName("2606:4700:4700::1111")
+        val ipv4 = InetAddress.getByName("1.1.1.1")
+        val ordered = NetworkSecurityHelper.preferIpv4Order(listOf(ipv6, ipv4))
+        assertEquals(2, ordered.size)
+        assertTrue("IPv4 address must be tried before IPv6", ordered.first() is Inet4Address)
+        assertEquals("1.1.1.1", ordered.first().hostAddress)
+
+        // Private/metadata SSRF blocks remain intact
+        assertFalse(
+            NetworkSecurityHelper.validatePublicHttpsUrl(
+                "https://169.254.169.254/latest/meta-data/",
+                dnsResolver = { arrayOf(InetAddress.getByName("169.254.169.254")) }
+            ).allowed
         )
     }
 }

@@ -109,7 +109,7 @@ fun AyraWorkspaceHost(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var currentDest by rememberSaveable { mutableStateOf(AyraDestination.CHAT) }
     var drawerSearch by remember { mutableStateOf("") }
-    var showOnboarding by rememberSaveable { mutableStateOf(!AyraPreferences.isOnboardingCompleted(context)) }
+    var showOnboarding by rememberSaveable { mutableStateOf(false) }
 
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()

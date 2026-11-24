@@ -146,7 +146,7 @@ object AiMediaPromptSynthesizer {
             else -> 768 to 768
         }
         val encoded = URLEncoder.encode(expandedPrompt, "UTF-8")
-        return "https://image.pollinations.ai/prompt/$encoded?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
+        return "https://gen.pollinations.ai/image/$encoded?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
     }
 
     @JvmOverloads
@@ -165,12 +165,12 @@ object AiMediaPromptSynthesizer {
                 com.ayra.ai.app.data.AyraPreferences.hasExternalAiConsent(context))
         val previewUrl = if (canUseExternal) {
             val encodedOpening = URLEncoder.encode("$expandedPrompt, opening wide establishing shot", "UTF-8")
-            "https://image.pollinations.ai/prompt/$encodedOpening?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
+            "https://gen.pollinations.ai/image/$encodedOpening?model=flux&width=$width&height=$height&seed=$seed&nologo=true"
         } else ""
         val keyframes = JSONArray()
         if (canUseExternal) {
             val encodedAction = URLEncoder.encode("$expandedPrompt, dynamic tracking close-up progression", "UTF-8")
-            val secondFrameUrl = "https://image.pollinations.ai/prompt/$encodedAction?model=flux&width=$width&height=$height&seed=${seed + 17}&nologo=true"
+            val secondFrameUrl = "https://gen.pollinations.ai/image/$encodedAction?model=flux&width=$width&height=$height&seed=${seed + 17}&nologo=true"
             keyframes.put(previewUrl)
             keyframes.put(secondFrameUrl)
         }
