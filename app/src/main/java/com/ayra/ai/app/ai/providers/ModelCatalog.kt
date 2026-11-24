@@ -64,14 +64,15 @@ data class ModelCatalogEntry(
 object ModelCatalog {
 
     // Canonical Single Source of Truth (SSOT) Model IDs across Ayra AI
-    const val GEMINI_FLASH_MODEL = "gemini-3.8-flash"
+    const val GEMINI_FLASH_MODEL = "gemini-3.6-flash"
+    const val GEMINI_FLASH_35_MODEL = "gemini-3.5-flash"
     const val GEMINI_FAST_LITE_MODEL = "gemini-3.5-flash-lite"
-    const val GEMINI_PRO_MODEL = "gemini-4-argon"
+    const val GEMINI_PRO_MODEL = "gemini-3.1-pro-preview"
     const val GEMINI_GEMMA4_MODEL = "gemma-4-31b-it"
-    const val GEMINI_IMAGE_NANO_BANANA_MODEL = "gemini-nano-banana-2.1"
+    const val GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
     const val GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image"
     const val GEMINI_FLASH_LITE_IMAGE_MODEL = "gemini-3.1-flash-lite-image"
-    const val GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview"
+    const val GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"
 
     const val OPENAI_DEFAULT_MODEL = "gpt-6.2-sol"
     const val OPENAI_REASONING_MODEL = "gpt-6.2-astra"
@@ -137,13 +138,13 @@ object ModelCatalog {
         ModelCatalogEntry(
             id = GEMINI_FLASH_MODEL,
             provider = AiProviderType.GEMINI,
-            displayName = "Gemini 3.8 Flash",
+            displayName = "Gemini 3.6 Flash",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.AUDIO, ModelCapability.CODE),
             contextTokens = 1_000_000,
             costTier = ModelCostTier.FREE_PLATFORM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
             fallbackModelId = GEMINI_FAST_LITE_MODEL,
-            notes = "Firebase AI Logic default multimodal engine"
+            notes = "Firebase AI Logic GA multimodal engine"
         ),
         ModelCatalogEntry(
             id = GEMINI_FAST_LITE_MODEL,
@@ -153,27 +154,41 @@ object ModelCatalog {
             contextTokens = 1_000_000,
             costTier = ModelCostTier.FREE_PLATFORM,
             verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
+            fallbackModelId = GEMINI_FLASH_35_MODEL
+        ),
+        ModelCatalogEntry(
+            id = GEMINI_FLASH_35_MODEL,
+            provider = AiProviderType.GEMINI,
+            displayName = "Gemini 3.5 Flash",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE),
+            contextTokens = 1_000_000,
+            costTier = ModelCostTier.FREE_PLATFORM,
+            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
             fallbackModelId = GEMINI_FLASH_MODEL
         ),
         ModelCatalogEntry(
             id = GEMINI_PRO_MODEL,
             provider = AiProviderType.GEMINI,
-            displayName = "Gemini 4 Argon",
+            displayName = "Gemini 3.1 Pro Preview",
             capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 2_000_000,
             costTier = ModelCostTier.MEDIUM,
-            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = GEMINI_FLASH_MODEL
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            isDefaultCandidate = false,
+            fallbackModelId = GEMINI_FLASH_MODEL,
+            notes = "Blaze plan preview reasoning model; falls back to Gemini 3.6 Flash on Spark"
         ),
         ModelCatalogEntry(
-            id = GEMINI_IMAGE_NANO_BANANA_MODEL,
+            id = GEMINI_IMAGE_MODEL,
             provider = AiProviderType.GEMINI,
-            displayName = "Gemini Nano Banana 2.1",
+            displayName = "Gemini 3.1 Flash Image",
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
             contextTokens = 128_000,
             costTier = ModelCostTier.MEDIUM,
-            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
-            fallbackModelId = GEMINI_PRO_IMAGE_MODEL
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            isDefaultCandidate = false,
+            fallbackModelId = GEMINI_FLASH_LITE_IMAGE_MODEL,
+            notes = "Blaze plan native image generation & editing"
         ),
         ModelCatalogEntry(
             id = GEMINI_PRO_IMAGE_MODEL,
@@ -182,7 +197,8 @@ object ModelCatalog {
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
             contextTokens = 128_000,
             costTier = ModelCostTier.HIGH,
-            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM,
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            isDefaultCandidate = false,
             fallbackModelId = GEMINI_FLASH_LITE_IMAGE_MODEL
         ),
         ModelCatalogEntry(
@@ -192,16 +208,8 @@ object ModelCatalog {
             capabilities = setOf(ModelCapability.IMAGE_GEN, ModelCapability.VISION),
             contextTokens = 128_000,
             costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM
-        ),
-        ModelCatalogEntry(
-            id = GEMINI_TTS_MODEL,
-            provider = AiProviderType.GEMINI,
-            displayName = "Gemini 3.1 Flash TTS Preview",
-            capabilities = setOf(ModelCapability.AUDIO),
-            contextTokens = 32_000,
-            costTier = ModelCostTier.LOW,
-            verificationStatus = ModelVerificationStatus.VERIFIED_PLATFORM
+            verificationStatus = ModelVerificationStatus.CONFIGURED,
+            isDefaultCandidate = false
         ),
 
         // --- Free-Tier & Cloud Open-Weights Configured Models ---

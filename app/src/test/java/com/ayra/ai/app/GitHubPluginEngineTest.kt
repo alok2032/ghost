@@ -248,7 +248,7 @@ class GitHubPluginEngineTest {
             context = null,
             baseUrlOverrides = mapOf(AiProviderType.GEMINI to server.url("/v1beta/").toString()),
             customHttpClient = OkHttpClient(),
-            channelKeyOverrides = mapOf("gemini_3_8_flash" to "gem-test")
+            channelKeyOverrides = mapOf("gemini_3_6_flash" to "gem-test")
         )
         val pool = ProviderPool(context = null, externalProviders = providers)
         var completed = ""

@@ -54,8 +54,8 @@ class AiComparisonEngine(
         if (firebaseEngine != null && context != null && FirebaseAiEngine.isAvailable(context)) {
             list.add(
                 ArenaTarget(
-                    id = "fb_gemini_3_8_flash",
-                    displayName = "Gemini 3.8 Flash",
+                    id = "fb_gemini_3_6_flash",
+                    displayName = "Gemini 3.6 Flash",
                     providerName = "Firebase AI Logic",
                     isFirebase = true,
                     firebaseModelId = FirebaseAiEngine.MODEL_FLASH

@@ -102,7 +102,7 @@ class PerformanceAndMultiWikiTest {
             ),
             customHttpClient = OkHttpClient(),
             channelKeyOverrides = mapOf(
-                "gemini_3_8_flash" to "gem-key",
+                "gemini_3_6_flash" to "gem-key",
                 "nvidia_minimax_m3_1" to "nim-minimax",
                 "nvidia_glm_5_3" to "nim-glm"
             )

@@ -91,8 +91,8 @@ sealed class ProviderError(val displayMessage: String) : Exception(displayMessag
         ProviderError("No API key configured for ${provider.displayName}. Tap Settings -> Keys to configure.")
     class RateLimited(message: String) :
         ProviderError("Provider rate limit reached (HTTP 429). Please retry shortly or switch provider.")
-    class Unauthorized(provider: AiProviderType) :
-        ProviderError("Invalid or unauthorized API key for ${provider.displayName}. Please check Settings -> Keys.")
+    class Unauthorized(provider: AiProviderType, val customMessage: String? = null) :
+        ProviderError(customMessage ?: "Invalid or unauthorized API key for ${provider.displayName}. Please check Settings -> Keys.")
     class ModelNotFound(
         val provider: AiProviderType,
         val modelId: String,
@@ -121,10 +121,10 @@ internal object DefaultAiChannelRegistry {
         channelKeyOverrides: Map<String, String>
     ): List<AiModelChannel> = listOf(
         AiModelChannel(
-            id = "gemini_3_8_flash",
+            id = "gemini_3_6_flash",
             provider = AiProviderType.GEMINI,
             modelId = ExternalAiProviders.GEMINI_FLASH_MODEL,
-            displayName = "Gemini 3.8 Flash",
+            displayName = "Gemini 3.6 Flash",
             specialties = setOf("general", "fast", "vision", "multilingual", "education", "research", "document", "creative"),
             supportsVision = true,
             isReasoning = false,
@@ -187,10 +187,10 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> c?.let { AyraPreferences.getNvidiaGemmaKey(it) } ?: "" }
         ),
         AiModelChannel(
-            id = "gemini_4_argon",
+            id = "gemini_3_1_pro",
             provider = AiProviderType.GEMINI,
             modelId = ExternalAiProviders.GEMINI_PRO_MODEL,
-            displayName = "Gemini 4 Argon",
+            displayName = "Gemini 3.1 Pro",
             specialties = setOf("coding", "math", "reasoning", "research", "document", "cyber", "data", "vision"),
             supportsVision = true,
             isReasoning = true,
@@ -198,10 +198,10 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> AyraPreferences.getEffectiveGeminiKey(c) }
         ),
         AiModelChannel(
-            id = "groq_qwen_3_8",
+            id = "groq_qwen3_32b",
             provider = AiProviderType.GROQ,
             modelId = ExternalAiProviders.GROQ_QWEN_MODEL,
-            displayName = "Groq Qwen 3.8 27B",
+            displayName = "Groq Qwen3 32B",
             specialties = setOf("general", "fast", "coding", "reasoning", "education"),
             supportsVision = false,
             isReasoning = true,

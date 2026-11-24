@@ -170,7 +170,7 @@ fun AuthScreen(
                     )
 
                     Text(
-                        text = "একটি সুপার-এআই প্ল্যাটফর্মে Gemini, NVIDIA NIM, Nano Banana ইমেজ জেনারেশন, ভয়েস-টু-টেক্সট ও GitHub প্লাগইন ক্লাউড সিঙ্ক ব্যবহার করতে সাইন ইন করুন।",
+                        text = "একটি সুপার-এআই প্ল্যাটফর্মে Gemini, NVIDIA NIM, Gemini 3.1 Flash ইমেজ জেনারেশন, ভয়েস-টু-টেক্সট ও GitHub প্লাগইন ক্লাউড সিঙ্ক ব্যবহার করতে সাইন ইন করুন।",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
                         textAlign = TextAlign.Center,

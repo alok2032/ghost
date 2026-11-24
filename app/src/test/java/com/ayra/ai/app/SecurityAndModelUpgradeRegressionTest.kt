@@ -295,7 +295,7 @@ class SecurityAndModelUpgradeRegressionTest {
         server.enqueue(MockResponse().setResponseCode(410).setBody("""{"error":{"message":"model retired"}}"""))
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"choices":[{"message":{"content":"Answer from Qwen 3.8 27B"}}]}"""
+                """{"choices":[{"message":{"content":"Answer from Groq Qwen3 32B"}}]}"""
             )
         )
 
@@ -314,7 +314,7 @@ class SecurityAndModelUpgradeRegressionTest {
             "Expected visible failover notice, got: ${resp.text}",
             resp.text.contains("Model Notice:") && resp.text.contains("switched to '${ExternalAiProviders.GROQ_QWEN_MODEL}'")
         )
-        assertTrue(resp.text.contains("Answer from Qwen 3.8 27B"))
+        assertTrue(resp.text.contains("Answer from Groq Qwen3 32B"))
         assertEquals(
             ModelVerificationStatus.RETIRED,
             ModelCatalog.findEntry(AiProviderType.GROQ, ExternalAiProviders.GROQ_LLAMA_MODEL)?.verificationStatus
@@ -339,8 +339,8 @@ class SecurityAndModelUpgradeRegressionTest {
                     .build()
             )
         }
-        val argonEntry = AiModelRegistry.buildInitialCatalog(context).first { it.id == "fb_gemini_4_argon" }
-        val pinged = AiModelRegistry.pingEntry(context, argonEntry)
+        val proEntry = AiModelRegistry.buildInitialCatalog(context).first { it.id == "fb_gemini_3_1_pro" }
+        val pinged = AiModelRegistry.pingEntry(context, proEntry)
         assertEquals(ModelHealthStatus.UNKNOWN, pinged.healthStatus)
         assertTrue(pinged.lastError.orEmpty().contains("unprobed", ignoreCase = true))
     }

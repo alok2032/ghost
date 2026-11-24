@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 enum class AiExecutionEnvironment {
     ROUTE_A_LOCAL,
@@ -179,17 +180,21 @@ object SecureAiGatewayClient {
                 ?: return@withContext Result.failure(SecurityException("Firebase authentication required for Ayra AI Backend."))
             runCatching {
                 val task = user.getIdToken(false)
-                com.google.android.gms.tasks.Tasks.await(task).token
+                com.google.android.gms.tasks.Tasks.await(task, 5L, TimeUnit.SECONDS).token
             }.getOrNull()
         }
         if (tokenResult.isNullOrBlank()) {
             return@withContext Result.failure(SecurityException("Unable to obtain verified Firebase ID token."))
         }
 
-        val resolvedAppCheckToken = appCheckToken?.takeIf { it.isNotBlank() } ?: runCatching {
-            val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
-            com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false)).token
-        }.getOrNull()
+        val resolvedAppCheckToken = appCheckToken?.takeIf { it.isNotBlank() } ?: if (allowUnvalidatedUrlForTests && !bearerTokenOverride.isNullOrBlank()) {
+            null
+        } else {
+            runCatching {
+                val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+                com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false), 5L, TimeUnit.SECONDS).token
+            }.getOrNull()
+        }
 
         val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
         runCatching {
@@ -261,7 +266,7 @@ object SecureAiGatewayClient {
                 ?: return@withContext Result.failure(SecurityException("Firebase authentication required for Ayra AI Backend."))
             runCatching {
                 val task = user.getIdToken(false)
-                com.google.android.gms.tasks.Tasks.await(task).token
+                com.google.android.gms.tasks.Tasks.await(task, 5L, TimeUnit.SECONDS).token
             }.getOrNull()
         }
 
@@ -269,10 +274,14 @@ object SecureAiGatewayClient {
             return@withContext Result.failure(SecurityException("Unable to obtain verified Firebase ID token."))
         }
 
-        val resolvedAppCheckToken = appCheckToken?.takeIf { it.isNotBlank() } ?: runCatching {
-            val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
-            com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false)).token
-        }.getOrNull()
+        val resolvedAppCheckToken = appCheckToken?.takeIf { it.isNotBlank() } ?: if (allowUnvalidatedUrlForTests && !bearerTokenOverride.isNullOrBlank()) {
+            null
+        } else {
+            runCatching {
+                val appCheck = com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+                com.google.android.gms.tasks.Tasks.await(appCheck.getAppCheckToken(false), 5L, TimeUnit.SECONDS).token
+            }.getOrNull()
+        }
 
         val cleanPrompt = if (AyraPreferences.isPrivacyModeEnabled(context)) {
             redactSecretsForOutboundSafety(prompt)

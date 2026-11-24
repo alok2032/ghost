@@ -139,7 +139,7 @@ internal class AiCraftGenerators(
                         put("frameCount", framesArray.length())
                     }.toString()
                 }.getOrDefault(higgsfieldPayload.jsonPayload)
-                modelLabel = "Nano Banana 2.1 + Open-Higgsfield 4K Storyboard 🎬"
+                modelLabel = "Gemini 3.1 Flash Image + Open-Higgsfield 4K Storyboard 🎬"
                 hasStoryKeyframes = true
             }
         }
@@ -205,15 +205,15 @@ internal class AiCraftGenerators(
                     val captionNote = if (fbRes.caption.isNotBlank()) "\n\n${fbRes.caption}" else ""
                     val replyText = if (isBengali) {
                         if (isGfMode) {
-                            "🎨 সোনা, **Gemini Nano Banana 2.1** দিয়ে তোমার ${if (isEditMode) "এডিট করা" else "তৈরি"} ছবিটি রেডি:\n**$cleanSubject** ❤️$captionNote"
+                            "🎨 সোনা, **Gemini 3.1 Flash Image** দিয়ে তোমার ${if (isEditMode) "এডিট করা" else "তৈরি"} ছবিটি রেডি:\n**$cleanSubject** ❤️$captionNote"
                         } else {
-                            "🎨 **Gemini Nano Banana 2.1** দিয়ে ${if (isEditMode) "এডিট করা" else "তৈরি"} ছবি:\n**$cleanSubject**$captionNote"
+                            "🎨 **Gemini 3.1 Flash Image** দিয়ে ${if (isEditMode) "এডিট করা" else "তৈরি"} ছবি:\n**$cleanSubject**$captionNote"
                         }
                     } else {
                         if (isGfMode) {
-                            "🎨 Here is your ${if (isEditMode) "edited" else "generated"} image from **Gemini Nano Banana 2.1**, sweetie:\n**$cleanSubject** ❤️$captionNote"
+                            "🎨 Here is your ${if (isEditMode) "edited" else "generated"} image from **Gemini 3.1 Flash Image**, sweetie:\n**$cleanSubject** ❤️$captionNote"
                         } else {
-                            "🎨 Image ${if (isEditMode) "edited" else "generated"} via **Gemini Nano Banana 2.1**:\n**$cleanSubject**$captionNote"
+                            "🎨 Image ${if (isEditMode) "edited" else "generated"} via **Gemini 3.1 Flash Image**:\n**$cleanSubject**$captionNote"
                         }
                     }
                     return AiResponse(
@@ -228,11 +228,11 @@ internal class AiCraftGenerators(
                     val hasComfy = !AyraPreferences.getComfyUiUrl(context).isBlank()
                     if (isEditMode && !fbRes.isQuotaOrBilling && !hasComfy) {
                         val errMsg = if (isBengali) {
-                            "⚠️ **ছবি এডিট করা সম্ভব হয়নি (Gemini Nano Banana 2.1)**\n\nকারণ: ${fbRes.userMessage}"
+                            "⚠️ **ছবি এডিট করা সম্ভব হয়নি (Gemini 3.1 Flash Image)**\n\nকারণ: ${fbRes.userMessage}"
                         } else {
-                            "⚠️ **Could Not Edit Image (Gemini Nano Banana 2.1)**\n\nReason: ${fbRes.userMessage}"
+                            "⚠️ **Could Not Edit Image (Gemini 3.1 Flash Image)**\n\nReason: ${fbRes.userMessage}"
                         }
-                        return AiResponse(text = errMsg, modelUsed = "Gemini Nano Banana 2.1")
+                        return AiResponse(text = errMsg, modelUsed = "Gemini 3.1 Flash Image")
                     }
                 }
             }
@@ -278,7 +278,7 @@ internal class AiCraftGenerators(
             AyraPreferences.isFreeAiPoolEnabled(context)
 
         if (!canUseFreePool) {
-            val reasonNote = firebaseFailureReason?.let { "\n\nNano Banana status: $it" }.orEmpty()
+            val reasonNote = firebaseFailureReason?.let { "\n\nGemini Image status: $it" }.orEmpty()
             val errText = if (isBengali) {
                 "⚠️ **ছবি তৈরি করা সম্ভব হয়নি**\n\nবর্তমানে Local-Only মোড চালু আছে অথবা Global Free AI Pool (Pollinations) বন্ধ রয়েছে। Tools & Keys থেকে **Global Free AI Pool** অন করুন অথবা **ComfyUI Server URL** যুক্ত করুন।$reasonNote"
             } else {
@@ -320,7 +320,7 @@ internal class AiCraftGenerators(
         val verifiedFile = verifiedResult.getOrNull()
         if (verifiedFile == null) {
             val dlReason = verifiedResult.exceptionOrNull()?.message ?: "Image download or validation failed"
-            val fbNote = firebaseFailureReason?.let { "\nNano Banana status: $it" }.orEmpty()
+            val fbNote = firebaseFailureReason?.let { "\nGemini Image status: $it" }.orEmpty()
             val errText = if (isBengali) {
                 "⚠️ **ছবি ডাউনলোড ও যাচাই করা যায়নি (Flux.1)**\n\nকারণ: $dlReason$fbNote"
             } else {
@@ -336,8 +336,8 @@ internal class AiCraftGenerators(
         val verifiedFileUri = Uri.fromFile(verifiedFile).toString()
 
         val fallbackNote = if (!firebaseFailureReason.isNullOrBlank()) {
-            if (isBengali) "\n*(Nano Banana নোট: $firebaseFailureReason — Flux.1 ইঞ্জিন ব্যবহার করা হয়েছে)*"
-            else "\n*(Nano Banana note: $firebaseFailureReason — rendered via Flux.1)*"
+            if (isBengali) "\n*(Gemini Image নোট: $firebaseFailureReason — Flux.1 ইঞ্জিন ব্যবহার করা হয়েছে)*"
+            else "\n*(Gemini Image note: $firebaseFailureReason — rendered via Flux.1)*"
         } else ""
 
         val replyText = if (isBengali) {

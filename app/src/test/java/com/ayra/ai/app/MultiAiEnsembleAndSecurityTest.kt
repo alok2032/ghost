@@ -151,7 +151,7 @@ class MultiAiEnsembleAndSecurityTest {
                 requestedPaths.add(path)
                 observedGoogHeaders.add(request.getHeader("x-goog-api-key") ?: "")
 
-                return if (path.contains("gemini-3.8-flash:generateContent")) {
+                return if (path.contains("gemini-3.6-flash:generateContent")) {
                     MockResponse().setResponseCode(404).setBody("""{"error":{"message":"Not found"}}""")
                 } else {
                     val geminiOk = JSONObject().apply {
@@ -170,14 +170,14 @@ class MultiAiEnsembleAndSecurityTest {
             context = null,
             baseUrlOverrides = mapOf(AiProviderType.GEMINI to server.url("/v1beta/").toString()),
             customHttpClient = OkHttpClient(),
-            channelKeyOverrides = mapOf("gemini_3_8_flash" to "gemini-unit-secret")
+            channelKeyOverrides = mapOf("gemini_3_6_flash" to "gemini-unit-secret")
         )
 
-        val flashChannel = providers.getActiveChannels().first { it.id == "gemini_3_8_flash" }
+        val flashChannel = providers.getActiveChannels().first { it.id == "gemini_3_6_flash" }
         val result = providers.callChannel(flashChannel, listOf(ChatTurn("user", "Hello")), withSearchGrounding = false)
 
         assertEquals("Gemini 3.5 Flash Lite Recovered Answer", result)
-        assertTrue(requestedPaths.any { it.contains("gemini-3.8-flash:generateContent") })
+        assertTrue(requestedPaths.any { it.contains("gemini-3.6-flash:generateContent") })
         assertTrue(requestedPaths.any { it.contains("gemini-3.5-flash-lite:generateContent") })
         assertTrue(observedGoogHeaders.all { it == "gemini-unit-secret" })
     }
@@ -187,8 +187,8 @@ class MultiAiEnsembleAndSecurityTest {
         val providers = ExternalAiProviders(
             context = null,
             channelKeyOverrides = mapOf(
-                "gemini_3_8_flash" to "gem-key",
-                "gemini_4_argon" to "gem-key",
+                "gemini_3_6_flash" to "gem-key",
+                "gemini_3_1_pro" to "gem-key",
                 "nvidia_minimax_m3_1" to "nim-minimax",
                 "nvidia_glm_5_3" to "nim-glm",
                 "nvidia_muse_30b" to "nim-muse",
@@ -267,8 +267,8 @@ class MultiAiEnsembleAndSecurityTest {
             ),
             customHttpClient = OkHttpClient(),
             channelKeyOverrides = mapOf(
-                "gemini_3_8_flash" to "gem-key",
-                "gemini_4_argon" to "gem-key",
+                "gemini_3_6_flash" to "gem-key",
+                "gemini_3_1_pro" to "gem-key",
                 "nvidia_minimax_m3_1" to "nim-minimax",
                 "nvidia_glm_5_3" to "nim-glm",
                 "nvidia_muse_30b" to "nim-muse",

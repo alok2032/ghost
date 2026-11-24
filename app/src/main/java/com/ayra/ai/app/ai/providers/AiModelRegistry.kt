@@ -132,10 +132,10 @@ object AiModelRegistry {
 
         return listOf(
             RegistryModelEntry(
-                id = "fb_gemini_3_8_flash",
+                id = "fb_gemini_3_6_flash",
                 provider = AiProviderType.GEMINI,
                 modelId = FirebaseAiEngine.MODEL_FLASH,
-                displayName = "Gemini 3.8 Flash (Firebase AI)",
+                displayName = "Gemini 3.6 Flash (Firebase AI)",
                 category = ModelCategory.GENERAL,
                 endpoint = "Firebase AI Logic (App Check)",
                 authRequirement = "Firebase App Check",
@@ -146,7 +146,7 @@ object AiModelRegistry {
                 supportsVision = true,
                 supportsToolCalling = true,
                 supportsAudio = true,
-                modelVersion = "3.8-flash",
+                modelVersion = "3.6-flash",
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
@@ -167,10 +167,10 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
-                id = "fb_gemini_4_argon",
+                id = "fb_gemini_3_1_pro",
                 provider = AiProviderType.GEMINI,
                 modelId = FirebaseAiEngine.MODEL_PRO_REASONING,
-                displayName = "Gemini 4 Argon (Deep Reasoning)",
+                displayName = "Gemini 3.1 Pro (Deep Reasoning)",
                 category = ModelCategory.REASONING,
                 endpoint = "Firebase AI Logic (App Check)",
                 authRequirement = "Firebase App Check + Blaze",
@@ -180,14 +180,14 @@ object AiModelRegistry {
                 supportsStreaming = true,
                 supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "4-argon",
+                modelVersion = "3.1-pro-preview",
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
-                id = "fb_nano_banana_2_1",
+                id = "fb_gemini_3_1_flash_image",
                 provider = AiProviderType.GEMINI,
-                modelId = FirebaseAiEngine.MODEL_IMAGE_NANO_BANANA,
-                displayName = "Gemini Nano Banana 2.1",
+                modelId = FirebaseAiEngine.MODEL_IMAGE,
+                displayName = "Gemini 3.1 Flash Image",
                 category = ModelCategory.IMAGE,
                 endpoint = "Firebase AI Logic (App Check)",
                 authRequirement = "Firebase App Check + Blaze",
@@ -198,7 +198,7 @@ object AiModelRegistry {
                 supportsVision = true,
                 supportsToolCalling = false,
                 supportsImageGen = true,
-                modelVersion = "nano-banana-2.1",
+                modelVersion = "3.1-flash-image",
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
@@ -591,7 +591,7 @@ object AiModelRegistry {
                     lastError = "FirebaseApp not initialized"
                 )
             }
-            if (entry.id == "fb_gemini_3_8_flash" || entry.id == "fb_gemini_3_5_flash_lite") {
+            if (entry.id == "fb_gemini_3_6_flash" || entry.id == "fb_gemini_3_5_flash_lite") {
                 val start = System.currentTimeMillis()
                 return@withContext try {
                     val out = FirebaseAiEngine(context).generateText(

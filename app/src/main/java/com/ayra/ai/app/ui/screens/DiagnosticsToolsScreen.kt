@@ -412,7 +412,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                         text = when {
                             isLocalOnly -> "Blocked while Local-Only AI Mode is enabled"
                             !AyraPreferences.hasExternalAiConsent(context) -> "Paused — enable External Cloud AI consent to reactivate"
-                            else -> "Auto-active keyless GPT/OSS, Qwen Coder & DeepSeek ensemble"
+                            else -> "Pollinations AI ensemble (gen.pollinations.ai • optional key)"
                         },
                         color = if (isLocalOnly) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
@@ -442,7 +442,7 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                     title = { Text("Enable External Cloud AI & Free Pool?") },
                     text = {
                         Text(
-                            "Enabling the Global Free AI Pool grants External Cloud AI Provider Consent so prompts can use keyless community fallback endpoints.",
+                            "Enabling the Global Free AI Pool grants External Cloud AI Provider Consent for Pollinations community fallback endpoints (optional API key recommended at enter.pollinations.ai).",
                             fontSize = 12.5.sp
                         )
                     },

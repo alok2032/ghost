@@ -15,7 +15,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
@@ -23,7 +25,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 import java.util.Collections
@@ -46,46 +47,16 @@ sealed class AyraError(val userFriendlyMessage: String) : Exception(userFriendly
         AyraError("Request to ${provider.displayName} timed out. Please try again.")
     data class NoNetwork(val details: String = "No internet connection.") :
         AyraError("No internet connection. Please check your network and try again.")
-    data class DnsError(val details: String = "DNS lookup failed.") :
-        AyraError("DNS resolution failed while internet is connected. Check Private DNS or VPN DNS settings.")
+    data class DnsError(val provider: AiProviderType, val details: String = "DNS or host resolution failed.") :
+        AyraError("Your device is online, but ${provider.displayName} could not be reached (DNS/network route issue).${if (details.isNotBlank()) " $details" else ""}")
     data class SecurityPolicyBlocked(val reasonCode: String, val details: String = "") :
-        AyraError(
-            if (reasonCode == "FAKE_IP_VPN") {
-                "Blocked by network security policy: DNS returned a VPN Fake-IP address. Disable Fake-IP VPN mode or Private DNS override."
-            } else {
-                "Blocked by network security policy ($reasonCode)."
-            }
-        )
+        AyraError("Request to AI endpoint was blocked by Ayra security policy ($reasonCode).${if (details.isNotBlank()) " $details" else ""}")
     data class ProviderDown(val provider: AiProviderType, val statusCode: Int, val details: String = "") :
         AyraError("${provider.displayName} is currently unavailable (HTTP $statusCode).${if (details.isNotBlank()) " $details" else ""}")
     data class ContentBlocked(val reason: String = "Safety filter triggered.") :
         AyraError("The request was blocked: $reason")
     object NoProviderConfigured :
         AyraError("No AI provider is configured. Please add an API key in Settings -> Keys to start chatting.")
-
-    fun shortCode(): String = when (this) {
-        is AuthError -> "AUTH_${provider.id.uppercase()}"
-        is RateLimited -> "RATE_429_${provider.id.uppercase()}"
-        is Timeout -> "TIMEOUT_${provider.id.uppercase()}"
-        is NoNetwork -> "NO_NETWORK"
-        is DnsError -> "DNS_FAILURE"
-        is SecurityPolicyBlocked -> "POLICY_$reasonCode"
-        is ProviderDown -> "HTTP_${statusCode}_${provider.id.uppercase()}"
-        is ContentBlocked -> "CONTENT_BLOCKED"
-        NoProviderConfigured -> "NO_PROVIDER"
-    }
-
-    fun diagnosticDetail(): String = when (this) {
-        is AuthError -> details
-        is RateLimited -> retryAfterSeconds?.let { "retryAfter=${it}s" }.orEmpty()
-        is Timeout -> details
-        is NoNetwork -> details
-        is DnsError -> details
-        is SecurityPolicyBlocked -> details
-        is ProviderDown -> details
-        is ContentBlocked -> reason
-        NoProviderConfigured -> ""
-    }
 }
 
 data class ChatRequest(
@@ -102,7 +73,8 @@ data class ChatRequest(
     val activePluginNames: List<String> = emptyList(),
     val thinkingMode: String? = null,
     val workspaceContext: String? = null,
-    val routingMode: AiRoutingMode = AiRoutingMode.AUTO
+    val routingMode: AiRoutingMode = AiRoutingMode.AUTO,
+    val specialistDirective: String? = null
 )
 
 sealed class AyraStreamEvent {
@@ -151,19 +123,18 @@ class ProviderPool @JvmOverloads constructor(
     )
 
     companion object {
-        private val LATIN_TIME_SENSITIVE_REGEX = Regex(
-            "\\b(today|yesterday|tomorrow|now|latest|recent|current|news|price|weather|version|release|update|winner|champion|ceo|president|prime minister|score|rate|stock|2025|2026|2027|ajke|kal|notun|dam|koto|khobor|ekhon|ke)\\b",
-            RegexOption.IGNORE_CASE
+        private val timeSensitiveKeywords = listOf(
+            "today", "yesterday", "tomorrow", "latest", "news", "price",
+            "current", "weather", "ajke", "kal", "notun", "khobor", "2026",
+            "বর্তমান", "আজ", "খবর", "সময়", "সময়", "দাম"
         )
-        private val INDIC_TIME_SENSITIVE_CUES = listOf(
-            "বর্তমান", "আজ", "খবর", "নতুন", "সাম্প্রতিক", "আপডেট", "দাম", "কত", "সময়", "সময়", "কে এখন"
-        )
+        private val wordNowRegex = Regex("\\bnow\\b")
 
+        @JvmStatic
         fun isTimeSensitiveQuery(prompt: String): Boolean {
-            val clean = prompt.trim()
-            if (clean.isBlank()) return false
-            if (LATIN_TIME_SENSITIVE_REGEX.containsMatchIn(clean)) return true
-            return INDIC_TIME_SENSITIVE_CUES.any { clean.contains(it) }
+            val lower = prompt.lowercase()
+            if (wordNowRegex.containsMatchIn(lower)) return true
+            return timeSensitiveKeywords.any { lower.contains(it) }
         }
     }
 
@@ -347,12 +318,13 @@ class ProviderPool @JvmOverloads constructor(
             request.imageBase64 == null &&
             request.documentText == null &&
             !isTrivialGreeting(request.prompt) &&
-            request.prompt.trim().length >= 4
+            (AyraAgentOrchestrator.needsLiveWikiGrounding(request.prompt, domain) ||
+                (request.prompt.trim().length >= 8 && AutonomousKnowledgeEngine.tryCalculateMath(request.prompt) == null))
 
         supervisorScope {
             val wikiDeferred: Deferred<String>? = if (shouldGroundWiki) {
                 async(Dispatchers.IO) {
-                    withTimeoutOrNull(3_800L) {
+                    withTimeoutOrNull(4_000L) {
                         val wikiJob = async {
                             runCatching {
                                 AutonomousKnowledgeEngine.queryMultiLayerWiki(
@@ -361,15 +333,15 @@ class ProviderPool @JvmOverloads constructor(
                                 )
                             }.getOrDefault("")
                         }
-                        val tavilyJob = if (hasTavilyKey) {
+                        val tavilyJob = context?.takeIf { hasTavilyKey }?.let { ctx ->
                             async {
                                 runCatching {
-                                    com.ayra.ai.app.search.TavilySearchEngine(context)
+                                    com.ayra.ai.app.search.TavilySearchEngine(ctx)
                                         .search(request.prompt, maxResults = 3, searchDepth = "basic")
                                         .formattedSummary
                                 }.getOrDefault("")
                             }
-                        } else null
+                        }
                         val wikiRes = wikiJob.await()
                         val tavilyRes = tavilyJob?.await().orEmpty()
                         listOf(tavilyRes, wikiRes).filter { it.isNotBlank() }.joinToString("\n\n")
@@ -417,10 +389,10 @@ class ProviderPool @JvmOverloads constructor(
             }
 
             // 5. Real Question in AUTO or BEST -> Quorum-Accelerated Multi-AI Parallel Ensemble!
-            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 8 else 6
+            val targetMax = if (effectiveRequest.mode == ProviderPoolMode.BEST) 10 else 8
             val ensembleChannels = selectDiverseEnsembleChannels(routedChannels, maxCount = targetMax)
             val totalEnsembleWorkers = ensembleChannels.size + if (isFirebaseAiReady) 1 else 0
-            if (totalEnsembleWorkers >= 2 && (ensembleChannels.isNotEmpty() || isFirebaseAiReady)) {
+            if (totalEnsembleWorkers >= 2) {
                 executeMultiAiEnsemble(effectiveRequest, ensembleChannels, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
             } else {
                 executeChannelFallback(effectiveRequest, routedChannels, routedProviders, cacheKey, domain, wikiDeferred, this@flow)
@@ -461,7 +433,7 @@ class ProviderPool @JvmOverloads constructor(
             AiRoutingMode.BEST_QUALITY -> channels.sortedByDescending { ch ->
                 var score = if (ch.isReasoning) 5 else 0
                 score += when (ch.provider) {
-                    AiProviderType.GEMINI -> if (ch.id.contains("argon") || ch.id.contains("pro")) 9 else 5
+                    AiProviderType.GEMINI -> if (ch.id.contains("3_1_pro") || ch.id.contains("pro")) 9 else 5
                     AiProviderType.ANTHROPIC, AiProviderType.OPENAI, AiProviderType.DEEPSEEK -> 8
                     AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM -> 6
                     AiProviderType.POLLINATIONS_FREE -> -4
@@ -655,7 +627,12 @@ class ProviderPool @JvmOverloads constructor(
                     false
                 }
             } catch (e: TimeoutCancellationException) {
-                lastError = AyraError.Timeout(AiProviderType.GEMINI, e.message ?: "Firebase AI timed out.")
+                currentCoroutineContext().ensureActive()
+                lastError = mapExceptionToAyraError(
+                    provider = AiProviderType.GEMINI,
+                    e = e,
+                    isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
+                )
                 false
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -745,18 +722,16 @@ class ProviderPool @JvmOverloads constructor(
             return
         }
 
-        val hasUltraFastConfiguredChannel = request.routingMode == AiRoutingMode.FAST &&
+        val fastPrefersUltraLowLatency = request.routingMode == AiRoutingMode.FAST &&
             candidateList.firstOrNull()?.provider in setOf(
                 AiProviderType.GROQ,
                 AiProviderType.CEREBRAS,
-                AiProviderType.SAMBANOVA,
-                AiProviderType.NVIDIA_NIM,
                 AiProviderType.LOCAL_OLLAMA
             )
         val firebaseCanHandlePrimary = request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
+            !(externalProviders.isTestHarnessMode && request.preferredProvider != AiProviderType.GEMINI) &&
+            !fastPrefersUltraLowLatency &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
-            !(externalProviders.isTestHarnessMode && candidateList.isNotEmpty() && request.preferredProvider != AiProviderType.GEMINI) &&
-            !hasUltraFastConfiguredChannel &&
             (request.preferredProvider == null || request.preferredProvider == AiProviderType.GEMINI || candidateList.isEmpty())
 
         if (firebaseCanHandlePrimary && tryFirebaseAiLogic()) {
@@ -813,22 +788,25 @@ class ProviderPool @JvmOverloads constructor(
                         }
                         break
                     } catch (e: TimeoutCancellationException) {
-                        lastError = AyraError.Timeout(channel.provider, e.message ?: "${channel.displayName} timed out.")
+                        currentCoroutineContext().ensureActive()
+                        lastError = mapExceptionToAyraError(channel.provider, e)
                         circuitBreaker.recordChannelFailure(channel.id)
                         break
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         val mappedError = mapExceptionToAyraError(channel.provider, e)
-                        lastError = mappedError
+                        if (lastError !is AyraError.SecurityPolicyBlocked || mappedError is AyraError.SecurityPolicyBlocked) {
+                            lastError = mappedError
+                        }
+                        val shouldRecordFailure = e !is ProviderError.ModelNotFound &&
+                            e !is com.ayra.ai.app.security.BlockedByPolicyException &&
+                            e !is SecurityException
                         // Fail fast on auth, 4xx, 5xx, content blocks, or network failure — do NOT double-call the same broken channel!
                         if (attempt < 2 && mappedError is AyraError.RateLimited) {
                             delay(350L + Random.nextLong(50, 150))
                         } else {
-                            if (e !is com.ayra.ai.app.security.BlockedByPolicyException &&
-                                e !is SecurityException &&
-                                e !is ProviderError.ModelNotFound
-                            ) {
+                            if (shouldRecordFailure) {
                                 circuitBreaker.recordChannelFailure(channel.id)
                             }
                             break
@@ -836,23 +814,30 @@ class ProviderPool @JvmOverloads constructor(
                     }
                 }
             } catch (e: TimeoutCancellationException) {
+                currentCoroutineContext().ensureActive()
                 circuitBreaker.recordChannelFailure(channel.id)
-                lastError = AyraError.Timeout(channel.provider, e.message ?: "${channel.displayName} timed out.")
+                if (lastError !is AyraError.SecurityPolicyBlocked) {
+                    lastError = mapExceptionToAyraError(channel.provider, e)
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (e !is com.ayra.ai.app.security.BlockedByPolicyException &&
-                    e !is SecurityException &&
-                    e !is ProviderError.ModelNotFound
+                if (e !is ProviderError.ModelNotFound &&
+                    e !is com.ayra.ai.app.security.BlockedByPolicyException &&
+                    e !is SecurityException
                 ) {
                     circuitBreaker.recordChannelFailure(channel.id)
                 }
-                lastError = mapExceptionToAyraError(channel.provider, e)
+                val mappedError = mapExceptionToAyraError(channel.provider, e)
+                if (lastError !is AyraError.SecurityPolicyBlocked || mappedError is AyraError.SecurityPolicyBlocked) {
+                    lastError = mappedError
+                }
             }
         }
 
         if (!triedFirebaseAi &&
             request.routingMode != AiRoutingMode.PRIVACY_LOCAL &&
+            !(externalProviders.isTestHarnessMode && request.preferredProvider != AiProviderType.GEMINI) &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context) &&
             tryFirebaseAiLogic()
         ) {
@@ -921,20 +906,20 @@ class ProviderPool @JvmOverloads constructor(
         )
 
         val isBestMode = request.mode == ProviderPoolMode.BEST
-        val perChannelTimeoutMs = if (isBestMode) 17_000L else 14_000L
+        val perChannelTimeoutMs = if (isBestMode) 22_000L else 16_000L
 
         val wrappedChannel = Channel<Any>(Channel.UNLIMITED)
         val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        val localOnlyMode = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
-        val strictLocalRouting = request.routingMode == AiRoutingMode.PRIVACY_LOCAL
-        val firebaseEnsembleActive = !localOnlyMode &&
-            !strictLocalRouting &&
+        val firebaseEnsembleActive = externalProviders.allowExternalWikiGrounding &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
         val totalWorkers = ensembleChannels.size + if (firebaseEnsembleActive) 1 else 0
-        val desiredQuorum = if (isBestMode) 4 else 3
-        val targetQuorum = if (totalWorkers <= 2) totalWorkers else minOf(desiredQuorum, totalWorkers - 1)
-        val quorumGraceMs = if (isBestMode) 2_200L else 1_500L
+        val targetQuorum = when {
+            isBestMode -> minOf(4, totalWorkers)
+            totalWorkers >= 4 -> 3
+            else -> minOf(2, totalWorkers)
+        }
+        val quorumGraceMs = if (isBestMode) 2_200L else 1_200L
 
         val successfulDrafts = mutableListOf<Pair<AiModelChannel, String>>()
         val workerErrors = ConcurrentLinkedQueue<AyraError>()
@@ -951,15 +936,15 @@ class ProviderPool @JvmOverloads constructor(
                     id = "firebase_ai_$fbModelName",
                     provider = AiProviderType.GEMINI,
                     modelId = fbModelName,
-                    displayName = "Gemini 3.8 / 4 Firebase",
+                    displayName = "Gemini 3.6 / 3.1 Firebase",
                     specialties = setOf("general", "coding", "reasoning", "research"),
                     supportsVision = true,
                     isReasoning = true,
                     keyResolver = { "" }
                 )
                 draftScope.launch {
-                    val outcome: Any = try {
-                        withTimeout(perChannelTimeoutMs) {
+                    val outcome: Any = withTimeoutOrNull(perChannelTimeoutMs) {
+                        try {
                             val fbRes = firebaseAiEngine.generateTextDetailed(
                                 prompt = safePrompt,
                                 systemPrompt = sysPrompt,
@@ -979,67 +964,51 @@ class ProviderPool @JvmOverloads constructor(
                                             isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
                                         )
                                     )
-                                } ?: workerErrors.add(
-                                    AyraError.ProviderDown(AiProviderType.GEMINI, 502, "Firebase AI returned an empty response.")
-                                )
+                                }
                                 Unit
                             }
-                        }
-                    } catch (_: TimeoutCancellationException) {
-                        Log.w("ProviderPool", "Firebase ensemble worker timed out after ${perChannelTimeoutMs}ms")
-                        workerErrors.add(AyraError.Timeout(AiProviderType.GEMINI, "Timed out after ${perChannelTimeoutMs / 1000}s"))
-                        Unit
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w("ProviderPool", "Firebase ensemble worker failed: ${e.message}")
-                        workerErrors.add(
-                            mapExceptionToAyraError(
-                                AiProviderType.GEMINI,
-                                e,
-                                isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w("ProviderPool", "Firebase ensemble worker failed: ${e.message}")
+                            workerErrors.add(
+                                mapExceptionToAyraError(
+                                    AiProviderType.GEMINI,
+                                    e,
+                                    isFirebaseKeyless = !externalProviders.isProviderConfigured(AiProviderType.GEMINI)
+                                )
                             )
-                        )
-                        Unit
-                    }
+                            Unit
+                        }
+                    } ?: Unit
                     wrappedChannel.trySend(outcome)
                 }
             }
 
             ensembleChannels.forEach { channel ->
                 draftScope.launch {
-                    val outcome: Any = try {
-                        withTimeout(perChannelTimeoutMs) {
+                    val outcome: Any = withTimeoutOrNull(perChannelTimeoutMs) {
+                        try {
                             val text = externalProviders.callChannel(channel, turns, withSearchGrounding = true)
                             if (text.isNotBlank()) {
                                 circuitBreaker.recordSuccess(channel.provider)
                                 circuitBreaker.recordChannelSuccess(channel.id)
                                 Pair(channel, text)
-                            } else {
-                                workerErrors.add(
-                                    AyraError.ProviderDown(channel.provider, 502, "${channel.displayName} returned an empty response.")
-                                )
-                                Unit
+                            } else Unit
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w("ProviderPool", "Ensemble worker ${channel.id} failed: ${e.message}")
+                            if (e !is ProviderError.ModelNotFound &&
+                                e !is com.ayra.ai.app.security.BlockedByPolicyException &&
+                                e !is SecurityException
+                            ) {
+                                circuitBreaker.recordChannelFailure(channel.id)
                             }
+                            workerErrors.add(mapExceptionToAyraError(channel.provider, e))
+                            Unit
                         }
-                    } catch (_: TimeoutCancellationException) {
-                        Log.w("ProviderPool", "Ensemble worker ${channel.id} timed out after ${perChannelTimeoutMs}ms")
-                        circuitBreaker.recordChannelFailure(channel.id)
-                        workerErrors.add(AyraError.Timeout(channel.provider, "Timed out after ${perChannelTimeoutMs / 1000}s"))
-                        Unit
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w("ProviderPool", "Ensemble worker ${channel.id} failed: ${e.message}")
-                        if (e !is com.ayra.ai.app.security.BlockedByPolicyException &&
-                            e !is SecurityException &&
-                            e !is ProviderError.ModelNotFound
-                        ) {
-                            circuitBreaker.recordChannelFailure(channel.id)
-                        }
-                        workerErrors.add(mapExceptionToAyraError(channel.provider, e))
-                        Unit
-                    }
+                    } ?: Unit
                     wrappedChannel.trySend(outcome)
                 }
             }
@@ -1098,17 +1067,15 @@ class ProviderPool @JvmOverloads constructor(
             drafts = successfulDrafts,
             wikiContext = wikiContext
         )
-
-        val validDrafts = rankedDrafts
+        val validRankedDrafts = rankedDrafts
             .filterNot { BestAnswerSelector.isLowValueOrRefusal(it.text) }
             .ifEmpty { rankedDrafts }
 
-        if (validDrafts.size == 1) {
-            val single = validDrafts.first()
-            val wikiSuffix = if (wikiContext.isNotBlank()) " + Multi-Wiki 🌐" else ""
+        if (validRankedDrafts.size == 1 && wikiContext.isBlank()) {
+            val single = validRankedDrafts.first()
             val resp = ProviderResponse(
                 text = single.text,
-                modelUsed = "${single.channel.displayName} (Best Answer • ${single.score.toInt()}%)$wikiSuffix ⚡",
+                modelUsed = "${single.channel.displayName} (Best • ${single.score.toInt()}%) ⚡",
                 provider = single.channel.provider
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
@@ -1116,11 +1083,11 @@ class ProviderPool @JvmOverloads constructor(
             return@supervisorScope
         }
 
-        // Prioritize Gemini, then highest-scored non-free flagship, then highest-scored overall draft
-        val synthesizer = validDrafts
+        // Prioritize Gemini, then highest-scored non-free flagship, then highest-scored overall valid draft
+        val synthesizer = validRankedDrafts
             .firstOrNull { it.channel.provider == AiProviderType.GEMINI }?.channel
-            ?: validDrafts.firstOrNull { it.channel.provider != AiProviderType.POLLINATIONS_FREE }?.channel
-            ?: validDrafts.first().channel
+            ?: validRankedDrafts.firstOrNull { it.channel.provider != AiProviderType.POLLINATIONS_FREE }?.channel
+            ?: validRankedDrafts.first().channel
 
         val isBengali = request.prompt.any { it in '\u0980'..'\u09FF' }
         val isBanglish = AyraAgentOrchestrator.isBanglish(request.prompt)
@@ -1130,9 +1097,8 @@ class ProviderPool @JvmOverloads constructor(
             else -> "clear, authoritative natural English"
         }
 
-        val todayDate = java.time.LocalDate.now()
         val synthesisPrompt = buildString {
-            append("You are Ayra AI's Principal Consensus Synthesizer. Today's Current Date: $todayDate (Year ${todayDate.year}). ${validDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
+            append("You are Ayra AI's Principal Consensus Synthesizer. ${validRankedDrafts.size} specialist AI models independently analyzed the user's request.\n\n")
             append("User Query:\n\"$safePrompt\"\n\n")
             if (!request.activePluginContext.isNullOrBlank()) {
                 append("=== INSTALLED ACTIVE GITHUB PLUGINS ===\n")
@@ -1144,25 +1110,25 @@ class ProviderPool @JvmOverloads constructor(
                 append(wikiContext.take(2200))
                 append("\n\n")
             }
-            validDrafts.forEachIndexed { idx, scored ->
+            validRankedDrafts.forEachIndexed { idx, scored ->
                 append("--- SPECIALIST ${idx + 1}: ${scored.channel.displayName} [Quality Score ${scored.score.toInt()}/100] ---\n")
                 append(scored.text.take(4500))
                 append("\n\n")
             }
             append("Instructions:\n")
-            append("1. Compare all specialist answers, verify against Today's Current Date ($todayDate) and live Wiki/Plugin facts (preferring fresh up-to-date evidence over outdated training cutoffs), select the most accurate solution, and synthesize ONE cohesive, detailed, authoritative response in $langNote.\n")
+            append("1. Compare all specialist answers, verify against live Wiki/Plugin facts, select the most accurate solution, and synthesize ONE cohesive, detailed, authoritative response in $langNote.\n")
             append("2. Resolve any disagreements accurately and preserve complete runnable code blocks without truncation.\n")
             append("3. Do NOT mention 'Specialist 1/2', quality scores, or meta-commentary about combining drafts. Output ONLY the final polished response.")
         }
 
-        collector.emit(AyraStreamEvent.Thinking("Selecting & synthesizing best answer (${validDrafts.size} AIs) with ${synthesizer.displayName}..."))
+        collector.emit(AyraStreamEvent.Thinking("Selecting & synthesizing best answer (${validRankedDrafts.size} AIs) with ${synthesizer.displayName}..."))
 
         val streamedSynth = StringBuilder()
         var synthProviderUsed = synthesizer.provider
 
         suspend fun tryStreamSynthesizer(target: AiModelChannel): Boolean {
             streamedSynth.clear()
-            return withTimeoutOrNull(14_000L) {
+            return withTimeoutOrNull(22_000L) {
                 try {
                     if (target.id.startsWith("firebase_ai_") && firebaseEnsembleActive) {
                         firebaseAiEngine.streamText(
@@ -1190,6 +1156,10 @@ class ProviderPool @JvmOverloads constructor(
                         }
                     }
                     streamedSynth.isNotBlank()
+                } catch (e: TimeoutCancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    Log.w("ProviderPool", "Synthesizer ${target.displayName} inner timeout")
+                    false
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -1201,10 +1171,10 @@ class ProviderPool @JvmOverloads constructor(
 
         var streamSucceeded = tryStreamSynthesizer(synthesizer)
         if (!streamSucceeded || ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString()).isBlank()) {
-            val backupSynth = validDrafts
+            val backupSynth = validRankedDrafts
                 .firstOrNull { it.channel.id != synthesizer.id && it.channel.provider != AiProviderType.POLLINATIONS_FREE }
                 ?.channel
-                ?: validDrafts.firstOrNull { it.channel.id != synthesizer.id }?.channel
+                ?: validRankedDrafts.firstOrNull { it.channel.id != synthesizer.id }?.channel
             if (backupSynth != null) {
                 collector.emit(AyraStreamEvent.Thinking("Switching synthesizer to ${backupSynth.displayName}..."))
                 synthProviderUsed = backupSynth.provider
@@ -1213,14 +1183,14 @@ class ProviderPool @JvmOverloads constructor(
         }
 
         val synthText = ExternalAiProviders.sanitizeModelOutput(streamedSynth.toString())
-        val participatingNames = validDrafts.joinToString(" + ") { it.channel.displayName }
+        val participatingNames = validRankedDrafts.joinToString(" + ") { it.channel.displayName }
 
         if (streamSucceeded && synthText.isNotBlank()) {
             val wikiSuffix = if (wikiContext.isNotBlank()) " + Multi-Wiki 🌐" else ""
             val pluginSuffix = if (request.activePluginNames.isNotEmpty()) " + Plugins(${request.activePluginNames.size}) 🔌" else ""
             val resp = ProviderResponse(
                 text = synthText,
-                modelUsed = "Multi-AI Ensemble • Best of ${validDrafts.size} ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
+                modelUsed = "Multi-AI Ensemble • Best of ${validRankedDrafts.size} ($participatingNames)$wikiSuffix$pluginSuffix ⚡",
                 provider = synthProviderUsed
             )
             cacheKey?.let { memoryLruCache[it] = CacheEntry(resp, System.currentTimeMillis()) }
@@ -1228,8 +1198,8 @@ class ProviderPool @JvmOverloads constructor(
             return@supervisorScope
         }
 
-        // Fallback: return the objectively highest-scored valid specialist draft (never naive length)
-        val bestDraft = validDrafts.first()
+        // Fallback: return the objectively highest-scored specialist draft (never naive length)
+        val bestDraft = validRankedDrafts.first()
         val resp = ProviderResponse(
             text = bestDraft.text,
             modelUsed = "${bestDraft.channel.displayName} (Best Answer • ${bestDraft.score.toInt()}%) ⚡",
@@ -1288,6 +1258,10 @@ class ProviderPool @JvmOverloads constructor(
 
         return buildString {
             append(base)
+            if (!request.specialistDirective.isNullOrBlank()) {
+                append("\n\n")
+                append(request.specialistDirective.take(4000))
+            }
             if (!request.workspaceContext.isNullOrBlank()) {
                 append("\n\n")
                 append(request.workspaceContext.take(6500))
@@ -1307,7 +1281,7 @@ class ProviderPool @JvmOverloads constructor(
         }
     }
 
-    internal fun mapExceptionToAyraError(
+    private fun mapExceptionToAyraError(
         provider: AiProviderType,
         e: Exception,
         isFirebaseKeyless: Boolean = false
@@ -1317,29 +1291,15 @@ class ProviderPool @JvmOverloads constructor(
             .redactSensitiveText(rawMsg)
             .take(180)
         val msg = rawMsg.lowercase()
-        val hasValidatedNet = com.ayra.ai.app.security.NetworkConnectivityManager.isValidatedInternetAvailable(context)
+        val policyException = e as? com.ayra.ai.app.security.BlockedByPolicyException
+            ?: (e.cause as? com.ayra.ai.app.security.BlockedByPolicyException)
+        val hasOsInternet = context != null &&
+            com.ayra.ai.app.security.NetworkConnectivityManager.isValidatedInternetAvailable(context)
         return when {
-            e is com.ayra.ai.app.security.BlockedByPolicyException ->
-                AyraError.SecurityPolicyBlocked(e.reasonCode, safeDetail)
-            e is SecurityException ->
-                AyraError.SecurityPolicyBlocked("SECURITY_POLICY", safeDetail)
-            e is com.google.firebase.ai.type.InvalidAPIKeyException ->
-                AyraError.AuthError(provider, safeDetail)
-            e is com.google.firebase.ai.type.ServiceDisabledException ->
-                AyraError.ProviderDown(provider, 403, "Firebase AI API disabled: $safeDetail")
-            e is com.google.firebase.ai.type.PermissionMissingException ->
-                AyraError.ProviderDown(provider, 403, safeDetail)
-            e is com.google.firebase.ai.type.QuotaExceededException ->
-                AyraError.RateLimited(provider)
-            e is com.google.firebase.ai.type.RequestTimeoutException ->
-                AyraError.Timeout(provider, safeDetail)
-            e is com.google.firebase.ai.type.PromptBlockedException ||
-                e is com.google.firebase.ai.type.ContentBlockedException ||
-                e is com.google.firebase.ai.type.ResponseStoppedException ->
-                AyraError.ContentBlocked(safeDetail)
-            e is com.google.firebase.ai.type.UnsupportedUserLocationException ||
-                e is com.google.firebase.ai.type.InvalidLocationException ->
-                AyraError.ProviderDown(provider, 403, safeDetail)
+            policyException != null ->
+                AyraError.SecurityPolicyBlocked(policyException.reasonCode, policyException.message ?: safeDetail)
+            e is SecurityException || msg.contains("ssrf") || msg.contains("dns rebinding guard") || msg.contains("fake-ip") || msg.contains("blocked internal/metadata") ->
+                AyraError.SecurityPolicyBlocked("POLICY_BLOCKED", safeDetail)
             isFirebaseKeyless && (msg.contains("403") || msg.contains("appcheck") || msg.contains("app check") || msg.contains("attestation") || msg.contains("permission")) ->
                 AyraError.ProviderDown(provider, 403, safeDetail)
             e is ProviderError.Unauthorized || msg.contains("401") || (!isFirebaseKeyless && msg.contains("403")) || msg.contains("unauthorized") || msg.contains("invalid api key") ->
@@ -1348,24 +1308,16 @@ class ProviderPool @JvmOverloads constructor(
                 AyraError.RateLimited(provider)
             e is ProviderError.Timeout || e is java.net.SocketTimeoutException || e is kotlinx.coroutines.TimeoutCancellationException || msg.contains("timeout") || msg.contains("timed out") ->
                 AyraError.Timeout(provider, safeDetail)
-            e is java.net.UnknownHostException || msg.contains("unable to resolve host") ->
-                if (hasValidatedNet) AyraError.DnsError(safeDetail) else AyraError.NoNetwork(safeDetail)
-            e is java.net.ConnectException ->
-                if (hasValidatedNet) AyraError.ProviderDown(provider, 503, safeDetail) else AyraError.NoNetwork(safeDetail)
-            e is ProviderError.NetworkFailure || msg.contains("no internet") ->
-                if (hasValidatedNet && !msg.contains("no internet") && !msg.contains("offline")) {
-                    AyraError.ProviderDown(provider, 502, safeDetail)
+            e is ProviderError.ModelNotFound || msg.contains("404") || msg.contains("not found") ->
+                AyraError.ProviderDown(provider, 404, safeDetail)
+            e is ProviderError.NetworkFailure || e is java.net.UnknownHostException || e is java.net.ConnectException || msg.contains("unable to resolve host") || msg.contains("no internet") ->
+                if (hasOsInternet && !msg.contains("no internet")) {
+                    AyraError.DnsError(provider, safeDetail)
                 } else {
                     AyraError.NoNetwork(safeDetail)
                 }
-            e is ProviderError.ContentBlocked ->
-                AyraError.ContentBlocked(e.reason)
-            e is ProviderError.ModelNotFound ->
-                AyraError.ProviderDown(provider, e.httpStatus, safeDetail)
             e is ProviderError.ServerError ->
                 AyraError.ProviderDown(provider, Regex("HTTP\\s*(\\d+)").find(e.displayMessage)?.groupValues?.get(1)?.toIntOrNull() ?: 500, safeDetail)
-            msg.contains("404") || msg.contains("not found") ->
-                AyraError.ProviderDown(provider, 404, safeDetail)
             msg.contains("400") || msg.contains("bad request") ->
                 AyraError.ProviderDown(provider, 400, safeDetail)
             msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504") ->

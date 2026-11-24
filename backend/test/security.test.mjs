@@ -212,7 +212,7 @@ test("Strict Zod validation rejects unknown mass-assignment fields and forwards 
     },
     body: JSON.stringify({
       provider: "gemini",
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       messages: [{ role: "user", content: "Hello" }],
       roleOverride: "admin",
     }),
@@ -228,7 +228,7 @@ test("Strict Zod validation rejects unknown mass-assignment fields and forwards 
     },
     body: JSON.stringify({
       provider: "gemini",
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       messages: [{ role: "user", content: "Hello" }],
     }),
   });
@@ -376,8 +376,8 @@ test("Model catalog exposes honest verification status, provenance, and unavaila
   });
   assert.equal(ok.status, 200);
   const catalog = await ok.json();
-  const flash = catalog.models.find((m) => m.id === "gemini-3.8-flash");
-  const groq = catalog.models.find((m) => m.id === "qwen/qwen3.8-27b");
+  const flash = catalog.models.find((m) => m.id === "gemini-3.6-flash");
+  const groq = catalog.models.find((m) => m.id === "qwen/qwen3-32b");
   assert.ok(flash);
   assert.equal(flash.verificationStatus, "LIVE_VERIFIED"); // earlier chat succeeded & closed circuit breaker
   assert.equal(flash.pricingVerified, false);
@@ -661,7 +661,7 @@ test("Daily token quota enforces 429 with DAILY_TOKEN_QUOTA_EXCEEDED", async () 
       },
       body: JSON.stringify({
         provider: "gemini",
-        model: "gemini-3.8-flash",
+        model: "gemini-3.6-flash",
         messages: [{ role: "user", content: "Hello" }],
         maxTokens: 512,
       }),
@@ -797,7 +797,7 @@ test("M3 & M4: Atomic AI quota settles actual tokens, refunds failures, and Redi
       },
       body: JSON.stringify({
         provider: "gemini",
-        model: "gemini-3.8-flash",
+        model: "gemini-3.6-flash",
         messages: [{ role: "user", content: "Hi" }],
         maxTokens: 2048,
       }),
@@ -817,7 +817,7 @@ test("M3 & M4: Atomic AI quota settles actual tokens, refunds failures, and Redi
       },
       body: JSON.stringify({
         provider: "gemini",
-        model: "gemini-3.8-flash",
+        model: "gemini-3.6-flash",
         messages: [{ role: "user", content: "Hi" }],
         maxTokens: 2048,
       }),
@@ -881,7 +881,7 @@ test("Upstream HTTP 404/400 maps status accurately and does NOT trip circuit bre
   });
   try {
     const u = `http://127.0.0.1:${cbSrv.address().port}`;
-    const sendChat = (model = "gemini-3.8-flash") =>
+    const sendChat = (model = "gemini-3.6-flash") =>
       fetch(`${u}/api/v1/ai/chat`, {
         method: "POST",
         headers: {
@@ -924,7 +924,7 @@ test("Upstream HTTP 404/400 maps status accurately and does NOT trip circuit bre
     });
     assert.equal(catRes.status, 200);
     const catalog = await catRes.json();
-    const flash = catalog.models.find((m) => m.id === "gemini-3.8-flash");
+    const flash = catalog.models.find((m) => m.id === "gemini-3.6-flash");
     assert.equal(flash?.verificationStatus, "UNAVAILABLE");
   } finally {
     await new Promise((resolve) => cbSrv.close(() => resolve()));
@@ -973,7 +973,7 @@ test("HTTP 200 inline data.error from Gemini/OpenAI-compatible upstream propagat
       },
       body: JSON.stringify({
         provider: "gemini",
-        model: "gemini-3.8-flash",
+        model: "gemini-3.6-flash",
         messages: [{ role: "user", content: "Ping" }],
       }),
     });

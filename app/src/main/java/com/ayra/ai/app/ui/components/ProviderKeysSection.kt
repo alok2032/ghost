@@ -243,9 +243,7 @@ fun ProviderKeysSection(
                 onSave = { endpoint ->
                     val clean = endpoint.trim().trimEnd('/')
                     if (clean.isNotEmpty()) {
-                        val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrl(clean)
-                        }
+                        val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validatePublicHttpsUrlAsync(clean)
                         if (!urlCheck.allowed) {
                             throw IllegalArgumentException(urlCheck.reason ?: "Public HTTPS URL required for Route B Gateway.")
                         }
@@ -666,8 +664,8 @@ fun AiRoutingAndMemoryCard(context: Context, editsLocked: Boolean = false) {
     val routingModes = remember {
         listOf(
             Triple(ModelTier.AUTO.id, "Auto ⚡", "Adaptive selection"),
-            Triple("quality", "Best Quality 👑", "Gemini 4 Argon / Claude 5.5"),
-            Triple("fast", "Ultra Fast 🚀", "Gemini 3.8 Flash / Groq"),
+            Triple("quality", "Best Quality 👑", "Gemini 3.1 Pro / Claude 5.5"),
+            Triple("fast", "Ultra Fast 🚀", "Gemini 3.6 Flash / Groq"),
             Triple(ModelTier.OPEN_WEIGHTS.id, "Open-Weights 🌐", "Local Ollama / OpenRouter Qwen"),
             Triple("reasoning", "Deep Reasoning 🧠", "DeepSeek V4 Pro / GPT-6.2 Astra"),
             Triple("coding", "Coding & STEM 💻", "GLM 5.3 / Codestral"),

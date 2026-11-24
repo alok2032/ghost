@@ -629,8 +629,8 @@ object AyraPreferences {
     }
 
     /**
-     * Built-in keyless cloud AI pool is enabled automatically for zero-setup multi-AI synthesis,
-     * and stays disabled whenever Local-Only Privacy Mode is enabled or the user opts out.
+     * Community cloud AI pool (Pollinations, optional key at enter.pollinations.ai),
+     * gated by explicit opt-in consent and disabled when Local-Only Privacy Mode is enabled.
      */
     fun isFreeAiPoolEnabled(context: Context): Boolean {
         if (isLocalOnlyAiModeEnabled(context) || !hasExternalAiConsent(context)) return false

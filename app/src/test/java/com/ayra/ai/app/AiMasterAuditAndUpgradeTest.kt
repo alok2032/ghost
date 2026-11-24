@@ -55,24 +55,36 @@ class AiMasterAuditAndUpgradeTest {
     @Test
     fun testFirebaseModelFallbackChainCascadesCorrectly() {
         val fb = FirebaseAiEngine(context)
-        val argonChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_PRO_REASONING)
+        val proChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_PRO_REASONING)
         assertEquals(
             listOf(
                 FirebaseAiEngine.MODEL_PRO_REASONING,
                 FirebaseAiEngine.MODEL_FLASH,
-                FirebaseAiEngine.MODEL_FAST_LITE
+                FirebaseAiEngine.MODEL_FAST_LITE,
+                FirebaseAiEngine.MODEL_FLASH_35
             ),
-            argonChain
+            proChain
         )
 
         val flashChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_FLASH)
         assertEquals(
-            listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_FAST_LITE),
+            listOf(
+                FirebaseAiEngine.MODEL_FLASH,
+                FirebaseAiEngine.MODEL_FAST_LITE,
+                FirebaseAiEngine.MODEL_FLASH_35
+            ),
             flashChain
         )
 
         val liteChain = fb.modelFallbackChain(FirebaseAiEngine.MODEL_FAST_LITE)
-        assertEquals(listOf(FirebaseAiEngine.MODEL_FAST_LITE, FirebaseAiEngine.MODEL_FLASH), liteChain)
+        assertEquals(
+            listOf(
+                FirebaseAiEngine.MODEL_FAST_LITE,
+                FirebaseAiEngine.MODEL_FLASH,
+                FirebaseAiEngine.MODEL_FLASH_35
+            ),
+            liteChain
+        )
     }
 
     @Test

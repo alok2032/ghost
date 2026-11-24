@@ -174,8 +174,10 @@ class ZeroSetupAndMediaIntegrityTest {
 
     @Test
     fun modelCatalogAndExecutorsStayAlignedWithCentralizedConstants() {
-        val ttsEntry = ModelCatalog.findEntry(AiProviderType.GEMINI, FirebaseAiEngine.MODEL_TTS)
-        assertNotNull("TTS model entry must exist in ModelCatalog for FirebaseAiEngine.MODEL_TTS", ttsEntry)
-        assertEquals("gemini-3.1-flash-tts-preview", ttsEntry?.id)
+        val imageEntry = ModelCatalog.findEntry(AiProviderType.GEMINI, FirebaseAiEngine.MODEL_IMAGE)
+        assertNotNull("Image model entry must exist in ModelCatalog for FirebaseAiEngine.MODEL_IMAGE", imageEntry)
+        assertEquals("gemini-3.1-flash-image", imageEntry?.id)
+        val removedTts = ModelCatalog.findEntry(AiProviderType.GEMINI, "gemini-3.1-flash-tts-preview")
+        assertEquals(null, removedTts)
     }
 }

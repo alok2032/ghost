@@ -500,7 +500,7 @@ internal fun EmptyCosmicState(
             text = if (currentPersona == "GF_COMPANION") {
                 "Sweet Companion & All-in-One Autonomous AI Master"
             } else {
-                "Next-Gen Frontier AI • Multi-Model Unified (Gemini 3.8/4.0 + Groq + DeepSeek R1 + Claude)"
+                "Next-Gen Frontier AI • Multi-Model Unified (Gemini 3.6 / 3.1 Pro + Groq + DeepSeek R1 + Claude)"
             },
             color = TextSecondary,
             fontSize = 12.5.sp,

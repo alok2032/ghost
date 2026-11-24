@@ -183,7 +183,7 @@ class AuditStabilizationRegressionTest {
                 httpClient = client,
                 baseUrlOverride = server.url("/gemini/").toString(),
                 turns = listOf(ChatTurn("user", "Unsafe test")),
-                model = "gemini-3.8-flash",
+                model = "gemini-3.6-flash",
                 apiKey = "AIza-test",
                 withSearchGrounding = false
             )
@@ -204,7 +204,7 @@ class AuditStabilizationRegressionTest {
                 httpClient = client,
                 baseUrlOverride = server.url("/gemini/").toString(),
                 turns = listOf(ChatTurn("user", "Hi")),
-                model = "gemini-3.8-flash",
+                model = "gemini-3.6-flash",
                 apiKey = "AIza-test",
                 withSearchGrounding = false
             )
@@ -316,16 +316,17 @@ class AuditStabilizationRegressionTest {
 
             // Verify deleteMessage updates Room messages + session preview cleanly
             activeVm.deleteMessage(assistantMsgId)
-            val deleteDeadline = System.currentTimeMillis() + 3000L
+            val deleteDeadline = System.currentTimeMillis() + 5000L
             var remaining = repo.observeMessages(session.id).first()
-            while (remaining.size != 1 && System.currentTimeMillis() < deleteDeadline) {
-                Thread.sleep(15)
+            var updatedSession = db.chatSessionDao().getSessionById(session.id)
+            while ((remaining.size != 1 || updatedSession?.messageCount != 1) && System.currentTimeMillis() < deleteDeadline) {
+                Thread.sleep(20)
                 advanceUntilIdle()
                 remaining = repo.observeMessages(session.id).first()
+                updatedSession = db.chatSessionDao().getSessionById(session.id)
             }
             assertEquals(1, remaining.size)
             assertEquals(userMsgId, remaining.single().id)
-            val updatedSession = db.chatSessionDao().getSessionById(session.id)
             assertNotNull(updatedSession)
             assertEquals(1, updatedSession?.messageCount)
             assertEquals("Hello Ayra", updatedSession?.lastMessagePreview)

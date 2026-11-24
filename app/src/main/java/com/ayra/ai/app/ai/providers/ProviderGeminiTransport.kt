@@ -21,8 +21,10 @@ internal object ProviderGeminiTransport {
 
     private fun nextGeminiFallback(currentModel: String): String? {
         return when (currentModel) {
+            ExternalAiProviders.GEMINI_PRO_MODEL -> ExternalAiProviders.GEMINI_FLASH_MODEL
             ExternalAiProviders.GEMINI_FLASH_MODEL -> ExternalAiProviders.GEMINI_FLASH_LITE_MODEL
-            ExternalAiProviders.GEMINI_FLASH_LITE_MODEL -> null
+            ExternalAiProviders.GEMINI_FLASH_LITE_MODEL -> ModelCatalog.GEMINI_FLASH_35_MODEL
+            ModelCatalog.GEMINI_FLASH_35_MODEL -> null
             else -> ExternalAiProviders.GEMINI_FLASH_MODEL
         }
     }
@@ -263,7 +265,9 @@ internal object ProviderGeminiTransport {
                 throw ProviderError.ServerError(response.code, errBody.ifBlank { response.message })
             }
 
-            val reader = BufferedReader(InputStreamReader(response.body?.byteStream() ?: return, StandardCharsets.UTF_8))
+            val bodyStream = response.body?.byteStream()
+                ?: throw ProviderError.ServerError(response.code, "Empty response stream from Gemini.")
+            val reader = BufferedReader(InputStreamReader(bodyStream, StandardCharsets.UTF_8))
             var line: String?
             var emittedAnySse = false
             val rawFallbackBuffer = StringBuilder()

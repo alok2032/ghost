@@ -84,7 +84,7 @@ class Phase2VaultAndTransportTest {
                 httpClient = client,
                 baseUrlOverride = baseUrl,
                 turns = turns,
-                model = "gemini-3.8-flash",
+                model = "gemini-3.6-flash",
                 apiKey = secretKey,
                 withSearchGrounding = false
             )
@@ -96,7 +96,7 @@ class Phase2VaultAndTransportTest {
                     httpClient = client,
                     baseUrlOverride = baseUrl,
                     turns = turns,
-                    model = "gemini-3.8-flash",
+                    model = "gemini-3.6-flash",
                     apiKey = secretKey,
                     collector = this
                 )

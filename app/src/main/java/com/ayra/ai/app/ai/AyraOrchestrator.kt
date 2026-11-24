@@ -108,7 +108,7 @@ class AyraOrchestrator(private val context: Context) {
                 return@flow
             }
             AyraToolIntent.IMAGE -> {
-                emit(AyraEvent.Status("Generating high-res image (Nano Banana 2.1 / Flux.1)..."))
+                emit(AyraEvent.Status("Generating high-res image (Gemini 3.1 Flash Image / Flux.1)..."))
                 val imgResp = unifiedAiEngine.generateUnifiedResponse(
                     prompt = trimmed,
                     personaMode = persona,
@@ -540,14 +540,14 @@ class AyraOrchestrator(private val context: Context) {
                     history = history,
                     imageBase64 = imageBase64,
                     documentText = combinedDocText,
-                    systemPromptOverride = sysOverride,
                     preferredProvider = prefProvider,
                     preferredModelId = prefModel,
                     activePluginContext = activePluginCtx?.systemPromptInjection,
                     activePluginNames = activePluginCtx?.activePluginNames ?: emptyList(),
                     thinkingMode = wsCtx.effectiveThinkingMode,
                     workspaceContext = wsCtx.workspacePromptInjection.ifBlank { null },
-                    routingMode = routingMode
+                    routingMode = routingMode,
+                    specialistDirective = sysOverride
                 )
 
                 var terminalEmitted = false

@@ -20,20 +20,22 @@ class AyraAuditAndRepairTest {
 
     @Test
     fun testResolveGeminiModelResolution() {
-        // Flash variants resolve forward to live gemini-3.8-flash
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("gemini-3.8-flash"))
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("gemini-2.5-flash"))
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("gemini_flash"))
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("gemini-flash"))
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("gemini-2.0-flash"))
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel("models/gemini-2.0-flash"))
+        // Flash variants resolve forward to live gemini-3.6-flash
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini-3.6-flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini-3.8-flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini_flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini-flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("gemini-2.0-flash"))
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel("models/gemini-2.0-flash"))
 
-        // Pro / Argon variants resolve forward to live gemini-4-argon
-        assertEquals("gemini-4-argon", ExternalAiProviders.resolveGeminiModel("gemini-4-argon"))
-        assertEquals("gemini-4-argon", ExternalAiProviders.resolveGeminiModel("gemini-2.5-pro"))
-        assertEquals("gemini-4-argon", ExternalAiProviders.resolveGeminiModel("gemini_pro"))
-        assertEquals("gemini-4-argon", ExternalAiProviders.resolveGeminiModel("gemini-pro"))
-        assertEquals("gemini-4-argon", ExternalAiProviders.resolveGeminiModel("gemini-1.5-pro"))
+        // Pro variants resolve forward to live gemini-3.1-pro-preview
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini-3.1-pro-preview"))
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini-4-argon"))
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini-2.5-pro"))
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini_pro"))
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini-pro"))
+        assertEquals("gemini-3.1-pro-preview", ExternalAiProviders.resolveGeminiModel("gemini-1.5-pro"))
 
         // Flash-Lite variants resolve forward to gemini-3.5-flash-lite
         assertEquals("gemini-3.5-flash-lite", ExternalAiProviders.resolveGeminiModel("gemini-3.5-flash-lite"))
@@ -41,8 +43,8 @@ class AyraAuditAndRepairTest {
         assertEquals("gemini-3.5-flash-lite", ExternalAiProviders.resolveGeminiModel("gemini-1.5-flash"))
         assertEquals("gemini-3.5-flash-lite", ExternalAiProviders.resolveGeminiModel("gemini-2.5-flash-lite"))
 
-        // Blank falls back to gemini-3.8-flash
-        assertEquals("gemini-3.8-flash", ExternalAiProviders.resolveGeminiModel(""))
+        // Blank falls back to gemini-3.6-flash
+        assertEquals("gemini-3.6-flash", ExternalAiProviders.resolveGeminiModel(""))
     }
 
     @Test

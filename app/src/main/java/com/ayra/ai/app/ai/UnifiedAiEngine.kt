@@ -45,7 +45,7 @@ enum class AiModelTier(
     ),
     GEMINI_FLASH(
         id = "gemini_flash",
-        displayName = "Gemini 3.8 Flash Live ⚡",
+        displayName = "Gemini 3.6 Flash Live ⚡",
         providerName = "Google AI / Firebase AI Logic",
         speedLabel = "Ultra Fast ⚡⚡",
         reasoningLabel = "High + Web Grounding 🌐",
@@ -54,7 +54,7 @@ enum class AiModelTier(
     ),
     GEMINI_PRO(
         id = "gemini_pro",
-        displayName = "Gemini 4 Argon Deep Reasoning 🧠",
+        displayName = "Gemini 3.1 Pro Deep Reasoning 🧠",
         providerName = "Google AI Frontier",
         speedLabel = "Deep Reasoning ⏳",
         reasoningLabel = "Chain-of-Thought & Coding 🧠🧠",
@@ -369,7 +369,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
                 val codePrompt = "Write COMPLETE, PRODUCTION-READY, FULLY FUNCTIONAL, SELF-CONTAINED code for this request without any placeholder comments:\n$cleanPrompt"
                 val res = specializedExecutors.queryGeminiPro(codePrompt, attachedImageBase64, currentPersona)
                 if (res.isNotBlank()) {
-                    return@withContext AiResponse(text = res, craftType = "CODE_PROJECT", craftPayload = cleanPrompt, modelUsed = "Gemini 4 Argon Code Architect 🚀")
+                    return@withContext AiResponse(text = res, craftType = "CODE_PROJECT", craftPayload = cleanPrompt, modelUsed = "Gemini 3.1 Pro Code Architect 🚀")
                 }
             }
             val codeFallback = AiAppAndCodeStudio.generateCodeOrApp(cleanPrompt, isBengali, isGfMode)
@@ -508,7 +508,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
                 }
                 if (geminiApiKey.isNotBlank() && canDirectGemini) {
                     val res = specializedExecutors.queryGeminiPro(effectivePrompt, attachedImageBase64, currentPersona)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 4 Argon Reasoning 🧠"))
+                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.1 Pro Reasoning 🧠"))
                 }
             }
             AiModelTier.OPENROUTER_LLAMA -> {
@@ -518,7 +518,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
                 }
                 if (geminiApiKey.isNotBlank() && canDirectGemini) {
                     val res = specializedExecutors.queryGeminiFlash(effectivePrompt, attachedImageBase64, currentPersona)
-                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.8 Flash Live ⚡"))
+                    if (res.isNotBlank()) return@withContext emitResponse(AiResponse(text = res, modelUsed = "Gemini 3.6 Flash Live ⚡"))
                 }
             }
             AiModelTier.OPEN_WEIGHTS -> if (context != null) {
@@ -566,7 +566,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
 
         if (geminiApiKey.isNotBlank() && canDirectGemini) {
             val fastRes = specializedExecutors.queryGeminiFlash(effectivePrompt, attachedImageBase64, currentPersona)
-            if (fastRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = fastRes, modelUsed = "Gemini 3.8 Flash Live ⚡"))
+            if (fastRes.isNotBlank()) return@withContext emitResponse(AiResponse(text = fastRes, modelUsed = "Gemini 3.6 Flash Live ⚡"))
         }
 
         if (openRouterApiKey.isNotBlank() && canDirectOpenRouter) {
@@ -603,7 +603,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
             lower.contains("document") || lower.contains("পিডিএফ") || lower.contains("pdf") ||
             text.length > 200
 
-        if (isDeepMathOrCode) return Pair(AiModelTier.GEMINI_PRO, "Gemini 4 Argon Reasoning 🧠 (Auto: Code & Science)")
+        if (isDeepMathOrCode) return Pair(AiModelTier.GEMINI_PRO, "Gemini 3.1 Pro Reasoning 🧠 (Auto: Code & Science)")
 
         val isLogicOrPhilosophy = lower.contains("philosophy") || lower.contains("দর্শন") ||
             lower.contains("riddle") || lower.contains("ধাঁধা") || lower.contains("step by step") ||
@@ -611,9 +611,9 @@ class UnifiedAiEngine @JvmOverloads constructor(
             lower.contains("debate") || lower.contains("তর্ক") || lower.contains("chain of thought")
 
         if (isLogicOrPhilosophy && openRouterApiKey.isNotBlank()) {
-            return Pair(AiModelTier.OPENROUTER_DEEPSEEK, "Qwen 3.8 27B / DeepSeek 🧠 (Auto: Chain-of-Thought)")
+            return Pair(AiModelTier.OPENROUTER_DEEPSEEK, "DeepSeek / OpenRouter Qwen 🧠 (Auto: Chain-of-Thought)")
         } else if (isLogicOrPhilosophy) {
-            return Pair(AiModelTier.GEMINI_PRO, "Gemini 4 Argon Reasoning 🧠 (Auto: Deep Logic)")
+            return Pair(AiModelTier.GEMINI_PRO, "Gemini 3.1 Pro Reasoning 🧠 (Auto: Deep Logic)")
         }
 
         val isCreativeOrTranslation = lower.contains("poem") || lower.contains("কবিতা") ||
@@ -625,6 +625,6 @@ class UnifiedAiEngine @JvmOverloads constructor(
             return Pair(AiModelTier.OPENROUTER_LLAMA, "Llama 3.3 70B 🌐 (Auto: Literature & Translation)")
         }
 
-        return Pair(AiModelTier.GEMINI_FLASH, "Gemini 3.8 Flash Live ⚡ (Auto: Ultra-Fast)")
+        return Pair(AiModelTier.GEMINI_FLASH, "Gemini 3.6 Flash Live ⚡ (Auto: Ultra-Fast)")
     }
 }

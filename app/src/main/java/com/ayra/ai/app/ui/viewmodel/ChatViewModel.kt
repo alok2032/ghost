@@ -25,11 +25,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -37,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancelChildren
 
 /**
  * Production ViewModel for Ayra AI Chat.
@@ -61,20 +65,35 @@ class ChatViewModel(
     private val _repositoryFlow = MutableStateFlow<ChatRepository?>(initialRepository)
 
     val sessions: StateFlow<List<ChatSession>> = _repositoryFlow
-        .flatMapLatest { repo -> repo?.observeSessions() ?: flowOf(emptyList()) }
+        .flatMapLatest { repo ->
+            repo?.observeSessions()?.catch { e ->
+                if (e is CancellationException) throw e
+                emit(emptyList())
+            } ?: flowOf(emptyList())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val activeSession: StateFlow<ChatSession?> = _repositoryFlow
         .flatMapLatest { repo ->
             if (repo == null) flowOf(null)
-            else _activeSessionId.flatMapLatest { sid -> repo.observeSession(sid) }
+            else _activeSessionId.flatMapLatest { sid ->
+                repo.observeSession(sid).catch { e ->
+                    if (e is CancellationException) throw e
+                    emit(null)
+                }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val messages: StateFlow<List<ChatMessage>> = _repositoryFlow
         .flatMapLatest { repo ->
             if (repo == null) flowOf(emptyList())
-            else _activeSessionId.flatMapLatest { sid -> repo.observeMessages(sid) }
+            else _activeSessionId.flatMapLatest { sid ->
+                repo.observeMessages(sid).catch { e ->
+                    if (e is CancellationException) throw e
+                    emit(emptyList())
+                }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -137,9 +156,26 @@ class ChatViewModel(
         repository = chatRepository
         _repositoryFlow.value = chatRepository
         viewModelScope.launch(Dispatchers.IO) {
-            val active = chatRepository.ensureActiveSession()
-            _activeSessionId.value = active.id
+            try {
+                val active = chatRepository.ensureActiveSession()
+                _activeSessionId.value = active.id
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ChatViewModel", "attachRepository skipped: ${e.message}")
+            }
         }
+    }
+
+    fun releaseForMaintenance() {
+        stopGeneration()
+        _repositoryFlow.value = null
+        repository = null
+        viewModelScope.coroutineContext.cancelChildren()
+    }
+
+    fun releaseForTests() {
+        releaseForMaintenance()
     }
 
     suspend fun ensureSessionReady(): Long {
@@ -194,19 +230,10 @@ class ChatViewModel(
         }
     }
 
-    fun deleteSession(sessionId: Long) {
-        val repo = repository ?: return
-        viewModelScope.launch {
-            val next = repo.deleteSession(sessionId)
-            _activeSessionId.value = next.id
-        }
-    }
-
     fun deleteMessage(messageId: Long) {
         val repo = repository ?: return
-        if (messageId <= 0L) return
         val sessionId = _activeSessionId.value
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repo.deleteMessage(sessionId, messageId)
         }
     }
@@ -214,55 +241,51 @@ class ChatViewModel(
     fun regenerateResponse(
         assistantMessage: ChatMessage,
         orchestrator: AyraOrchestrator,
-        persona: String,
-        tier: String,
+        persona: String = _currentPersona.value,
+        tier: String = _selectedModelTier.value,
         cloudRepo: AyraCloudRepository? = null,
         onSpeakResponse: (String) -> Unit = {},
         onMissingPrompt: () -> Unit = {}
     ) {
-        val repo = repository ?: return
-        val sessionId = _activeSessionId.value
         viewModelScope.launch {
+            val currentList = messages.value
+            val idx = currentList.indexOfFirst { it.id == assistantMessage.id }
+            if (idx == -1) {
+                onMissingPrompt()
+                return@launch
+            }
+            val precedingPrompt = currentList.take(idx).lastOrNull { it.role == "user" && it.content.isNotBlank() }
+            if (precedingPrompt == null) {
+                onMissingPrompt()
+                return@launch
+            }
             if (!tryStartSending()) return@launch
-            val historySnapshot = withContext(Dispatchers.IO) {
-                messages.value.takeIf { it.isNotEmpty() } ?: repo.getRecentMessages(sessionId, 30)
+            if (assistantMessage.id > 0L) {
+                withContext(Dispatchers.IO) {
+                    repository?.deleteMessage(assistantMessage.sessionId, assistantMessage.id)
+                }
             }
-            val targetIdx = historySnapshot.indexOfFirst { it.id == assistantMessage.id }
-                .takeIf { it >= 0 }
-                ?: historySnapshot.indexOfLast { it.role != "user" }
-            val userIdx = if (targetIdx > 0) {
-                (0 until targetIdx).lastOrNull { historySnapshot[it].role == "user" }
-            } else null
-
-            if (userIdx == null) {
-                finishSending()
-                onMissingPrompt()
-                return@launch
-            }
-
-            val promptText = historySnapshot[userIdx].content
-                .replace(Regex("^📄 \\[[^\\]]+\\]\\n"), "")
-                .trim()
-            if (promptText.isBlank()) {
-                finishSending()
-                onMissingPrompt()
-                return@launch
-            }
-
-            repo.deleteMessage(sessionId, assistantMessage.id)
-            val priorHistory = historySnapshot.take(userIdx).takeLast(15)
+            val historyUpToPrompt = currentList.take(idx).dropLast(1)
             launchOrchestratedInference(
                 orchestrator = orchestrator,
-                prompt = promptText,
+                prompt = precedingPrompt.content,
                 persona = persona,
                 tier = tier,
-                history = priorHistory,
+                history = historyUpToPrompt,
                 imageBase64 = null,
                 documentText = null,
                 documentName = null,
                 cloudRepo = cloudRepo,
                 onSpeakResponse = onSpeakResponse
             )
+        }
+    }
+
+    fun deleteSession(sessionId: Long) {
+        val repo = repository ?: return
+        viewModelScope.launch {
+            val next = repo.deleteSession(sessionId)
+            _activeSessionId.value = next.id
         }
     }
 
@@ -454,17 +477,10 @@ class ChatViewModel(
                         }
                         is AyraEvent.Error -> {
                             receivedTerminalEvent = true
-                            val code = event.error.shortCode()
-                            val appCheckState = com.ayra.ai.app.AppCheckStatusRegistry.currentState.name
-                            val netStatus = com.ayra.ai.app.security.NetworkConnectivityManager.stateFlow.value.status.name
-                            val redactedDetail = com.ayra.ai.app.security.SecurityAuditLogger
-                                .redactSensitiveText(event.error.diagnosticDetail())
-                                .take(140)
-                            val detailSuffix = if (redactedDetail.isNotBlank()) " • $redactedDetail" else ""
                             persistMessage(
                                 ChatMessage(
                                     role = "assistant",
-                                    content = "⚠️ ${event.error.userFriendlyMessage}\n[Diagnostic: $code • AppCheck=$appCheckState • Net=$netStatus$detailSuffix]"
+                                    content = "⚠️ ${event.error.userFriendlyMessage}"
                                 )
                             )
                         }
@@ -478,6 +494,14 @@ class ChatViewModel(
                         )
                     )
                 }
+            } catch (e: TimeoutCancellationException) {
+                currentCoroutineContext().ensureActive()
+                persistMessage(
+                    ChatMessage(
+                        role = "assistant",
+                        content = "⚠️ রিকোয়েস্টটি সময়মতো সম্পন্ন হয়নি (Timeout)। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
+                    )
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -546,17 +570,6 @@ class ChatViewModel(
         _activeCitations.value = emptyList()
         _errorMessage.value = error
         inFlightJob = null
-    }
-
-    /**
-     * Cancels active coroutines and detaches the Room repository before a test closes ChatDatabase.
-     */
-    fun releaseForTests() {
-        inFlightJob?.cancel()
-        inFlightJob = null
-        repository = null
-        _repositoryFlow.value = null
-        viewModelScope.coroutineContext.cancelChildren()
     }
 
     companion object {

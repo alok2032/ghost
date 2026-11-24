@@ -441,8 +441,8 @@ object NetworkSecurityHelper {
         if (!uri.rawUserInfo.isNullOrEmpty() || uri.rawAuthority?.contains("@") == true) {
             return UrlValidationResult(false, "Embedded credentials in URLs are prohibited.")
         }
-        if (uri.port !in setOf(-1, 443, 8443)) {
-            return UrlValidationResult(false, "Blocked HTTPS port ${uri.port}; only ports 443 and 8443 are permitted.")
+        if (uri.port != -1 && uri.port != 443) {
+            return UrlValidationResult(false, "Blocked non-443 HTTPS port ${uri.port}; only standard HTTPS port 443 is permitted.")
         }
 
         val host = uri.host?.lowercase(Locale.ROOT)?.trimEnd('.')
@@ -471,6 +471,16 @@ object NetworkSecurityHelper {
         }
 
         return UrlValidationResult(true, resolvedAddresses = verifiedIps)
+    }
+
+    /**
+     * Suspend off-main-thread wrapper for [validatePublicHttpsUrl] safe to call directly from Compose/UI coroutines.
+     */
+    suspend fun validatePublicHttpsUrlAsync(
+        rawUrl: String,
+        dnsResolver: (String) -> Array<InetAddress> = { host -> InetAddress.getAllByName(host) }
+    ): UrlValidationResult = withContext(Dispatchers.IO) {
+        validatePublicHttpsUrl(rawUrl, dnsResolver)
     }
 
     /**
@@ -705,8 +715,8 @@ object NetworkSecurityHelper {
         if (!uri.rawUserInfo.isNullOrEmpty() || uri.rawAuthority?.contains("@") == true) {
             return UrlValidationResult(false, "Embedded credentials in URLs are prohibited.")
         }
-        if (uri.port !in setOf(-1, 443, 8443)) {
-            return UrlValidationResult(false, "Blocked HTTPS port ${uri.port}; only ports 443 and 8443 are permitted.")
+        if (uri.port != -1 && uri.port != 443) {
+            return UrlValidationResult(false, "Blocked non-443 HTTPS port ${uri.port}; only standard HTTPS port 443 is permitted.")
         }
         val host = uri.host?.lowercase(Locale.ROOT)?.trimEnd('.')
             ?: return UrlValidationResult(false, "URL missing host.")

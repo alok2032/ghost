@@ -40,7 +40,7 @@ class GeminiCliEngine(private val context: Context? = null) {
                 if (resp.text.isNotBlank()) {
                     return@withContext AiResponse(
                         text = resp.text,
-                        modelUsed = resp.modelUsed.ifBlank { "Gemini 3.8 Flash (Direct CLI) ⚡" }
+                        modelUsed = resp.modelUsed.ifBlank { "Gemini 3.6 Flash (Direct CLI) ⚡" }
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -65,7 +65,7 @@ class GeminiCliEngine(private val context: Context? = null) {
             if (fbRes.isNotBlank()) {
                 return@withContext AiResponse(
                     text = fbRes,
-                    modelUsed = "Gemini 3.8 Flash (Firebase AI CLI) ⚡"
+                    modelUsed = "Gemini 3.6 Flash (Firebase AI CLI) ⚡"
                 )
             }
         }

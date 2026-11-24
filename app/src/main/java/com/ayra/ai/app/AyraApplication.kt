@@ -105,7 +105,7 @@ class AyraApplication : Application(), ImageLoaderFactory {
         fun ensureActiveAiKeysSeeded(context: Context) {
             // Security Guarantee: Never seed hardcoded API keys in source code.
             // Keys must exclusively come from user input via Android Keystore (SecureKeyStore / EncryptedPreferences)
-            // or keyless Firebase AI Logic / App Check.
+            // or built-in Firebase AI Logic / App Check.
             seededOnce.compareAndSet(false, true)
         }
     }

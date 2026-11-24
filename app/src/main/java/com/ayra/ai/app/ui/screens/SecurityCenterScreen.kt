@@ -430,7 +430,7 @@ fun SecurityCenterScreen(
                     )
                     SecurityToggleItem(
                         title = "Public Free AI Pool (Opt-In)",
-                        subtitle = "Off by default; uses keyless community fallback specialists only when explicitly enabled",
+                        subtitle = "Off by default; uses Pollinations community fallback specialists when enabled (optional key via enter.pollinations.ai)",
                         checked = freePoolConsent,
                         tag = "toggle_free_pool_consent",
                         onCheckedChange = {

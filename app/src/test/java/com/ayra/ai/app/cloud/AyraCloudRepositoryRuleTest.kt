@@ -50,7 +50,7 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
             role = "user",
             content = "Cloud synced test prompt ${UUID.randomUUID()}",
             timestamp = System.currentTimeMillis(),
-            actionCommand = "gemini-3.8-flash"
+            actionCommand = "gemini-3.6-flash"
         )
 
         withTimeout(OP_TIMEOUT_MS) {
@@ -106,8 +106,8 @@ class AyraCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
                 creationType = "IMAGE",
                 title = "Neon Horizon",
                 prompt = "Draw a neon horizon",
-                summary = "Nano Banana 2.1",
-                modelUsed = "gemini-nano-banana-2.1"
+                summary = "Gemini 3.1 Flash Image",
+                modelUsed = "gemini-3.1-flash-image"
             )
 
             repo.deletePluginFromCloud(repoName)

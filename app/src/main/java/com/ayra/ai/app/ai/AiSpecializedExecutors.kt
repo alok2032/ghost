@@ -116,7 +116,7 @@ internal class AiSpecializedExecutors(
                     val fullText = if (citationsBlock.isNotBlank() && !res.contains("### 📚 Grounded Web Sources")) {
                         res + "\n\n### 📚 Grounded Web Sources" + citationsBlock
                     } else res
-                    return AiResponse(text = fullText, modelUsed = "Ayra AI Deep Research (Gemini 3.8 Flash) 🔬")
+                    return AiResponse(text = fullText, modelUsed = "Ayra AI Deep Research (Gemini 3.6 Flash) 🔬")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -184,7 +184,7 @@ internal class AiSpecializedExecutors(
                 if (res.isNotBlank()) {
                     return AiResponse(
                         text = res,
-                        modelUsed = "${superpower.displayName} (Gemini 4 Argon 🔬)"
+                        modelUsed = "${superpower.displayName} (Gemini 3.1 Pro 🔬)"
                     )
                 }
             } catch (e: CancellationException) {

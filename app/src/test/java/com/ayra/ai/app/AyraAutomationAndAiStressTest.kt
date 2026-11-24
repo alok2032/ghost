@@ -192,10 +192,10 @@ class AyraAutomationAndAiStressTest {
     @Test
     fun testAiModelTierLatestEndpoints() {
         val flashTier = com.ayra.ai.app.ai.AiModelTier.GEMINI_FLASH
-        assertTrue(flashTier.displayName.contains("Gemini 3.8 Flash"))
+        assertTrue(flashTier.displayName.contains("Gemini 3.6 Flash"))
 
         val proTier = com.ayra.ai.app.ai.AiModelTier.GEMINI_PRO
-        assertTrue(proTier.displayName.contains("Gemini 4 Argon"))
+        assertTrue(proTier.displayName.contains("Gemini 3.1 Pro"))
 
         val deepseekTier = com.ayra.ai.app.ai.AiModelTier.OPENROUTER_DEEPSEEK
         assertTrue(deepseekTier.displayName.contains("DeepSeek-R1"))

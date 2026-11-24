@@ -137,8 +137,8 @@ class AyraPhase2AndProviderTest {
 
     @Test
     fun testGeminiModelResolutionFixes520RootCause() {
-        assertEquals("gemini-3.8-flash", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-2.5-flash"))
-        assertEquals("gemini-4-argon", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-2.5-pro"))
+        assertEquals("gemini-3.6-flash", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.1-pro-preview", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-2.5-pro"))
         assertEquals("gemini-3.5-flash-lite", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-1.5-flash"))
         assertEquals("gemini-3.5-flash-lite", com.ayra.ai.app.ai.providers.ExternalAiProviders.resolveGeminiModel("gemini-2.0-flash-lite"))
     }

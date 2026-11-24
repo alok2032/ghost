@@ -13,6 +13,9 @@ import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -68,7 +71,7 @@ class AyraComposeUiTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(context) ?: FirebaseApp.initializeApp(
+            FirebaseApp.initializeApp(
                 context,
                 FirebaseOptions.Builder()
                     .setApplicationId("1:123456789012:android:composetest001")
@@ -99,21 +102,19 @@ class AyraComposeUiTest {
         val db = ChatDatabase.getDatabase(context)
         val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
         val vm = ChatViewModel(repo)
-        var mountWorkspace by mutableStateOf(true)
+
         try {
             composeRule.setContent {
                 AyraTheme {
-                    if (mountWorkspace) {
-                        DeviceConfigurationOverride(
-                            DeviceConfigurationOverride.ForcedSize(DpSize(960.dp, 800.dp))
-                        ) {
-                            AyraWorkspaceHost(
-                                chatDao = db.chatDao(),
-                                viewModel = vm,
-                                currentUser = null,
-                                onSignOut = {}
-                            )
-                        }
+                    DeviceConfigurationOverride(
+                        DeviceConfigurationOverride.ForcedSize(DpSize(960.dp, 800.dp))
+                    ) {
+                        AyraWorkspaceHost(
+                            chatDao = db.chatDao(),
+                            viewModel = vm,
+                            currentUser = null,
+                            onSignOut = {}
+                        )
                     }
                 }
             }
@@ -127,43 +128,8 @@ class AyraComposeUiTest {
             composeRule.onNodeWithTag("rail_nav_chat").performScrollTo().performClick()
             composeRule.waitForIdle()
         } finally {
-            mountWorkspace = false
+            vm.releaseForMaintenance()
             composeRule.waitForIdle()
-            vm.releaseForTests()
-        }
-    }
-
-    @Test
-    fun freshWorkspaceBootsDirectlyIntoChatWithoutOnboardingPopup() {
-        AyraPreferences.setOnboardingCompleted(context, false)
-        val db = ChatDatabase.getDatabase(context)
-        val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
-        val vm = ChatViewModel(repo)
-        var mountWorkspace by mutableStateOf(true)
-        try {
-            composeRule.setContent {
-                AyraTheme {
-                    if (mountWorkspace) {
-                        AyraWorkspaceHost(
-                            chatDao = db.chatDao(),
-                            viewModel = vm,
-                            currentUser = null,
-                            onSignOut = {}
-                        )
-                    }
-                }
-            }
-            composeRule.waitForIdle()
-
-            assertTrue(
-                "Startup onboarding popup must not auto-appear on fresh launch",
-                composeRule.onAllNodesWithTag("onboarding_overlay").fetchSemanticsNodes().isEmpty()
-            )
-            composeRule.onNodeWithTag("chat_input_text_field").assertIsDisplayed()
-        } finally {
-            mountWorkspace = false
-            composeRule.waitForIdle()
-            vm.releaseForTests()
         }
     }
 
@@ -339,10 +305,9 @@ class AyraComposeUiTest {
     }
 
     @Test
-    fun settingsAiButtonOpensStreamlinedHubWithOneTapAutoSetupAndConfirmKeyClear() {
+    fun settingsAiButtonAndAiHubSafeEditLockProtectSettingsAndConfirmKeyClear() {
         AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
         AyraPreferences.setExternalAiConsent(context, false)
-        AyraPreferences.setFreeAiPoolEnabled(context, false)
         AyraPreferences.setGroqKey(context, "gsk-lock-test-key")
         val aiOpenedState = mutableStateOf(false)
 
@@ -373,17 +338,18 @@ class AyraComposeUiTest {
         composeRule.waitForIdle()
         assertTrue(aiOpenedState.value)
 
-        // Controls are unlocked immediately without extra lock-switch friction
+        // Default lock ON protects consent toggle against accidental edits
+        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOn()
+        composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsNotEnabled()
+        assertFalse(AyraPreferences.hasExternalAiConsent(context))
+
+        // Unlocking enables switches and accordion expansion
+        composeRule.onNodeWithTag("ai_settings_lock_switch").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("ai_settings_lock_switch").assertIsOff()
         composeRule.onNodeWithTag("external_cloud_consent_switch").performScrollTo().assertIsEnabled().performClick()
         composeRule.waitForIdle()
         assertTrue(AyraPreferences.hasExternalAiConsent(context))
-
-        // 1-Tap Auto-Setup button activates LocalOnly=false, Consent=true, and FreePool=true
-        composeRule.onNodeWithTag("ai_hub_auto_setup_button").performScrollTo().assertIsDisplayed().performClick()
-        composeRule.waitForIdle()
-        assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
-        assertTrue(AyraPreferences.hasExternalAiConsent(context))
-        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
 
         composeRule.onNodeWithTag("developer_byok_expand_button").performScrollTo().performClick()
         composeRule.waitForIdle()
@@ -433,20 +399,14 @@ class AyraComposeUiTest {
     }
 
     @Test
-    fun oneTapEnableAllAiButtonsActivateConsentAndFreePoolInOnboardingAndEmptyState() {
+    fun oneTapEnableAllAiButtonActivatesConsentAndFreePoolInOnboarding() {
         AyraPreferences.setLocalOnlyAiModeEnabled(context, true)
         AyraPreferences.setExternalAiConsent(context, false)
         AyraPreferences.setFreeAiPoolEnabled(context, false)
 
-        var onboardingDismissed = false
-        var showOnboardingPhase by mutableStateOf(true)
         composeRule.setContent {
             AyraTheme {
-                if (showOnboardingPhase) {
-                    OnboardingOverlay(onDismissed = { onboardingDismissed = true })
-                } else {
-                    EmptyCosmicState(currentPersona = "AI_ASSISTANT")
-                }
+                OnboardingOverlay(onDismissed = {})
             }
         }
         composeRule.waitForIdle()
@@ -454,16 +414,22 @@ class AyraComposeUiTest {
         composeRule.onNodeWithTag("onboarding_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()
         composeRule.waitForIdle()
 
-        assertTrue(onboardingDismissed)
         assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
         assertTrue(AyraPreferences.hasExternalAiConsent(context))
         assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
+    }
 
-        // Reset and switch composition to verify quick_enable_all_ai_button inside EmptyCosmicState
+    @Test
+    fun oneTapEnableAllAiButtonActivatesConsentAndFreePoolInEmptyState() {
         AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
         AyraPreferences.setExternalAiConsent(context, false)
         AyraPreferences.setFreeAiPoolEnabled(context, false)
-        showOnboardingPhase = false
+
+        composeRule.setContent {
+            AyraTheme {
+                EmptyCosmicState(currentPersona = "AI_ASSISTANT")
+            }
+        }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("quick_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()

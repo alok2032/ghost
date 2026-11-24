@@ -1,13 +1,13 @@
 # Verified active model IDs curated in ModelCatalog.kt (Single Source of Truth)
 # One exact model ID per line; lines beginning with # are comments.
-gemini-3.8-flash
+gemini-3.6-flash
+gemini-3.5-flash
 gemini-3.5-flash-lite
-gemini-4-argon
+gemini-3.1-pro-preview
 gemma-4-31b-it
-gemini-nano-banana-2.1
+gemini-3.1-flash-image
 gemini-3-pro-image
 gemini-3.1-flash-lite-image
-gemini-3.1-flash-tts-preview
 gpt-6.2-sol
 gpt-6.2-astra
 gpt-6-luna

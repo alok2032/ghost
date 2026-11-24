@@ -29,9 +29,9 @@ function estimateMicroUsdForModelTokens(model: string, totalTokens: number): num
     ? 0
     : m.includes("flash-lite") || m.includes("haiku") || m.includes("luna") || m.includes("8b")
       ? 350_000 // ~$0.35 / 1M blended estimate
-      : m.includes("flash") || m.includes("3.8-27b") || m.includes("oss-120b")
+      : m.includes("flash") || m.includes("qwen3-32b") || m.includes("3.8-27b") || m.includes("oss-120b")
         ? 800_000 // ~$0.80 / 1M blended estimate
-        : m.includes("argon") || m.includes("pro") || m.includes("opus") || m.includes("astra")
+        : m.includes("pro") || m.includes("opus") || m.includes("astra")
           ? 6_000_000 // ~$6.00 / 1M blended ceiling estimate
           : 2_000_000; // ~$2.00 / 1M default conservative ceiling
   return Math.max(0, Math.ceil((totalTokens * microUsdPerMillion) / 1_000_000));

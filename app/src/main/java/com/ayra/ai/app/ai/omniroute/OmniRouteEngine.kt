@@ -82,9 +82,9 @@ class OmniRouteEngine(private val context: Context? = null) {
                     mode = mode,
                     imageBase64 = attachedImageBase64,
                     documentText = attachedDocumentText,
-                    systemPromptOverride = sysDirective,
                     preferredProvider = prefProvider,
-                    preferredModelId = prefModel
+                    preferredModelId = prefModel,
+                    specialistDirective = sysDirective
                 )
             )
             if (resp.text.isNotBlank()) {

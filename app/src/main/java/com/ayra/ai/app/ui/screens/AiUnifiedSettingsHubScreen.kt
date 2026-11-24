@@ -24,7 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,6 +72,7 @@ fun AiUnifiedSettingsHubScreen(
     BackHandler { onBack() }
 
     var refreshTick by remember { mutableIntStateOf(0) }
+    var editsLocked by remember { mutableStateOf(true) }
 
     var selectedTier by remember { mutableStateOf(AyraPreferences.getSavedModelTier(context)) }
     val thinkingMode by AyraPreferences.thinkingModeFlow.collectAsStateWithLifecycle(
@@ -315,9 +319,54 @@ fun AiUnifiedSettingsHubScreen(
             }
         }
 
+        // Safe Edit Lock Card to prevent accidental consent toggles or API key wipes
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = if (editsLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                    contentDescription = null,
+                    tint = if (editsLocked) uiConfig.accentColor else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (editsLocked) "Safe Edit Lock ON" else "Safe Edit Lock OFF",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                    Text(
+                        text = if (editsLocked) {
+                            "Unlock to change External Consent, routing rules, or BYOK keys."
+                        } else {
+                            "Editing enabled — lock again when finished."
+                        },
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = editsLocked,
+                    onCheckedChange = { editsLocked = it },
+                    modifier = Modifier.testTag("ai_settings_lock_switch")
+                )
+            }
+        }
+
         ProviderKeysSection(
             context = context,
-            editsLocked = false,
+            editsLocked = editsLocked,
             initiallyExpandDeveloperKeys = false,
             externalRefreshTick = refreshTick,
             onActivationChanged = { refreshTick++ }
