@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
  * behavior before Phase 2 AgentCore / Memory / ViewModel upgrades.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class Phase2OrchestratorCharacterizationTest {
 
     @Test

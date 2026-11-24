@@ -47,7 +47,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class SecurityAndModelUpgradeRegressionTest {
 
     private lateinit var context: Context

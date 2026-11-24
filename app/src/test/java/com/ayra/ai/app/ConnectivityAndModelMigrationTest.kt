@@ -38,7 +38,7 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class ConnectivityAndModelMigrationTest {
 
     private lateinit var context: Context
@@ -79,7 +79,7 @@ class ConnectivityAndModelMigrationTest {
         assertEquals("gemini-3.5-flash-lite", ModelCatalog.GEMINI_FAST_LITE_MODEL)
         assertEquals("gemini-3.1-pro-preview", ModelCatalog.GEMINI_PRO_MODEL)
         assertEquals("gemini-3.1-flash-image", ModelCatalog.GEMINI_IMAGE_MODEL)
-        assertEquals("qwen/qwen3-32b", ModelCatalog.GROQ_QWEN_MODEL)
+        assertEquals("qwen/qwen3.8-27b", ModelCatalog.GROQ_QWEN_MODEL)
 
         assertEquals(ModelCatalog.GEMINI_FLASH_MODEL, FirebaseAiEngine.MODEL_FLASH)
         assertEquals(ModelCatalog.GEMINI_FLASH_35_MODEL, FirebaseAiEngine.MODEL_FLASH_35)
@@ -100,7 +100,7 @@ class ConnectivityAndModelMigrationTest {
             context = null,
             baseUrlOverrides = mapOf(AiProviderType.GROQ to server.url("/openai/v1/").toString()),
             customHttpClient = OkHttpClient(),
-            channelKeyOverrides = mapOf("groq_qwen3_32b" to "gsk_test_404")
+            channelKeyOverrides = mapOf("groq_qwen3_8_27b" to "gsk_test_404")
         )
         val pool = ProviderPool(context = null, externalProviders = providers)
         var capturedError: AyraError? = null
@@ -118,7 +118,7 @@ class ConnectivityAndModelMigrationTest {
         assertTrue(capturedError is AyraError.ProviderDown)
         assertTrue(
             "HTTP 404 ModelNotFound must NEVER open channel or provider circuit breaker",
-            providers.circuitBreaker.canExecuteChannel("groq_qwen3_32b")
+            providers.circuitBreaker.canExecuteChannel("groq_qwen3_8_27b")
         )
         assertTrue(providers.circuitBreaker.canExecute(AiProviderType.GROQ))
     }
@@ -151,7 +151,7 @@ class ConnectivityAndModelMigrationTest {
             if (ev is AyraStreamEvent.Error) policyError = ev.error
         }
         assertTrue("Expected SecurityPolicyBlocked, got $policyError", policyError is AyraError.SecurityPolicyBlocked)
-        assertFalse(policyProviders.circuitBreaker.canExecuteChannel("groq_qwen3_32b").not())
+        assertFalse(policyProviders.circuitBreaker.canExecuteChannel("groq_qwen3_8_27b").not())
 
         // While OS connectivity is validated online, UnknownHostException must surface DnsError rather than NoNetwork
         val dnsFailingClient = OkHttpClient.Builder()

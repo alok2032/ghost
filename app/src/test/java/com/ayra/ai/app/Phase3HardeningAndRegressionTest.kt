@@ -47,6 +47,8 @@ import com.ayra.ai.app.security.FirebaseConfigConsistencyValidator
 import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.ayra.ai.app.security.SecureKeyStore
+import com.ayra.ai.app.security.VaultDatabaseKeyManager
+import com.ayra.ai.app.security.VaultState
 import com.ayra.ai.app.ui.components.Model3dKind
 import com.ayra.ai.app.ui.components.buildSelfContainedWebGlHtml
 import com.ayra.ai.app.ui.components.serializeCustomMeshForWebGl
@@ -79,7 +81,7 @@ import java.net.UnknownHostException
 import javax.xml.parsers.DocumentBuilderFactory
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class Phase3HardeningAndRegressionTest {
 
     private lateinit var context: Context
@@ -820,5 +822,57 @@ class Phase3HardeningAndRegressionTest {
     fun securityResearchEngineDefensivePromptRefusesHarmfulRequests() {
         assertTrue(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("defensive security", ignoreCase = true))
         assertTrue(SecurityResearchEngine.SAFE_DEFENSIVE_PROMPT.contains("Refuse requests for malware", ignoreCase = true))
+    }
+
+    @Test
+    fun missingRoomMigrationFailsClosedIntoRecoveryWithoutWipingDatabase() {
+        ChatDatabase.closeDatabaseForMaintenance()
+        VaultDatabaseKeyManager.destroyDatabaseKeyMetadata(context)
+        context.deleteDatabase("ayra_chat_database")
+
+        val sentinelText = "Preserved historical v3 message"
+        val legacyHelper = object : SQLiteOpenHelper(context, "ayra_chat_database", null, 3) {
+            override fun onCreate(db: SQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, content TEXT NOT NULL)"
+                )
+                db.execSQL("INSERT INTO chat_messages (content) VALUES (?)", arrayOf(sentinelText))
+            }
+
+            override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+        legacyHelper.writableDatabase.close()
+        legacyHelper.close()
+
+        val result = ChatDatabase.tryGetDatabase(context)
+        assertTrue(
+            "Opening DB below minimum migration version v4 must return NeedsRecovery instead of wiping or throwing, got $result",
+            result is ChatDatabase.VaultOpenResult.NeedsRecovery
+        )
+        assertEquals(VaultState.CORRUPT, (result as ChatDatabase.VaultOpenResult.NeedsRecovery).vaultState)
+
+        // Confirm user data on disk was preserved intact and never destructively wiped
+        val verifyDb = SQLiteDatabase.openDatabase(
+            context.getDatabasePath("ayra_chat_database").absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY
+        )
+        try {
+            verifyDb.rawQuery("SELECT content FROM chat_messages", null).use { cursor ->
+                assertTrue("Expected v3 sentinel row to remain intact on disk", cursor.moveToFirst())
+                assertEquals(sentinelText, cursor.getString(0))
+            }
+        } finally {
+            verifyDb.close()
+            ChatDatabase.closeDatabaseForMaintenance()
+            VaultDatabaseKeyManager.destroyDatabaseKeyMetadata(context)
+            context.deleteDatabase("ayra_chat_database")
+        }
+
+        val chatDbSrc = repoFile("app/src/main/java/com/ayra/ai/app/data/ChatDatabase.kt").readText()
+        assertFalse(
+            "ChatDatabase.kt must never use fallbackToDestructiveMigration",
+            chatDbSrc.contains("fallbackToDestructiveMigration")
+        )
     }
 }

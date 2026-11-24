@@ -198,12 +198,12 @@ internal object DefaultAiChannelRegistry {
             keyResolver = { c -> AyraPreferences.getEffectiveGeminiKey(c) }
         ),
         AiModelChannel(
-            id = "groq_qwen3_32b",
+            id = "groq_qwen3_8_27b",
             provider = AiProviderType.GROQ,
             modelId = ExternalAiProviders.GROQ_QWEN_MODEL,
-            displayName = "Groq Qwen3 32B",
-            specialties = setOf("general", "fast", "coding", "reasoning", "education"),
-            supportsVision = false,
+            displayName = "Groq Qwen 3.8 27B",
+            specialties = setOf("general", "fast", "vision", "coding", "reasoning", "education"),
+            supportsVision = true,
             isReasoning = true,
             maxTokens = 4096,
             keyResolver = { c -> c?.let { AyraPreferences.getGroqKey(it) } ?: "" }

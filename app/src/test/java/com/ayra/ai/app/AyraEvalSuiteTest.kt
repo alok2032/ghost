@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
  * across Bengali script, Banglish, Hindi (Devanagari & Roman), and English.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class AyraEvalSuiteTest {
 
     private lateinit var context: Context

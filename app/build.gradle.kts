@@ -150,6 +150,9 @@ abstract class ValidateProductionReleaseSigningTask : DefaultTask() {
     abstract val requireProdProp: Property<String>
 
     @get:Input
+    abstract val appVersionCode: Property<Int>
+
+    @get:Input
     abstract val rootDirPath: Property<String>
 
     @TaskAction
@@ -183,6 +186,13 @@ abstract class ValidateProductionReleaseSigningTask : DefaultTask() {
                 ?: "")
 
         if (requireProdSigning) {
+            val resolvedVersionCode = appVersionCode.get()
+            if (resolvedVersionCode <= 1) {
+                throw GradleException(
+                    "PRODUCTION SIGNING VIOLATION: versionCode must be > 1 for production distribution " +
+                        "(current=$resolvedVersionCode; supply -PversionCode=<N> or CI_RUN_NUMBER)."
+                )
+            }
             if (configuredStorePath.isEmpty()) {
                 throw GradleException(
                     "PRODUCTION SIGNING MISCONFIGURED: Release build requires a private upload keystore " +
@@ -220,7 +230,7 @@ abstract class ValidateProductionReleaseSigningTask : DefaultTask() {
             }
             val sha256Line = out.lineSequence().firstOrNull { it.trim().startsWith("SHA256:") }?.trim()
                 ?: throw GradleException("Could not read SHA256 certificate fingerprint from upload keystore.")
-            logger.lifecycle("Verified private upload certificate ($sha256Line)")
+            logger.lifecycle("Verified private upload certificate ($sha256Line, versionCode=$resolvedVersionCode)")
         } else {
             logger.lifecycle(
                 "Release signing dev-container mode (set -PayraRequireProductionSigning=true for strict upload keystore enforcement)."
@@ -231,8 +241,14 @@ abstract class ValidateProductionReleaseSigningTask : DefaultTask() {
 
 val validateProductionReleaseSigning by tasks.registering(ValidateProductionReleaseSigningTask::class) {
     group = "verification"
-    description = "Validates release signing posture and verifies private upload keystore when AYRA_REQUIRE_PRODUCTION_SIGNING=true."
+    description = "Validates release signing posture, versionCode > 1, and verifies private upload keystore when AYRA_REQUIRE_PRODUCTION_SIGNING=true."
     requireProdProp.set(providers.gradleProperty("ayraRequireProductionSigning"))
+    appVersionCode.set(
+        providers.environmentVariable("CI_RUN_NUMBER")
+            .orElse(providers.gradleProperty("versionCode"))
+            .map { it.toIntOrNull()?.takeIf { n -> n > 0 } ?: 1 }
+            .orElse(1)
+    )
     rootDirPath.set(rootProject.layout.projectDirectory.asFile.absolutePath)
     outputs.upToDateWhen { false }
 }

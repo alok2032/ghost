@@ -183,7 +183,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiModelInfo(GEMINI_FLASH_LITE_MODEL, "Gemini 3.5 Flash-Lite 🚀", AiProviderType.GEMINI, "High-throughput low-latency conversational engine", "1M tokens", true, false, false),
             AiModelInfo(GEMINI_FLASH_35_MODEL, "Gemini 3.5 Flash ⚡", AiProviderType.GEMINI, "Reliable fast multimodal & coding fallback", "1M tokens", true, false, false),
             AiModelInfo(GEMINI_GEMMA4_MODEL, "Gemma 4 31B IT 🌐", AiProviderType.GEMINI, "Google Gemma 4 open-weights multilingual reasoning", "128k tokens", true, true, false),
-            AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen3 32B 🧠", AiProviderType.GROQ, "High-speed STEM, coding & multilingual reasoning on Groq LPU", "131k tokens", false, true, true),
+            AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen 3.8 27B 🧠", AiProviderType.GROQ, "High-speed multimodal STEM, coding & multilingual reasoning on Groq LPU", "131k tokens", true, true, true),
             AiModelInfo(GROQ_GPT_OSS_MODEL, "Groq GPT-OSS 120B ⚡", AiProviderType.GROQ, "Open-weights 120B flagship on Groq LPU free developer tier", "131k tokens", false, true, false),
             AiModelInfo(GROQ_LLAMA_MODEL, "Groq Llama 3.1 8B Instant 🚀", AiProviderType.GROQ, "Ultra-low-latency fast conversational engine on Groq LPU", "128k tokens", false, false, false),
             AiModelInfo(CEREBRAS_LLAMA_MODEL, "Cerebras GPT-OSS 120B 🚀", AiProviderType.CEREBRAS, "Wafer-scale high-speed 120B inference on free developer tier", "128k tokens", false, true, true),

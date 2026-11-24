@@ -37,16 +37,24 @@ keytool -list -v -keystore upload-keystore.jks -alias ayra_ai_upload
 
 ## 3. Registering Production Fingerprints in Firebase (`google-services.json`)
 
-If `google-services.json` only contains the debug SHA-1 fingerprint, **Google Sign-In (Credential Manager)**, **Firebase App Check (reCAPTCHA Enterprise)**, and **Play Integrity** token exchange will fail on release builds.
+**Current Repository Audit Status (2026-11-24):**
+- `app/google-services.json` currently registers **only ONE** Android OAuth client (`client_type: 1`) with certificate hash `587f08f3ddaffc7c32e527871ec2e5003f47044e` (`SHA-1: 58:7F:08:F3:DD:AF:FC:7C:32:E5:27:87:1E:C2:E5:00:3F:47:04:4E`, debug keystore only).
+- **Missing for production (blocking owner action):** Neither your **Upload Key** nor your **Google Play App Signing** SHA-1 / SHA-256 fingerprints are registered yet. Until both are registered, **Google Sign-In (`CredentialManager`)**, **Firebase App Check (reCAPTCHA Enterprise)**, and **Play Integrity** verification will fail on release builds distributed outside debug workstations.
 
 Before publishing to Play Console / internal testing:
 
-1. Open **Firebase Console -> Project Settings -> Your Apps (`com.ayra.ai.app`)**.
-2. Add BOTH:
-   - Your **Upload Key** SHA-1 and SHA-256.
-   - Your **Play App Signing** key SHA-1 and SHA-256 (from Play Console -> Release -> Setup -> App signing).
-3. Download the updated `app/google-services.json` and commit the public client config (never private keystores).
-4. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key for the active project in `app/google-services.json`, so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE` (or `MISSING_RELEASE_CONFIG` if blank/removed).
+1. Generate your private Upload Keystore (Section 2) and inspect both SHA-1 & SHA-256:
+   ```bash
+   keytool -list -v -keystore upload-keystore.jks -alias ayra_ai_upload | grep -E 'SHA1:|SHA256:'
+   ```
+2. Retrieve your **Play App Signing key certificate** SHA-1 and SHA-256 from **Google Play Console -> Release -> Setup -> App signing**.
+3. Open **Firebase Console -> Project Settings -> Your Apps (`com.ayra.ai.app`) -> Add fingerprint** and register ALL FOUR fingerprints:
+   - Upload Key **SHA-1**
+   - Upload Key **SHA-256**
+   - Play App Signing Key **SHA-1**
+   - Play App Signing Key **SHA-256**
+4. Download the updated `app/google-services.json` from Firebase Console and replace the tracked client file (verify the new `oauth_client` entries include your release SHA-1 hashes while keeping `package_name = "com.ayra.ai.app"`).
+5. Verify `recaptcha_site_key` in `app/src/main/res/values/firebase_applet_config.xml` matches your Firebase Console reCAPTCHA Enterprise site key for the active project in `app/google-services.json`, so `AppCheckInit.kt` installs `RecaptchaAppCheckProviderFactory` and `AppCheckStatusRegistry.currentState` reports `RELEASE_RECAPTCHA_ACTIVE`.
 
 ---
 
@@ -65,15 +73,16 @@ Before publishing to Play Console / internal testing:
    keyAlias=ayra_ai_upload
    keyPassword=<strong_key_password>
    ```
-3. Enforce fail-closed verification via Gradle before producing or distributing release artifacts:
+3. Enforce fail-closed verification via Gradle before producing or distributing release artifacts (must pass `-PversionCode=<N>` with `N > 1` or `CI_RUN_NUMBER > 1`):
    ```bash
-   gradle :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true
-   gradle :app:assembleRelease :app:verifyReleaseSigningCertificate -PayraRequireProductionSigning=true
+   gradle :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true -PversionCode=2
+   gradle :app:assembleRelease :app:verifyReleaseSigningCertificate -PayraRequireProductionSigning=true -PversionCode=2
    ```
-4. `ValidateProductionReleaseSigningTask` in `app/build.gradle.kts` automatically:
+4. Note for Play Store pipelines: inside an external standalone clone where container signing constraints do not apply, configure `signingConfigs.release` in `app/build.gradle.kts` to read `keystore.properties` / `AYRA_UPLOAD_*` env vars so `:app:bundleRelease` signs the AAB directly with your upload key.
+5. `ValidateProductionReleaseSigningTask` in `app/build.gradle.kts` automatically:
    - Reads `AYRA_UPLOAD_KEYSTORE_PATH` / `AYRA_UPLOAD_KEY_ALIAS` / `AYRA_UPLOAD_KEYSTORE_PASSWORD` / `AYRA_UPLOAD_KEY_PASSWORD` (or `keystore.properties`) without logging any password.
-   - Fails closed if the path points to `debug.keystore`, alias is `androiddebugkey`, password is `"android"`, the keystore file does not exist, or `keytool -list -v` fails to confirm the alias and SHA-256 certificate fingerprint.
-   - Prevents release packaging in CI whenever `-PayraRequireProductionSigning=true` or `AYRA_REQUIRE_PRODUCTION_SIGNING=true` is enabled with missing or debug signing credentials.
+   - Fails closed if `versionCode <= 1` when `-PayraRequireProductionSigning=true`, or if the path points to `debug.keystore`, alias is `androiddebugkey`, password is `"android"`, the keystore file does not exist, or `keytool -list -v` fails to confirm the alias and SHA-256 certificate fingerprint.
+   - Prevents release packaging in CI whenever `-PayraRequireProductionSigning=true` or `AYRA_REQUIRE_PRODUCTION_SIGNING=true` is enabled with missing/debug signing credentials or unbumped `versionCode`.
 
 ### GitHub Actions Encrypted Secrets
 

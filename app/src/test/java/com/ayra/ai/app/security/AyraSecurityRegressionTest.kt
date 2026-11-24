@@ -28,7 +28,7 @@ import java.security.spec.ECGenParameterSpec
 import javax.crypto.AEADBadTagException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class AyraSecurityRegressionTest {
 
     private lateinit var context: Context

@@ -53,18 +53,26 @@ jobs:
             echo "ERROR: validateProductionReleaseSigning must fail when debug keystore is used under production flag!"
             exit 1
           fi
-      - name: Verify production signing gate accepts valid PKCS12 upload keystore
+      - name: Verify production signing gate rejects versionCode=1 even with valid PKCS12 keystore, then accepts -PversionCode=2
         run: |
           TMP_KS="$(mktemp -u /tmp/ayra_ci_upload_XXXX.p12)"
           trap 'rm -f "$TMP_KS"' EXIT
           keytool -genkeypair -v -keystore "$TMP_KS" -storetype PKCS12 -alias ayra_ci_upload \
             -keyalg RSA -keysize 2048 -validity 1 -storepass "CiEphemPass#2026" -keypass "CiEphemPass#2026" \
             -dname "CN=Ayra CI Test, O=Ayra AI"
+          if AYRA_UPLOAD_KEYSTORE_PATH="$TMP_KS" \
+             AYRA_UPLOAD_KEY_ALIAS="ayra_ci_upload" \
+             AYRA_UPLOAD_KEYSTORE_PASSWORD="CiEphemPass#2026" \
+             AYRA_UPLOAD_KEY_PASSWORD="CiEphemPass#2026" \
+             ./gradlew :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true -PversionCode=1 --console=plain; then
+            echo "ERROR: validateProductionReleaseSigning must fail when versionCode=1 under production flag!"
+            exit 1
+          fi
           AYRA_UPLOAD_KEYSTORE_PATH="$TMP_KS" \
           AYRA_UPLOAD_KEY_ALIAS="ayra_ci_upload" \
           AYRA_UPLOAD_KEYSTORE_PASSWORD="CiEphemPass#2026" \
           AYRA_UPLOAD_KEY_PASSWORD="CiEphemPass#2026" \
-          ./gradlew :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true --console=plain
+          ./gradlew :app:validateProductionReleaseSigning -PayraRequireProductionSigning=true -PversionCode=2 --console=plain
       - name: Assemble Debug & R8 Release APKs and Verify Signing Metadata
         run: ./gradlew :app:assembleDebug :app:assembleRelease :app:verifyReleaseSigningCertificate --max-workers=2 --console=plain
 

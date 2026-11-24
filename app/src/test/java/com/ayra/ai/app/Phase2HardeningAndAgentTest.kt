@@ -55,7 +55,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class Phase2HardeningAndAgentTest {
 
     private lateinit var context: Context

@@ -767,7 +767,11 @@ class DeviceAutomationController(private val context: Context) {
             "chrome" to "com.android.chrome",
             "browser" to "com.android.chrome",
             "maps" to "com.google.android.apps.maps",
-            "gmail" to "com.google.android.gm"
+            "gmail" to "com.google.android.gm",
+            "telegram" to "org.telegram.messenger",
+            "clock" to "com.google.android.deskclock",
+            "calendar" to "com.google.android.calendar",
+            "calculator" to "com.google.android.calculator"
         )
 
         val webFallbacks = mapOf(
@@ -777,7 +781,8 @@ class DeviceAutomationController(private val context: Context) {
             "whatsapp" to "https://web.whatsapp.com",
             "spotify" to "https://open.spotify.com",
             "chrome" to "https://www.google.com",
-            "maps" to "https://maps.google.com"
+            "maps" to "https://maps.google.com",
+            "telegram" to "https://web.telegram.org"
         )
 
         // Camera
@@ -796,7 +801,7 @@ class DeviceAutomationController(private val context: Context) {
             )
         }
 
-        // Check known packages
+        // Check known packages (declared explicitly in AndroidManifest <queries>)
         for ((key, pkg) in knownPackages) {
             if (appName.contains(key)) {
                 val launchIntent = pm.getLaunchIntentForPackage(pkg)
@@ -809,8 +814,8 @@ class DeviceAutomationController(private val context: Context) {
                         actionType = "OPEN_APP",
                         extraData = key
                     )
-                } else {
-                    val fallbackUrl = webFallbacks[key] ?: "https://www.google.com/search?q=$key"
+                } else if (webFallbacks.containsKey(key)) {
+                    val fallbackUrl = webFallbacks.getValue(key)
                     val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
@@ -825,31 +830,7 @@ class DeviceAutomationController(private val context: Context) {
             }
         }
 
-        // Search launcher activities (Play-compliant via <queries> MAIN/LAUNCHER intent filter)
-        try {
-            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val launcherActivities = pm.queryIntentActivities(launcherIntent, 0)
-            for (resolveInfo in launcherActivities) {
-                val pkg = resolveInfo.activityInfo?.packageName ?: continue
-                val label = resolveInfo.loadLabel(pm).toString()
-                val labelLower = label.lowercase(Locale.ROOT)
-                if (labelLower.contains(appName.lowercase(Locale.ROOT)) || appName.lowercase(Locale.ROOT).contains(labelLower)) {
-                    val launchIntent = pm.getLaunchIntentForPackage(pkg)
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(launchIntent)
-                        return AutomationResult(
-                            executed = true,
-                            feedbackMessage = "🚀 Opening $label... / অ্যাপটি খোলা হয়েছে...",
-                            actionType = "OPEN_APP",
-                            extraData = pkg
-                        )
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-
-        // If not a recognized app, return null so AI engine can answer the prompt!
+        // If not a recognized curated app, return null so AI engine can answer the prompt
         return null
     }
 

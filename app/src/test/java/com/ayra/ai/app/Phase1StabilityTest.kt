@@ -26,7 +26,7 @@ import org.robolectric.shadows.ShadowAlarmManager
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+@Config(sdk = [36])
 class Phase1StabilityTest {
 
     private lateinit var context: Context

@@ -45,7 +45,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class MasterIntegrityUpgradeTest {
 
     private lateinit var context: Context

@@ -49,6 +49,20 @@ else
   fi
 fi
 
+XML_CFG="app/src/main/res/values/firebase_applet_config.xml"
+FB_JSON="firebase.json"
+if [ -f "$XML_CFG" ] && [ -f "$FB_JSON" ]; then
+  XML_DB=$(grep -o '<string name="firestore_database_id"[^>]*>[^<]*</string>' "$XML_CFG" | head -1 | sed 's/.*>\(.*\)<\/string>/\1/' | tr -d '[:space:]')
+  JSON_DB=$(grep -o '"database": *"[^"]*"' "$FB_JSON" | head -1 | sed 's/.*: *"//;s/"//' | tr -d '[:space:]')
+  if [ -n "$XML_DB" ] && [ "$XML_DB" = "$JSON_DB" ]; then
+    ok "Firestore database ID matches across firebase_applet_config.xml and firebase.json ($XML_DB)"
+  else
+    fail "Firestore database ID mismatch: xml='$XML_DB' vs firebase.json='$JSON_DB'"
+  fi
+else
+  fail "Missing $XML_CFG or $FB_JSON for Firestore database ID parity check"
+fi
+
 # ---------------------------------------------------------------- 2
 section "2. Build & Signing Hygiene"
 if [ -x gradlew ]; then
@@ -167,6 +181,12 @@ if grep -qE 'enum class VaultState' app/src/main/java/com/ayra/ai/app/security/V
   ok "VaultState key-loss recovery state present"
 else
   fail "VaultState key-loss recovery missing in VaultDatabaseKeyManager.kt"
+fi
+
+if grep -q 'fallbackToDestructiveMigration' app/src/main/java/com/ayra/ai/app/data/ChatDatabase.kt 2>/dev/null; then
+  fail "ChatDatabase.kt must NEVER call fallbackToDestructiveMigration (fail closed into VaultRecoveryScreen instead)"
+else
+  ok "ChatDatabase.kt enforces fail-closed migrations (no fallbackToDestructiveMigration)"
 fi
 
 # ---------------------------------------------------------------- 8

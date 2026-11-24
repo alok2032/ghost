@@ -202,10 +202,10 @@ object AiModelRegistry {
                 healthStatus = statusFor(AiProviderType.GEMINI, firebaseManaged = true)
             ),
             RegistryModelEntry(
-                id = "groq_qwen3_32b",
+                id = "groq_qwen3_8_27b",
                 provider = AiProviderType.GROQ,
                 modelId = ModelCatalog.GROQ_QWEN_MODEL,
-                displayName = "Groq Qwen3 32B",
+                displayName = "Groq Qwen 3.8 27B",
                 category = ModelCategory.REASONING,
                 endpoint = "https://api.groq.com/openai/v1/chat/completions",
                 authRequirement = "Bearer API Key (Free Console)",
@@ -213,9 +213,9 @@ object AiModelRegistry {
                 rateLimitNote = "30 RPM / 14.4K RPD free tier",
                 contextWindow = "131k tokens",
                 supportsStreaming = true,
-                supportsVision = false,
+                supportsVision = true,
                 supportsToolCalling = true,
-                modelVersion = "qwen3-32b",
+                modelVersion = "qwen3.8-27b",
                 healthStatus = statusFor(AiProviderType.GROQ)
             ),
             RegistryModelEntry(

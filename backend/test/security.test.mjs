@@ -377,7 +377,7 @@ test("Model catalog exposes honest verification status, provenance, and unavaila
   assert.equal(ok.status, 200);
   const catalog = await ok.json();
   const flash = catalog.models.find((m) => m.id === "gemini-3.6-flash");
-  const groq = catalog.models.find((m) => m.id === "qwen/qwen3-32b");
+  const groq = catalog.models.find((m) => m.id === "qwen/qwen3.8-27b");
   assert.ok(flash);
   assert.equal(flash.verificationStatus, "LIVE_VERIFIED"); // earlier chat succeeded & closed circuit breaker
   assert.equal(flash.pricingVerified, false);

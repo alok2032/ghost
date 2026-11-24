@@ -103,10 +103,10 @@ export function buildCuratedModelCatalog(
       fallbackModelId: "gemini-3-pro-image",
     },
     {
-      id: "qwen/qwen3-32b",
+      id: "qwen/qwen3.8-27b",
       provider: "groq",
-      displayName: "Groq Qwen3 32B",
-      capabilities: ["TEXT", "TOOLS", "CODE", "REASONING"],
+      displayName: "Groq Qwen 3.8 27B",
+      capabilities: ["TEXT", "VISION", "TOOLS", "CODE", "REASONING"],
       contextTokens: 131_072,
       costTier: "FREE_TIER",
       isDefault: true,
@@ -120,7 +120,7 @@ export function buildCuratedModelCatalog(
       contextTokens: 131_072,
       costTier: "FREE_TIER",
       isDefault: true,
-      fallbackModelId: "qwen/qwen3-32b",
+      fallbackModelId: "qwen/qwen3.8-27b",
     },
     {
       id: "openrouter/free",
@@ -164,7 +164,7 @@ export function buildCuratedModelCatalog(
   ];
 
   return {
-    version: "2026.11.20",
+    version: "2026.11.24",
     updatedAt: new Date(now).toISOString(),
     models: baseEntries.map((entry) => {
       const configured = Boolean(hasKey[entry.provider]);

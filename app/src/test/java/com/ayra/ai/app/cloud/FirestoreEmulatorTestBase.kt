@@ -24,7 +24,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 @LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 abstract class FirestoreEmulatorTestBase {
 
@@ -40,7 +40,9 @@ abstract class FirestoreEmulatorTestBase {
         )
         val context = ApplicationProvider.getApplicationContext<Context>()
         val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
-        databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-ghost-2c608f6c-6552-4164-9357-e96f739c5178"
+        check(resId != 0) { "Missing R.string.firestore_database_id in app/src/main/res/values/firebase_applet_config.xml" }
+        databaseId = context.getString(resId)
+        check(databaseId.isNotBlank()) { "R.string.firestore_database_id must not be blank" }
 
         val existing = FirebaseApp.getApps(context).firstOrNull { it.name == TEST_APP_NAME }
         val app = existing ?: FirebaseApp.initializeApp(

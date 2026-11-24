@@ -34,7 +34,7 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class VectorKnowledgeDatabaseTest {
 
     private lateinit var context: Context

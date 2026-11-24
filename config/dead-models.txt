@@ -25,3 +25,4 @@
 ^llama-3\.3-70b-versatile$
 ^deepseek-reasoner$
 ^deepseek-chat$
+^qwen/qwen3-32b$

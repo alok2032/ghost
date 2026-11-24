@@ -45,7 +45,7 @@ import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class NetworkConnectivityAndDiagnosticsTest {
 
     @get:Rule

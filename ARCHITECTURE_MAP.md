@@ -70,7 +70,7 @@ Last verified: 20 Nov 2026 | See `docs/FACTS.md` for live generated source, test
 ## 4. Data Persistence, Cloud & Device Automation
 | File | Lines | Responsibility |
 |---|---|---|
-| `data/ChatDatabase.kt` | — | SQLCipher-encrypted Room database (`schema v10`, migrations `4->5->6->7->8->9->10`, fail-closed wrapped passphrase) |
+| `data/ChatDatabase.kt` | — | SQLCipher-encrypted Room database (`schema v10`, minimum supported source `v4`, explicit migrations `4->5->6->7->8->9->10`; zero destructive fallback — unsupported `< v4` DBs fail closed into `VaultOpenResult.NeedsRecovery`) |
 | `data/ChatDao.kt`, `ChatSessionDao.kt`, `GitHubPluginDao.kt`, `ScheduledTaskDao.kt`, `VectorKnowledgeDao.kt`, `AyraWorkspaceDao.kt`, `LongTermMemoryDao.kt` | — | Room DAOs |
 | `data/ChatMessage.kt`, `ChatSession.kt`, `InstalledGitHubPlugin.kt`, `ScheduledTask.kt`, `KnowledgeDocument.kt`, `VectorKnowledgeEntities.kt`, `AyraWorkspaceEntities.kt`, `LongTermMemoryEntity.kt` | — | Room entities |
 | `data/ChatRepository.kt` | — | Session & message repository (Room + optional encrypted Firestore sync) |

@@ -5,10 +5,9 @@
 # ---------------------------------------------------------------------------
 -allowaccessmodification
 -repackageclasses 'o'
--mergeinterfacesaggressively
--overloadaggressively
 -renamesourcefileattribute SourceFile
 -keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keep class kotlin.Metadata { *; }
 
 # Honor explicit @Keep annotations only where reflection/serialization is required
 -keep @androidx.annotation.Keep class * { *; }
@@ -55,6 +54,13 @@
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
 -dontwarn kotlinx.coroutines.**
+
+# ---------------------------------------------------------------------------
+# Jetpack Credential Manager & Google Identity Services
+# ---------------------------------------------------------------------------
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn androidx.credentials.**
 
 # ---------------------------------------------------------------------------
 # Networking & Security Libraries (consumer rules bundled in AARs)

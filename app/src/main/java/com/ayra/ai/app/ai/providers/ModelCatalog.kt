@@ -102,7 +102,7 @@ object ModelCatalog {
     const val NVIDIA_GEMMA_MODEL = "google/gemma-4-31b-it"
 
     const val GROQ_LLAMA_MODEL = "llama-3.1-8b-instant"
-    const val GROQ_QWEN_MODEL = "qwen/qwen3-32b"
+    const val GROQ_QWEN_MODEL = "qwen/qwen3.8-27b"
     const val GROQ_GPT_OSS_MODEL = "openai/gpt-oss-120b"
     const val GROQ_WHISPER_MODEL = "whisper-large-v3-turbo"
 
@@ -216,8 +216,8 @@ object ModelCatalog {
         ModelCatalogEntry(
             id = GROQ_QWEN_MODEL,
             provider = AiProviderType.GROQ,
-            displayName = "Groq Qwen3 32B",
-            capabilities = setOf(ModelCapability.TEXT, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
+            displayName = "Groq Qwen 3.8 27B",
+            capabilities = setOf(ModelCapability.TEXT, ModelCapability.VISION, ModelCapability.TOOLS, ModelCapability.CODE, ModelCapability.REASONING),
             contextTokens = 131_072,
             costTier = ModelCostTier.FREE_TIER,
             verificationStatus = ModelVerificationStatus.CONFIGURED,

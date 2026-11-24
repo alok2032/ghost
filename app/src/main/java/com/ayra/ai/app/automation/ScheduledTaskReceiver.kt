@@ -50,6 +50,11 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     AyraTaskScheduler(context).rearmAllPendingTasks()
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        "ScheduledTaskReceiver",
+                        "Skipped task re-arm on $action: ${e.message}"
+                    )
                 } finally {
                     pendingResult?.finish()
                 }

@@ -70,7 +70,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     """
                     INSERT OR IGNORE INTO `chat_sessions`
                     (`id`, `title`, `personaMode`, `modelTier`, `isPinned`, `createdAt`, `updatedAt`, `messageCount`, `lastMessagePreview`)
-                    VALUES (1, 'Ghost Main Chat', 'AI_ASSISTANT', 'auto', 0, $now, $now, 0, '')
+                    VALUES (1, 'Ayra Main Chat', 'AI_ASSISTANT', 'auto', 0, $now, $now, 0, '')
                     """.trimIndent()
                 )
 
@@ -333,13 +333,19 @@ abstract class ChatDatabase : RoomDatabase() {
 
         fun tryGetDatabase(context: Context): VaultOpenResult {
             return try {
-                VaultOpenResult.Ready(getDatabase(context))
+                val db = getDatabase(context)
+                // Eagerly open SQLite/Room so missing migration paths (< v4) or unreadable encrypted
+                // vaults transition cleanly to VaultRecoveryScreen without silent data loss or UI crash.
+                db.openHelper.writableDatabase
+                VaultOpenResult.Ready(db)
             } catch (e: com.ayra.ai.app.security.VaultKeyRecoveryException) {
+                closeDatabaseForMaintenance()
                 VaultOpenResult.NeedsRecovery(
                     vaultState = e.vaultState,
                     reason = e.message ?: "Encrypted vault key could not be unwrapped."
                 )
             } catch (e: Exception) {
+                closeDatabaseForMaintenance()
                 VaultOpenResult.NeedsRecovery(
                     vaultState = com.ayra.ai.app.security.VaultState.CORRUPT,
                     reason = e.message ?: "Encrypted vault database failed integrity verification."
@@ -361,7 +367,6 @@ abstract class ChatDatabase : RoomDatabase() {
                 )
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .addCallback(seedDefaultSessionCallback)
-                    .fallbackToDestructiveMigration(false)
 
                 if (factory != null) {
                     builder.openHelperFactory(factory)
