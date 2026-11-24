@@ -318,13 +318,19 @@ internal object ProviderAnthropicAndFreeTransport {
             if (it.endsWith("/")) it else "$it/"
         } ?: "https://text.pollinations.ai/"
         val fastFreeClient = httpClient.newBuilder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
             .build()
-        val models = listOf(preferredModel.ifBlank { "openai" }, "openai", "openai-large", "qwen-coder")
+        val models = listOf(preferredModel.ifBlank { "openai" }, "openai", "openai-large", "qwen-coder", "deepseek")
             .distinct()
-            .take(3)
-        val filteredTurns = turns.filter { it.content.isNotBlank() }
+            .take(4)
+        val filteredTurns = turns.filter { it.content.isNotBlank() }.map { t ->
+            if (t.role == "system" && t.content.length > 2400) {
+                val head = t.content.take(900)
+                val tail = t.content.takeLast(1400)
+                t.copy(content = "$head\n...\n$tail")
+            } else t
+        }
         for (m in models) {
             try {
                 val jsonPayload = JSONObject().apply {

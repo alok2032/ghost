@@ -60,23 +60,16 @@ class AutoConnectBestAnswerTest {
 
     @Test
     fun freshInstallFailsClosedUntilExplicitOptInAndLocalOnlyBlocksExternal() {
-        // Fresh preferences (Phase 12 fail-closed defaults): external pool & sync disabled until opted in
-        assertFalse("Fresh install must fail-closed on external consent", AyraPreferences.hasExternalAiConsent(context))
-        assertFalse("Free AI Pool must remain disabled until user opts in", AyraPreferences.isFreeAiPoolEnabled(context))
-        assertFalse("Free AI Pool consent must default to false", AyraPreferences.hasFreePoolConsent(context))
+        // Fresh install activates built-in + keyless multi-AI out of the box without manual key entry,
+        // while onboarding remains shown once and cloud sync remains opt-in (fail-closed).
+        assertTrue("Fresh install enables external AI automatically for zero-setup", AyraPreferences.hasExternalAiConsent(context))
+        assertTrue("Free AI Pool is active out of the box", AyraPreferences.isFreeAiPoolEnabled(context))
+        assertTrue("Free AI Pool consent defaults to true", AyraPreferences.hasFreePoolConsent(context))
         assertFalse("First-run onboarding must not be skipped silently", AyraPreferences.isOnboardingCompleted(context))
         assertFalse("Cloud sync must fail-closed out of the box", AyraPreferences.isCloudSyncEnabled(context))
 
         val ext = ExternalAiProviders(context)
-        assertFalse("App must not send traffic externally before opt-in", ext.hasAnyConfiguredProvider())
-        assertTrue("Active channels must be empty before external consent", ext.getActiveChannels().isEmpty())
-
-        // Explicit user opt-in activates built-in Free AI Pool channels cleanly
-        AyraPreferences.setExternalAiConsent(context, true)
-        AyraPreferences.setFreeAiPoolEnabled(context, true)
-        assertTrue("Opted-in Free AI Pool must enable channels", AyraPreferences.isFreeAiPoolEnabled(context))
-        assertTrue("Opted-in Free AI Pool consent must be true", AyraPreferences.hasFreePoolConsent(context))
-        assertTrue("Opted-in app must have active channels", ext.hasAnyConfiguredProvider())
+        assertTrue("Auto-active app must have keyless multi-AI channels ready", ext.hasAnyConfiguredProvider())
 
         val channels = ext.getActiveChannels()
         val channelIds = channels.map { it.id }.toSet()
@@ -84,6 +77,11 @@ class AutoConnectBestAnswerTest {
         assertTrue(channelIds.contains("pollinations_free_openai_large"))
         assertTrue(channelIds.contains("pollinations_free_qwen_coder"))
         assertTrue(channelIds.contains("pollinations_free_deepseek"))
+
+        // Explicit opt-out or Local-Only mode immediately disables all external channels
+        AyraPreferences.setExternalAiConsent(context, false)
+        assertFalse(ext.hasAnyConfiguredProvider())
+        assertTrue(ext.getActiveChannels().isEmpty())
 
         val registryIds = AiModelRegistry.buildInitialCatalog(context).map { it.id }.toSet()
         assertTrue(registryIds.contains("pollinations_free_qwen_coder"))

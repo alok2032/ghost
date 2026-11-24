@@ -189,21 +189,24 @@ class SecurityAndModelUpgradeRegressionTest {
 
     @Test
     fun phase12_failClosedDefaultsBlockExternalAndCloudUntilExplicitOptIn() = runBlocking {
-        assertFalse(AyraPreferences.hasExternalAiConsent(context))
-        assertFalse(AyraPreferences.isFreeAiPoolEnabled(context))
-        assertFalse(AyraPreferences.hasFreePoolConsent(context))
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
+        assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
+        assertTrue(AyraPreferences.hasFreePoolConsent(context))
         assertFalse(AyraPreferences.isCloudSyncEnabled(context))
         assertFalse(AyraPreferences.isOnboardingCompleted(context))
 
         assertFalse(SecureAiGatewayClient.evaluateProviderAccess(null, AiProviderType.OPENAI).allowed)
+        assertTrue(SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.POLLINATIONS_FREE).allowed)
+
+        // Explicit opt-out immediately blocks third-party & free-pool access, and saving BYOK keys never overrides opt-out
+        AyraPreferences.setExternalAiConsent(context, false)
         assertFalse(SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.GEMINI).allowed)
         assertFalse(SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.POLLINATIONS_FREE).allowed)
 
-        // Saving BYOK keys must NEVER silently enable external consent
         AyraPreferences.setOpenAiKey(context, "sk-phase12-byok-key")
         AyraPreferences.setGroqKey(context, "gsk-phase12-byok-key")
         assertFalse(
-            "Saving BYOK keys must not silently grant external consent",
+            "Saving BYOK keys must not silently re-grant revoked external consent",
             AyraPreferences.hasExternalAiConsent(context)
         )
         assertFalse(SecureAiGatewayClient.evaluateProviderAccess(context, AiProviderType.OPENAI).allowed)

@@ -22,8 +22,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class LongTermMemoryAndViewModelTest {
 
     private lateinit var context: Context
@@ -108,20 +110,24 @@ class LongTermMemoryAndViewModelTest {
         val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
         val sessionId = repo.ensureActiveSession().id
         val vm = ChatViewModel(repo)
-        assertTrue(vm.tryStartSending())
-        vm.appendStreamingToken("Partial streamed explanation about ")
-        vm.appendStreamingToken("Room migrations")
-        vm.stopGeneration()
-        var partialMsg: ChatMessage? = null
-        repeat(40) {
-            val saved = repo.getRecentMessages(sessionId, 10)
-            partialMsg = saved.lastOrNull { it.role == "assistant" }
-            if (partialMsg != null) return@repeat
-            delay(50)
+        try {
+            assertTrue(vm.tryStartSending())
+            vm.appendStreamingToken("Partial streamed explanation about ")
+            vm.appendStreamingToken("Room migrations")
+            vm.stopGeneration()
+            var partialMsg: ChatMessage? = null
+            repeat(40) {
+                val saved = repo.getRecentMessages(sessionId, 10)
+                partialMsg = saved.lastOrNull { it.role == "assistant" }
+                if (partialMsg != null) return@repeat
+                delay(50)
+            }
+            assertNotNull(partialMsg)
+            assertTrue(partialMsg!!.content.contains("Partial streamed explanation about Room migrations"))
+            assertTrue(partialMsg!!.content.contains("(Stopped by user)"))
+        } finally {
+            vm.releaseForTests()
+            db.close()
         }
-        assertNotNull(partialMsg)
-        assertTrue(partialMsg!!.content.contains("Partial streamed explanation about Room migrations"))
-        assertTrue(partialMsg!!.content.contains("(Stopped by user)"))
-        db.close()
     }
 }

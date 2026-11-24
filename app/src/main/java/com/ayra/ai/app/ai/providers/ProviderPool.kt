@@ -317,7 +317,7 @@ class ProviderPool @JvmOverloads constructor(
         supervisorScope {
             val wikiDeferred: Deferred<String>? = if (shouldGroundWiki) {
                 async(Dispatchers.IO) {
-                    withTimeoutOrNull(3_000L) {
+                    withTimeoutOrNull(3_800L) {
                         val wikiJob = async {
                             runCatching {
                                 AutonomousKnowledgeEngine.queryMultiLayerWiki(
@@ -326,7 +326,7 @@ class ProviderPool @JvmOverloads constructor(
                                 )
                             }.getOrDefault("")
                         }
-                        val tavilyJob = if (hasTavilyKey && context != null) {
+                        val tavilyJob = if (hasTavilyKey) {
                             async {
                                 runCatching {
                                     com.ayra.ai.app.search.TavilySearchEngine(context)
@@ -540,7 +540,7 @@ class ProviderPool @JvmOverloads constructor(
         priorError: AyraError? = null
     ) {
         val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(2_200L) { wikiDeferred.await() } ?: ""
+            withTimeoutOrNull(3_200L) { wikiDeferred.await() } ?: ""
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
@@ -840,7 +840,7 @@ class ProviderPool @JvmOverloads constructor(
 
         // Inject live web & multi-layer wiki context into EVERY parallel AI worker upfront
         val wikiContext = if (wikiDeferred != null) {
-            withTimeoutOrNull(2_200L) { wikiDeferred.await() } ?: ""
+            withTimeoutOrNull(3_200L) { wikiDeferred.await() } ?: ""
         } else ""
 
         val sysPrompt = resolveSystemPrompt(request, domain, wikiContext)
@@ -856,16 +856,20 @@ class ProviderPool @JvmOverloads constructor(
         )
 
         val isBestMode = request.mode == ProviderPoolMode.BEST
-        val perChannelTimeoutMs = if (isBestMode) 14_000L else 11_000L
+        val perChannelTimeoutMs = if (isBestMode) 17_000L else 14_000L
 
         val wrappedChannel = Channel<Any>(Channel.UNLIMITED)
         val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        val firebaseEnsembleActive = externalProviders.allowExternalWikiGrounding &&
+        val localOnlyMode = context?.let { AyraPreferences.isLocalOnlyAiModeEnabled(it) } ?: false
+        val strictLocalRouting = request.routingMode == AiRoutingMode.PRIVACY_LOCAL
+        val firebaseEnsembleActive = !localOnlyMode &&
+            !strictLocalRouting &&
             com.ayra.ai.app.ai.FirebaseAiEngine.isAvailable(context)
         val totalWorkers = ensembleChannels.size + if (firebaseEnsembleActive) 1 else 0
-        val targetQuorum = if (isBestMode) minOf(4, totalWorkers) else minOf(3, totalWorkers)
-        val quorumGraceMs = if (isBestMode) 2_500L else 1_800L
+        val desiredQuorum = if (isBestMode) 4 else 3
+        val targetQuorum = if (totalWorkers <= 2) totalWorkers else minOf(desiredQuorum, totalWorkers - 1)
+        val quorumGraceMs = if (isBestMode) 2_200L else 1_500L
 
         val successfulDrafts = mutableListOf<Pair<AiModelChannel, String>>()
         val workerErrors = ConcurrentLinkedQueue<AyraError>()

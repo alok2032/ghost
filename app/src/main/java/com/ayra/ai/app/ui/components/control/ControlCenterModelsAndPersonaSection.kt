@@ -55,7 +55,6 @@ import com.ayra.ai.app.ai.providers.ModelTier
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.ui.components.GitHubPluginHubSection
 import com.ayra.ai.app.ui.components.ProviderKeysSection
-import com.ayra.ai.app.ui.components.SuperpowersSuiteCard
 import com.ayra.ai.app.ui.theme.GlassSurfaceDark
 import com.ayra.ai.app.ui.theme.NeonCyan
 import com.ayra.ai.app.ui.theme.NeonGreen
@@ -85,8 +84,19 @@ internal fun ControlCenterModelsAndProvidersSection(
         fontSize = 13.sp
     )
 
+    val coreTiers = remember {
+        listOf(
+            ModelTier.AUTO,
+            ModelTier.OMNI_ROUTE,
+            ModelTier.GEMINI_FLASH,
+            ModelTier.GEMINI_PRO,
+            ModelTier.OPENROUTER_DEEPSEEK,
+            ModelTier.OPEN_WEIGHTS
+        )
+    }
+
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ModelTier.entries.filter { it.isSelectableTier }.forEach { tier ->
+        coreTiers.forEach { tier ->
             val isSelected = ModelTier.canonicalizeId(selectedModelTier) == tier.id
             val tierColor = Color(tier.accentColorHex)
 
@@ -219,7 +229,7 @@ internal fun ControlCenterModelsAndProvidersSection(
                     modifier = Modifier.height(32.dp)
                 ) {
                     Text(
-                        text = if (isKeySectionExpanded) "হাইড" else "কী কনফিগার",
+                        text = if (isKeySectionExpanded) "হাইড" else "অপশনাল কী",
                         color = NeonCyan,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold
@@ -265,13 +275,6 @@ internal fun ControlCenterModelsAndProvidersSection(
             }
         }
     }
-
-    SuperpowersSuiteCard(
-        onSelectSuperpowerPrompt = { prompt ->
-            onSelectPrompt(prompt)
-            onDismiss()
-        }
-    )
 
     GitHubPluginHubSection(
         context = context,

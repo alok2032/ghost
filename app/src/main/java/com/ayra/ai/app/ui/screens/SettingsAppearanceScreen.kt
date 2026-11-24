@@ -152,7 +152,7 @@ fun SettingsAppearanceScreen(
                         color = uiConfig.accentColor
                     )
                     Text(
-                        text = "1-Tap All-AI Activation, Routing & Encrypted Keys",
+                        text = "Auto-Active Multi-AI, Live Search & Optional Keys",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

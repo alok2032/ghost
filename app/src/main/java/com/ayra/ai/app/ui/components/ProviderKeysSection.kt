@@ -158,9 +158,9 @@ fun ProviderKeysSection(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = if (showDeveloperByok) {
-                    "Hide Developer / BYOK Keys & Custom Endpoints"
+                    "Hide Optional BYOK API Keys & Custom Endpoints"
                 } else {
-                    "Developer / BYOK API Keys & Custom Endpoints"
+                    "Optional BYOK API Keys & Custom Endpoints"
                 },
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f)
@@ -1571,16 +1571,16 @@ fun FreeAiPoolCard(
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = "Global Free AI Pool (Opt-In) 🌐",
+                    text = "Global Free AI Pool (Auto-Active) 🌐",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = when {
-                        isLocalOnly && freePoolEnabled -> "Opted in, but Local-Only Privacy Mode blocks cloud requests."
-                        freePoolEnabled && !hasExternalConsent -> "Opted in — enable External Cloud AI Consent above to activate."
-                        freePoolEnabled -> "Active ✓ Optional community fallback models ready."
-                        else -> "Optional community fallback models when External Cloud AI consent is enabled."
+                        isLocalOnly && freePoolEnabled -> "Enabled, but Local-Only Privacy Mode blocks cloud requests."
+                        freePoolEnabled && !hasExternalConsent -> "Paused — enable External Cloud AI Consent above to activate."
+                        freePoolEnabled -> "Active automatically ✓ Keyless GPT/OSS, Qwen Coder & DeepSeek ensemble ready."
+                        else -> "Optional community multi-AI endpoints when External Cloud AI is active."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

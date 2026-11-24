@@ -75,6 +75,7 @@ import com.ayra.ai.app.ui.components.OnboardingOverlay
 import com.ayra.ai.app.ui.theme.LocalAyraUiConfig
 import com.ayra.ai.app.ui.viewmodel.ChatViewModel
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 enum class AyraDestination(
@@ -90,7 +91,7 @@ enum class AyraDestination(
     MODELS_ARENA("Models Ecosystem & Arena", "Registry, Health & Live Benchmark", Icons.Default.Hub, "Arena"),
     TOOLS_HUB("Tools, Keys & Plugins", "API Keys, Terminal, Files & GitHub", Icons.Default.Build, "Tools"),
     SETTINGS_APPEARANCE("Appearance & Personalization", "Themes, Memory, Thinking & Health", Icons.Default.Palette, "Theme"),
-    AI_SETTINGS("AI Control & Keys", "1-Tap Multi-AI, Live Search & API Keys", Icons.Default.AutoAwesome, "AI"),
+    AI_SETTINGS("AI Control & Keys", "Auto-Active Multi-AI, Live Search & Optional Keys", Icons.Default.AutoAwesome, "AI"),
     SECURITY_CENTER("Zero-Trust Security Vault", "Biometrics, E2EE, Audit & Wipe", Icons.Default.Security, "Security")
 }
 
@@ -116,8 +117,20 @@ fun AyraWorkspaceHost(
     val activeAssistantId by AyraPreferences.activeAssistantIdFlow.collectAsStateWithLifecycle()
 
     val workspaceDao = remember { ChatDatabase.getDatabase(context).ayraWorkspaceDao() }
-    val projects by workspaceDao.observeProjects().collectAsStateWithLifecycle(initialValue = emptyList())
-    val assistants by workspaceDao.observeAssistants().collectAsStateWithLifecycle(initialValue = emptyList())
+    val projectsFlow = remember(workspaceDao) {
+        workspaceDao.observeProjects().catch { err ->
+            if (err !is IllegalStateException) throw err
+            emit(emptyList())
+        }
+    }
+    val assistantsFlow = remember(workspaceDao) {
+        workspaceDao.observeAssistants().catch { err ->
+            if (err !is IllegalStateException) throw err
+            emit(emptyList())
+        }
+    }
+    val projects by projectsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val assistants by assistantsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val activeProject = remember(projects, activeProjectId) { projects.firstOrNull { it.id == activeProjectId } }
     val activeAssistant = remember(assistants, activeAssistantId) { assistants.firstOrNull { it.id == activeAssistantId } }
 

@@ -101,78 +101,86 @@ class ChatViewModelOrchestrationTest {
         )
 
         val vm = ChatViewModel(repository)
-        val sessionId = vm.ensureSessionReady()
-        assertTrue(vm.tryStartSending())
+        try {
+            val sessionId = vm.ensureSessionReady()
+            assertTrue(vm.tryStartSending())
 
-        val orchestrator = AyraOrchestrator(context)
-        var spokenReply: String? = null
-        vm.launchOrchestratedInference(
-            orchestrator = orchestrator,
-            prompt = "Explain clean architecture in one sentence",
-            persona = "AI_ASSISTANT",
-            tier = "auto",
-            history = emptyList(),
-            imageBase64 = null,
-            documentText = null,
-            documentName = null,
-            cloudRepo = null,
-            onSpeakResponse = { spokenReply = it }
-        )
+            val orchestrator = AyraOrchestrator(context)
+            var spokenReply: String? = null
+            vm.launchOrchestratedInference(
+                orchestrator = orchestrator,
+                prompt = "Explain clean architecture in one sentence",
+                persona = "AI_ASSISTANT",
+                tier = "auto",
+                history = emptyList(),
+                imageBase64 = null,
+                documentText = null,
+                documentName = null,
+                cloudRepo = null,
+                onSpeakResponse = { spokenReply = it }
+            )
 
-        var assistantMsg: ChatMessage? = null
-        repeat(160) {
-            val msgs = repository.getRecentMessages(sessionId, 10)
-            assistantMsg = msgs.lastOrNull { it.role == "assistant" }
-            if (assistantMsg != null && !vm.isGenerating.value) return@repeat
-            delay(50)
+            var assistantMsg: ChatMessage? = null
+            repeat(160) {
+                val msgs = repository.getRecentMessages(sessionId, 10)
+                assistantMsg = msgs.lastOrNull { it.role == "assistant" }
+                if (assistantMsg != null && !vm.isGenerating.value) return@repeat
+                delay(50)
+            }
+
+            val finalMsgs = repository.getRecentMessages(sessionId, 20)
+            assertNotNull(
+                "assistantMsg null (reqCount=${server.requestCount}, isGen=${vm.isGenerating.value}, status=${vm.thinkingStatus.value}, msgs=${finalMsgs.map { it.role + ':' + it.content.take(60) }})",
+                assistantMsg
+            )
+            assertTrue(assistantMsg!!.content.contains("Ayra AI verified Clean Architecture response."))
+            assertEquals(assistantMsg!!.content, spokenReply)
+            assertFalse(vm.isGenerating.value)
+            assertTrue(vm.activeCitations.value.isEmpty())
+            assertTrue(vm.agentPlanSteps.value.isEmpty())
+        } finally {
+            vm.releaseForTests()
         }
-
-        val finalMsgs = repository.getRecentMessages(sessionId, 20)
-        assertNotNull(
-            "assistantMsg null (reqCount=${server.requestCount}, isGen=${vm.isGenerating.value}, status=${vm.thinkingStatus.value}, msgs=${finalMsgs.map { it.role + ':' + it.content.take(60) }})",
-            assistantMsg
-        )
-        assertTrue(assistantMsg!!.content.contains("Ayra AI verified Clean Architecture response."))
-        assertEquals(assistantMsg!!.content, spokenReply)
-        assertFalse(vm.isGenerating.value)
-        assertTrue(vm.activeCitations.value.isEmpty())
-        assertTrue(vm.agentPlanSteps.value.isEmpty())
     }
 
     @Test
     fun `opt-in memory banner inspects candidate fact and saves only after explicit confirmation`() = runBlocking {
         val vm = ChatViewModel(repository)
-        vm.ensureSessionReady()
+        try {
+            vm.ensureSessionReady()
 
-        // Memory disabled by default -> no banner candidate emitted
-        assertFalse(AyraPreferences.isMemoryEnabled(context))
-        vm.inspectCandidateMemory(context, "Remember that I prefer Jetpack Compose")
-        assertNull(vm.pendingMemoryCandidate.value)
+            // Memory disabled by default -> no banner candidate emitted
+            assertFalse(AyraPreferences.isMemoryEnabled(context))
+            vm.inspectCandidateMemory(context, "Remember that I prefer Jetpack Compose")
+            assertNull(vm.pendingMemoryCandidate.value)
 
-        // Enable opt-in memory -> candidate surfaced, dismiss skips persistence
-        AyraPreferences.setMemoryEnabled(context, true)
-        vm.inspectCandidateMemory(context, "Remember that I prefer Jetpack Compose")
-        assertNotNull(vm.pendingMemoryCandidate.value)
-        vm.dismissPendingMemorySave()
-        assertNull(vm.pendingMemoryCandidate.value)
-        assertTrue(ChatDatabase.getDatabase(context).longTermMemoryDao().getAllSync().isEmpty())
+            // Enable opt-in memory -> candidate surfaced, dismiss skips persistence
+            AyraPreferences.setMemoryEnabled(context, true)
+            vm.inspectCandidateMemory(context, "Remember that I prefer Jetpack Compose")
+            assertNotNull(vm.pendingMemoryCandidate.value)
+            vm.dismissPendingMemorySave()
+            assertNull(vm.pendingMemoryCandidate.value)
+            assertTrue(ChatDatabase.getDatabase(context).longTermMemoryDao().getAllSync().isEmpty())
 
-        // Explicit confirmation persists encrypted record into Room
-        vm.inspectCandidateMemory(context, "My name is Alok")
-        assertNotNull(vm.pendingMemoryCandidate.value)
-        var feedback = ""
-        vm.confirmPendingMemorySave(context) { feedback = it }
+            // Explicit confirmation persists encrypted record into Room
+            vm.inspectCandidateMemory(context, "My name is Alok")
+            assertNotNull(vm.pendingMemoryCandidate.value)
+            var feedback = ""
+            vm.confirmPendingMemorySave(context) { feedback = it }
 
-        var savedCount = 0
-        repeat(40) {
-            savedCount = ChatDatabase.getDatabase(context).longTermMemoryDao().getAllSync().size
-            if (savedCount > 0 && feedback.isNotBlank()) return@repeat
-            delay(50)
+            var savedCount = 0
+            repeat(40) {
+                savedCount = ChatDatabase.getDatabase(context).longTermMemoryDao().getAllSync().size
+                if (savedCount > 0 && feedback.isNotBlank()) return@repeat
+                delay(50)
+            }
+
+            assertEquals(1, savedCount)
+            assertTrue(feedback.contains("Saved to encrypted memory"))
+            assertNull(vm.pendingMemoryCandidate.value)
+        } finally {
+            vm.releaseForTests()
         }
-
-        assertEquals(1, savedCount)
-        assertTrue(feedback.contains("Saved to encrypted memory"))
-        assertNull(vm.pendingMemoryCandidate.value)
     }
 
     @Test

@@ -303,20 +303,26 @@ class AuditStabilizationRegressionTest {
             .allowMainThreadQueries()
             .build()
 
+        var vm: ChatViewModel? = null
         try {
             val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
             val session = repo.ensureActiveSession()
             val userMsgId = repo.appendMessage(session.id, ChatMessage(role = "user", content = "Hello Ayra", timestamp = 100L))
             val assistantMsgId = repo.appendMessage(session.id, ChatMessage(role = "assistant", content = "Old assistant reply", timestamp = 200L))
 
-            val vm = ChatViewModel(repo)
+            val activeVm = ChatViewModel(repo)
+            vm = activeVm
             advanceUntilIdle()
 
             // Verify deleteMessage updates Room messages + session preview cleanly
-            vm.deleteMessage(assistantMsgId)
-            advanceUntilIdle()
-
-            val remaining = repo.observeMessages(session.id).first()
+            activeVm.deleteMessage(assistantMsgId)
+            val deleteDeadline = System.currentTimeMillis() + 3000L
+            var remaining = repo.observeMessages(session.id).first()
+            while (remaining.size != 1 && System.currentTimeMillis() < deleteDeadline) {
+                Thread.sleep(15)
+                advanceUntilIdle()
+                remaining = repo.observeMessages(session.id).first()
+            }
             assertEquals(1, remaining.size)
             assertEquals(userMsgId, remaining.single().id)
             val updatedSession = db.chatSessionDao().getSessionById(session.id)
@@ -327,7 +333,7 @@ class AuditStabilizationRegressionTest {
             // Verify regenerateResponse reports missing prompt safely when no preceding user turn exists
             val orphanAssistant = ChatMessage(id = 999L, sessionId = session.id, role = "assistant", content = "Orphan reply", timestamp = 300L)
             var missingPromptTriggered = false
-            vm.regenerateResponse(
+            activeVm.regenerateResponse(
                 assistantMessage = orphanAssistant,
                 orchestrator = AyraOrchestrator(context),
                 persona = "AI_ASSISTANT",
@@ -340,8 +346,9 @@ class AuditStabilizationRegressionTest {
                 advanceUntilIdle()
             }
             assertTrue(missingPromptTriggered)
-            assertFalse(vm.isGenerating.value)
+            assertFalse(activeVm.isGenerating.value)
         } finally {
+            vm?.releaseForTests()
             Dispatchers.resetMain()
             db.close()
             context.deleteDatabase(dbName)

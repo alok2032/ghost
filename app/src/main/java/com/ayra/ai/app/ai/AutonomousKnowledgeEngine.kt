@@ -92,10 +92,12 @@ object AutonomousKnowledgeEngine {
         val cachedNewSourcesCount: Int = 0
     )
 
+    private data class TimedWikiEntry(val value: String, val timestampMs: Long)
     private const val MAX_CACHE_ENTRIES = 250
+    private const val WIKI_CACHE_TTL_MS = 10 * 60 * 1000L
     private val cacheLock = Any()
-    private val knowledgeCache = object : LinkedHashMap<String, String>(MAX_CACHE_ENTRIES + 1, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+    private val knowledgeCache = object : LinkedHashMap<String, TimedWikiEntry>(MAX_CACHE_ENTRIES + 1, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, TimedWikiEntry>?): Boolean {
             return size > MAX_CACHE_ENTRIES
         }
     }
@@ -109,13 +111,18 @@ object AutonomousKnowledgeEngine {
     private val USER_AGENT = "AyraAiAssistant/3.2 (Linux; Android 14; Mobile; https://ayra-ai.app/assistant)"
 
     internal fun getCache(key: String): String? = synchronized(cacheLock) {
-        knowledgeCache[key]
+        val entry = knowledgeCache[key] ?: return@synchronized null
+        if (System.currentTimeMillis() - entry.timestampMs > WIKI_CACHE_TTL_MS) {
+            knowledgeCache.remove(key)
+            return@synchronized null
+        }
+        entry.value
     }
 
     internal fun putCache(key: String, value: String) {
         if (value.isBlank()) return
         synchronized(cacheLock) {
-            knowledgeCache[key] = value
+            knowledgeCache[key] = TimedWikiEntry(value, System.currentTimeMillis())
         }
     }
 

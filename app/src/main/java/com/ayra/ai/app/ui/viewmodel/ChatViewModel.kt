@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -538,6 +539,17 @@ class ChatViewModel(
         _activeCitations.value = emptyList()
         _errorMessage.value = error
         inFlightJob = null
+    }
+
+    /**
+     * Cancels active coroutines and detaches the Room repository before a test closes ChatDatabase.
+     */
+    fun releaseForTests() {
+        inFlightJob?.cancel()
+        inFlightJob = null
+        repository = null
+        _repositoryFlow.value = null
+        viewModelScope.coroutineContext.cancelChildren()
     }
 
     companion object {

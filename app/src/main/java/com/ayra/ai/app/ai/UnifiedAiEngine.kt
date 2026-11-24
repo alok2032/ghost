@@ -148,14 +148,23 @@ class UnifiedAiEngine @JvmOverloads constructor(
 ) {
 
     companion object {
-        private val memoryResponseCache = java.util.concurrent.ConcurrentHashMap<String, AiResponse>()
+        private data class TimedAiResponse(val response: AiResponse, val timestampMs: Long)
+        private val memoryResponseCache = java.util.concurrent.ConcurrentHashMap<String, TimedAiResponse>()
         private const val MAX_CACHE_ENTRIES = 300
+        private const val RESPONSE_CACHE_TTL_MS = 5 * 60 * 1000L
 
         fun clearCache() {
             memoryResponseCache.clear()
         }
 
-        fun getCachedResponse(key: String): AiResponse? = memoryResponseCache[key]
+        fun getCachedResponse(key: String): AiResponse? {
+            val entry = memoryResponseCache[key] ?: return null
+            if (System.currentTimeMillis() - entry.timestampMs > RESPONSE_CACHE_TTL_MS) {
+                memoryResponseCache.remove(key)
+                return null
+            }
+            return entry.response
+        }
 
         fun isCyberTerminalIntent(text: String): Boolean =
             AyraIntentClassifier.classifyIntent(text) == AyraToolIntent.TERMINAL
@@ -246,7 +255,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
         val isTimeSensitive = com.ayra.ai.app.ai.providers.ProviderPool.isTimeSensitiveQuery(cleanPrompt)
         val cacheKey = "${currentPersona}_${selectedModelTier}_${langPref}_${localOnly}_${privacyMode}_${cleanPrompt.lowercase()}"
         if (!isTimeSensitive && attachedImageBase64 == null && attachedDocumentText == null && conversationHistory.isNullOrEmpty() && cleanPrompt.isNotBlank()) {
-            memoryResponseCache[cacheKey]?.let { return@withContext it }
+            getCachedResponse(cacheKey)?.let { return@withContext it }
         }
 
         when (AyraIntentClassifier.classifyIntent(cleanPrompt)) {
@@ -392,7 +401,7 @@ class UnifiedAiEngine @JvmOverloads constructor(
                 if (memoryResponseCache.size > MAX_CACHE_ENTRIES) {
                     memoryResponseCache.clear()
                 }
-                memoryResponseCache[cacheKey] = resp
+                memoryResponseCache[cacheKey] = TimedAiResponse(resp, System.currentTimeMillis())
             }
             return resp
         }

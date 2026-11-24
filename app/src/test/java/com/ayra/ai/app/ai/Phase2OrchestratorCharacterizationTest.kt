@@ -9,12 +9,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Characterization test pinning existing AyraOrchestrator & AyraIntentClassifier
  * behavior before Phase 2 AgentCore / Memory / ViewModel upgrades.
  */
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class Phase2OrchestratorCharacterizationTest {
 
     @Test

@@ -525,9 +525,9 @@ internal fun EmptyCosmicState(
                 localOnly -> Triple("Local-Only Privacy Active ($extCount local engines)", NeonCyan, false)
                 totalEngines > 0 -> {
                     val label = if (fbReady && extCount == 0) {
-                        "Built-in Ayra AI Active (Tap + Free Pool / Keys for Ensemble)"
+                        "Built-in Ayra AI Active • Auto Live Search"
                     } else {
-                        "$totalEngines AI Engines Active • Parallel Search & Ensemble Ready"
+                        "$totalEngines AI Engines Active • Live Search & Ensemble Ready"
                     }
                     Triple(label, NeonGreen, needsQuickEnable)
                 }
@@ -604,7 +604,7 @@ internal fun EmptyCosmicState(
         ) {
             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(NeonCyan))
             Text(
-                text = "Tap '+' for Photo/Video/PDF Prompts, Cyber Lab & Tools",
+                text = "Type any prompt for Photo, Video, PDF, Music & Code — tap '+' to attach files",
                 color = NeonCyan,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold

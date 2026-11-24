@@ -394,6 +394,10 @@ object AyraAgentOrchestrator {
             lower.contains("?") || lower.contains("কি") || lower.contains("কী") ||
             lower.contains("explain") || lower.contains("history") || lower.contains("who ") ||
             lower.contains("what ") || lower.contains("why ") || lower.contains("how ") ||
+            lower.contains("latest") || lower.contains("newest") || lower.contains("release") ||
+            lower.contains("version") || lower.contains("update") || lower.contains("deprecated") ||
+            lower.contains("changelog") || lower.contains("2025") || lower.contains("2026") ||
+            lower.contains("2027") ||
             lower.contains("kobe") || lower.contains("kothay") || lower.contains("koto") ||
             lower.contains("dam") || lower.contains("notun") || lower.contains("khobor") ||
             lower.contains("kivabe")

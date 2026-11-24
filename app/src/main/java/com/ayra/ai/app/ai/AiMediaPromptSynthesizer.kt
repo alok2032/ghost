@@ -381,6 +381,9 @@ object AiMediaPromptSynthesizer {
                     maxBytes = NetworkSecurityHelper.DEFAULT_MAX_MEDIA_BYTES
                 )
             }
+            if (!hasValidImageMagicHeader(destFile)) {
+                throw IOException("Downloaded file does not match a valid raster image signature.")
+            }
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(destFile.absolutePath, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
@@ -394,5 +397,24 @@ object AiMediaPromptSynthesizer {
             runCatching { destFile.delete() }
             Result.failure(e)
         }
+    }
+
+    private fun hasValidImageMagicHeader(file: File): Boolean {
+        if (!file.exists() || file.length() < 4L) return false
+        val header = ByteArray(12)
+        val read = file.inputStream().use { it.read(header) }
+        if (read < 4) return false
+        val isPng = read >= 8 &&
+            header[0] == 0x89.toByte() && header[1] == 0x50.toByte() &&
+            header[2] == 0x4E.toByte() && header[3] == 0x47.toByte()
+        val isJpeg = header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
+        val isGif = header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() && header[2] == 'F'.code.toByte()
+        val isWebp = read >= 12 &&
+            header[0] == 'R'.code.toByte() && header[1] == 'I'.code.toByte() &&
+            header[2] == 'F'.code.toByte() && header[3] == 'F'.code.toByte() &&
+            header[8] == 'W'.code.toByte() && header[9] == 'E'.code.toByte() &&
+            header[10] == 'B'.code.toByte() && header[11] == 'P'.code.toByte()
+        val isBmp = header[0] == 'B'.code.toByte() && header[1] == 'M'.code.toByte()
+        return isPng || isJpeg || isGif || isWebp || isBmp
     }
 }

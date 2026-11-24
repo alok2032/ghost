@@ -621,13 +621,13 @@ object AyraPreferences {
     }
 
     /**
-     * Built-in keyless cloud AI pool is fail-closed (disabled) by default and requires
-     * explicit opt-in consent alongside active external AI consent and non-local-only mode.
+     * Built-in keyless cloud AI pool is enabled automatically for zero-setup multi-AI synthesis,
+     * and stays disabled whenever Local-Only Privacy Mode is enabled or the user opts out.
      */
     fun isFreeAiPoolEnabled(context: Context): Boolean {
         if (isLocalOnlyAiModeEnabled(context) || !hasExternalAiConsent(context)) return false
-        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, false) &&
-            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, false)
+        return getSensitivePrefs(context).getBoolean(KEY_FREE_AI_POOL_ENABLED, true) &&
+            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, true)
     }
 
     fun setFreeAiPoolEnabled(context: Context, enabled: Boolean) {
@@ -931,7 +931,7 @@ object AyraPreferences {
     }
 
     fun hasExternalAiConsent(context: Context): Boolean =
-        getSensitivePrefs(context).getBoolean(KEY_EXTERNAL_AI_CONSENT, false)
+        getSensitivePrefs(context).getBoolean(KEY_EXTERNAL_AI_CONSENT, true)
 
     fun setExternalAiConsent(context: Context, consented: Boolean) {
         getSensitivePrefs(context).putBoolean(KEY_EXTERNAL_AI_CONSENT, consented)
@@ -940,7 +940,7 @@ object AyraPreferences {
     fun hasFreePoolConsent(context: Context): Boolean =
         !isLocalOnlyAiModeEnabled(context) &&
             hasExternalAiConsent(context) &&
-            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, false)
+            getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, true)
 
     fun getBackendGatewayUrl(context: Context): String =
         getSensitivePrefs(context).getString(KEY_BACKEND_GATEWAY_URL, "").trim()

@@ -68,7 +68,7 @@ class AyraComposeUiTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(
+            FirebaseApp.initializeApp(context) ?: FirebaseApp.initializeApp(
                 context,
                 FirebaseOptions.Builder()
                     .setApplicationId("1:123456789012:android:composetest001")
@@ -99,30 +99,38 @@ class AyraComposeUiTest {
         val db = ChatDatabase.getDatabase(context)
         val repo = ChatRepository(context, db.chatDao(), db.chatSessionDao())
         val vm = ChatViewModel(repo)
-
-        composeRule.setContent {
-            AyraTheme {
-                DeviceConfigurationOverride(
-                    DeviceConfigurationOverride.ForcedSize(DpSize(960.dp, 800.dp))
-                ) {
-                    AyraWorkspaceHost(
-                        chatDao = db.chatDao(),
-                        viewModel = vm,
-                        currentUser = null,
-                        onSignOut = {}
-                    )
+        var mountWorkspace by mutableStateOf(true)
+        try {
+            composeRule.setContent {
+                AyraTheme {
+                    if (mountWorkspace) {
+                        DeviceConfigurationOverride(
+                            DeviceConfigurationOverride.ForcedSize(DpSize(960.dp, 800.dp))
+                        ) {
+                            AyraWorkspaceHost(
+                                chatDao = db.chatDao(),
+                                viewModel = vm,
+                                currentUser = null,
+                                onSignOut = {}
+                            )
+                        }
+                    }
                 }
             }
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("workspace_navigation_rail").assertIsDisplayed()
+            composeRule.onNodeWithTag("rail_nav_chat").assertIsDisplayed()
+            composeRule.onNodeWithTag("rail_nav_research_wiki").performScrollTo().assertIsDisplayed().performClick()
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("rail_nav_chat").performScrollTo().performClick()
+            composeRule.waitForIdle()
+        } finally {
+            mountWorkspace = false
+            composeRule.waitForIdle()
+            vm.releaseForTests()
         }
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithTag("workspace_navigation_rail").assertIsDisplayed()
-        composeRule.onNodeWithTag("rail_nav_chat").assertIsDisplayed()
-        composeRule.onNodeWithTag("rail_nav_research_wiki").performScrollTo().assertIsDisplayed().performClick()
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithTag("rail_nav_chat").performScrollTo().performClick()
-        composeRule.waitForIdle()
     }
 
     @Test
@@ -397,9 +405,14 @@ class AyraComposeUiTest {
         AyraPreferences.setFreeAiPoolEnabled(context, false)
 
         var onboardingDismissed = false
+        var showOnboardingPhase by mutableStateOf(true)
         composeRule.setContent {
             AyraTheme {
-                OnboardingOverlay(onDismissed = { onboardingDismissed = true })
+                if (showOnboardingPhase) {
+                    OnboardingOverlay(onDismissed = { onboardingDismissed = true })
+                } else {
+                    EmptyCosmicState(currentPersona = "AI_ASSISTANT")
+                }
             }
         }
         composeRule.waitForIdle()
@@ -412,16 +425,11 @@ class AyraComposeUiTest {
         assertTrue(AyraPreferences.hasExternalAiConsent(context))
         assertTrue(AyraPreferences.isFreeAiPoolEnabled(context))
 
-        // Reset and verify quick_enable_all_ai_button inside EmptyCosmicState
+        // Reset and switch composition to verify quick_enable_all_ai_button inside EmptyCosmicState
         AyraPreferences.setLocalOnlyAiModeEnabled(context, false)
         AyraPreferences.setExternalAiConsent(context, false)
         AyraPreferences.setFreeAiPoolEnabled(context, false)
-
-        composeRule.setContent {
-            AyraTheme {
-                EmptyCosmicState(currentPersona = "AI_ASSISTANT")
-            }
-        }
+        showOnboardingPhase = false
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("quick_enable_all_ai_button").performScrollTo().assertIsDisplayed().performClick()

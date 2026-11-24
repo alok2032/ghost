@@ -76,6 +76,7 @@ import com.ayra.ai.app.voice.VoiceAssistantManager
 import com.ayra.ai.app.voice.VoiceUiState
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -120,7 +121,8 @@ fun ChatScreen(
         } else null
     }
     val taskScheduler = remember { AyraTaskScheduler(context) }
-    val scheduledTasks by db.scheduledTaskDao().getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val scheduledTasksFlow = remember(db) { db.scheduledTaskDao().getAllTasks().catch { if (it !is IllegalStateException) throw it; emit(emptyList()) } }
+    val scheduledTasks by scheduledTasksFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val currentPersona by viewModel.currentPersona.collectAsStateWithLifecycle()
     val selectedModelTier by viewModel.selectedModelTier.collectAsStateWithLifecycle()
@@ -746,7 +748,6 @@ fun ChatScreen(
             },
             onPickGallery = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onPickDocument = { documentLauncher.launch(ChatScreenMediaHelper.SUPPORTED_DOCUMENT_MIME_TYPES) },
-            onOpenControlCenter = { showControlCenterSheet = true },
             onShareGpsLocation = {
                 val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                 val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -757,10 +758,6 @@ fun ChatScreen(
                         locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                     }
                 }
-            },
-            onDispatchPromptImmediately = { prompt ->
-                viewModel.updateInputText(prompt)
-                dispatchPromptRef?.invoke(prompt)
             },
             rationaleTitle = rationaleTitle,
             rationaleBody = rationaleBody,

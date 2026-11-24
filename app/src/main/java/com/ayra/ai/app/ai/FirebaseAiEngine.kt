@@ -64,8 +64,8 @@ class FirebaseAiEngine(private val context: Context?) {
         const val MODEL_IMAGE_NANO_BANANA = "gemini-nano-banana-2.1"
         const val MODEL_TTS = "gemini-3.1-flash-tts-preview"
 
-        private const val STREAM_SEARCH_TIMEOUT_MS = 10_000L
-        private const val UNARY_SEARCH_TIMEOUT_MS = 7_500L
+        private const val STREAM_SEARCH_TIMEOUT_MS = 14_000L
+        private const val UNARY_SEARCH_TIMEOUT_MS = 11_000L
         private const val TEXT_TIMEOUT_MS = 22_000L
         private const val IMAGE_TIMEOUT_MS = 90_000L
 

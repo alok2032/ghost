@@ -64,22 +64,24 @@ class ZeroSetupAndMediaIntegrityTest {
 
     @Test
     fun builtInFirebaseAiIsAvailableWithoutThirdPartyConsentWhileThirdPartyStaysGated() {
-        // Fresh preferences: third-party external AI consent defaults to false
-        assertFalse(AyraPreferences.hasExternalAiConsent(context))
+        // Fresh preferences: zero-setup activates built-in + keyless multi-AI out of the box
+        assertTrue(AyraPreferences.hasExternalAiConsent(context))
         assertFalse(AyraPreferences.isLocalOnlyAiModeEnabled(context))
 
         // Built-in Firebase AI Logic works out of the box when FirebaseApp is initialized
         assertTrue(
-            "FirebaseAiEngine.isAvailable must return true on fresh launch without external consent",
+            "FirebaseAiEngine.isAvailable must return true on fresh launch",
             FirebaseAiEngine.isAvailable(context)
         )
 
-        // Third-party BYOK / Free AI Pool remains fail-closed until opt-in
+        // Revoking third-party consent gates third-party channels while Firebase AI stays active
+        AyraPreferences.setExternalAiConsent(context, false)
         val ext = ExternalAiProviders(context)
         assertTrue(
-            "Third-party external channels must stay empty until explicit consent",
+            "Third-party external channels must stay empty when consent is disabled",
             ext.getActiveChannels().isEmpty()
         )
+        assertTrue(FirebaseAiEngine.isAvailable(context))
 
         // Local-Only Privacy Mode still disables built-in Firebase AI Logic
         AyraPreferences.setLocalOnlyAiModeEnabled(context, true)

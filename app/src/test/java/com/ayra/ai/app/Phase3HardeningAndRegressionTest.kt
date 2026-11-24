@@ -332,6 +332,12 @@ class Phase3HardeningAndRegressionTest {
         )
         assertFalse(mismatchPrefix.valid)
 
+        // Ensure any default FirebaseApp left behind by earlier Robolectric suites is initialized from live resources
+        FirebaseApp.getApps(context)
+            .firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+            ?.delete()
+        FirebaseApp.initializeApp(context)
+
         val liveAudit = FirebaseConfigConsistencyValidator.validate(context)
         assertTrue("Expected active project resources to pass consistency check: ${liveAudit.issues}", liveAudit.valid)
         assertEquals(context.getString(R.string.project_id), liveAudit.projectId)

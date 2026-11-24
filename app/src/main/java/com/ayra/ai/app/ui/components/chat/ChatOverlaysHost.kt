@@ -56,9 +56,7 @@ internal fun ChatOverlaysHost(
     onTakePhoto: () -> Unit,
     onPickGallery: () -> Unit,
     onPickDocument: () -> Unit,
-    onOpenControlCenter: () -> Unit,
     onShareGpsLocation: () -> Unit,
-    onDispatchPromptImmediately: (String) -> Unit,
     rationaleTitle: String?,
     rationaleBody: String,
     rationaleActionLabel: String,
@@ -90,14 +88,6 @@ internal fun ChatOverlaysHost(
             onTakePhoto = onTakePhoto,
             onPickGallery = onPickGallery,
             onPickDocument = onPickDocument,
-            onSelectModelTierAndPrompt = { tierId, prompt ->
-                viewModel.setModelTier(tierId)
-                aiEngine.selectedModelTier = tierId
-                viewModel.updateInputText(prompt)
-            },
-            onFillPromptOnly = { viewModel.updateInputText(it) },
-            onDispatchPromptImmediately = onDispatchPromptImmediately,
-            onOpenControlCenter = onOpenControlCenter,
             onShareGpsLocation = onShareGpsLocation
         )
     }

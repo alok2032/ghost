@@ -393,8 +393,8 @@ private fun WorkspaceAndBackupPanel(context: android.content.Context) {
                     Text(
                         text = when {
                             isLocalOnly -> "Blocked while Local-Only AI Mode is enabled"
-                            !AyraPreferences.hasExternalAiConsent(context) -> "Requires External Cloud AI consent (tap to opt in)"
-                            else -> "Keyless community endpoints when personal keys aren't set"
+                            !AyraPreferences.hasExternalAiConsent(context) -> "Paused — enable External Cloud AI consent to reactivate"
+                            else -> "Auto-active keyless GPT/OSS, Qwen Coder & DeepSeek ensemble"
                         },
                         color = if (isLocalOnly) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
