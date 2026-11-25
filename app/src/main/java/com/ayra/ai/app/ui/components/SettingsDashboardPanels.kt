@@ -404,7 +404,7 @@ fun DeviceAndUsageDashboardPanel(
                             scope.launch(Dispatchers.IO) {
                                 val (statusMsg, models) = runCatching {
                                     val base = ollamaHost.trim().trimEnd('/')
-                                    val check = NetworkSecurityHelper.validateLocalAiEndpointUrl(context, base)
+                                    val check = NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, base)
                                     if (!check.allowed) {
                                         return@runCatching (check.reason ?: "Blocked endpoint URL") to emptyList()
                                     }

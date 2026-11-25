@@ -249,6 +249,9 @@ fun ProviderKeysSection(
                         }
                     }
                     AyraPreferences.setBackendGatewayUrl(context, clean)
+                    if (clean.isNotEmpty()) {
+                        com.ayra.ai.app.security.SecureAiGatewayClient.initialize(context)
+                    }
                     com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
                     com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(context)
                     notifyActivationChanged()
@@ -292,9 +295,7 @@ fun ProviderKeysSection(
                     if (customUrl.isBlank()) {
                         throw IllegalStateException("Save a Custom Proxy / LAN Gateway URL first.")
                     }
-                    val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, customUrl)
-                    }
+                    val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, customUrl)
                     if (!urlCheck.allowed) {
                         throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                     }
@@ -346,9 +347,7 @@ fun ProviderKeysSection(
                 notifyActivationChanged()
             },
             onTest = { endpoint ->
-                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
-                }
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, endpoint)
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe Ollama endpoint URL.")
                 }
@@ -417,9 +416,7 @@ fun ProviderKeysSection(
                 notifyActivationChanged()
             },
             onTest = { endpoint ->
-                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
-                }
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, endpoint)
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe endpoint URL.")
                 }
@@ -469,9 +466,7 @@ fun ProviderKeysSection(
             onSave = { AyraPreferences.setComfyUiUrl(context, it); notifyActivationChanged() },
             onClear = { AyraPreferences.setComfyUiUrl(context, ""); notifyActivationChanged() },
             onTest = { endpoint ->
-                val urlCheck = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrl(context, endpoint)
-                }
+                val urlCheck = com.ayra.ai.app.security.NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, endpoint)
                 if (!urlCheck.allowed) {
                     throw IllegalArgumentException(urlCheck.reason ?: "Blocked unsafe ComfyUI URL.")
                 }

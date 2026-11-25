@@ -436,7 +436,7 @@ internal object ProviderAnthropicAndFreeTransport {
         }
         AiRoutingMode.CODING -> when {
             configured.contains(AiProviderType.ANTHROPIC) -> Pair(AiProviderType.ANTHROPIC, ExternalAiProviders.ANTHROPIC_SONNET_MODEL)
-            configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, "codestral-latest")
+            configured.contains(AiProviderType.MISTRAL) -> Pair(AiProviderType.MISTRAL, ModelCatalog.MISTRAL_CODESTRAL_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
             configured.contains(AiProviderType.GEMINI) -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_PRO_MODEL)
@@ -447,7 +447,7 @@ internal object ProviderAnthropicAndFreeTransport {
             else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_CODER_MODEL)
         }
         AiRoutingMode.PRIVACY_LOCAL -> when {
-            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, "llama3.3")
+            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.OLLAMA_LLAMA_MODEL)
             configured.contains(AiProviderType.DEEPSEEK) -> Pair(AiProviderType.DEEPSEEK, ExternalAiProviders.DEEPSEEK_CHAT_MODEL)
             else -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_DEFAULT_MODEL)
         }
@@ -456,12 +456,12 @@ internal object ProviderAnthropicAndFreeTransport {
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)
             configured.contains(AiProviderType.CEREBRAS) -> Pair(AiProviderType.CEREBRAS, ExternalAiProviders.CEREBRAS_LLAMA_MODEL)
             configured.contains(AiProviderType.SAMBANOVA) -> Pair(AiProviderType.SAMBANOVA, ExternalAiProviders.SAMBANOVA_DEEPSEEK_MODEL)
-            configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, "openai")
+            configured.contains(AiProviderType.POLLINATIONS_FREE) -> Pair(AiProviderType.POLLINATIONS_FREE, ModelCatalog.POLLINATIONS_OPENAI_MODEL)
             configured.contains(AiProviderType.NVIDIA_NIM) -> Pair(AiProviderType.NVIDIA_NIM, ModelCatalog.defaultModelFor(AiProviderType.NVIDIA_NIM)?.id ?: ExternalAiProviders.NVIDIA_LLAMA_MODEL)
             else -> Pair(AiProviderType.GEMINI, ExternalAiProviders.GEMINI_FLASH_LITE_MODEL)
         }
         AiRoutingMode.OPEN_WEIGHTS -> when {
-            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: "qwen2.5:14b")
+            configured.contains(AiProviderType.LOCAL_OLLAMA) -> Pair(AiProviderType.LOCAL_OLLAMA, ModelCatalog.defaultModelFor(AiProviderType.LOCAL_OLLAMA)?.id ?: ModelCatalog.OLLAMA_QWEN_MODEL)
             configured.contains(AiProviderType.OPENROUTER) -> Pair(AiProviderType.OPENROUTER, ExternalAiProviders.OPENROUTER_QWEN_FREE_MODEL)
             configured.contains(AiProviderType.HUGGINGFACE) -> Pair(AiProviderType.HUGGINGFACE, ExternalAiProviders.HF_QWEN_MODEL)
             configured.contains(AiProviderType.GROQ) -> Pair(AiProviderType.GROQ, ExternalAiProviders.GROQ_QWEN_MODEL)

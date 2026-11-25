@@ -950,11 +950,37 @@ object AyraPreferences {
             hasExternalAiConsent(context) &&
             getSensitivePrefs(context).getBoolean(KEY_FREE_POOL_CONSENT, true)
 
-    fun getBackendGatewayUrl(context: Context): String =
-        getSensitivePrefs(context).getString(KEY_BACKEND_GATEWAY_URL, "").trim()
+    fun getBackendGatewayUrl(context: Context): String {
+        val vaulted = SecureKeyStore.getSecret(context, SecureKeyStore.KEY_BACKEND_GATEWAY_URL)
+            .trim()
+            .trimEnd('/')
+        if (vaulted.isNotEmpty()) return vaulted
+
+        val sensitive = getSensitivePrefs(context)
+        val legacy = sensitive.getString(KEY_BACKEND_GATEWAY_URL, "").trim().trimEnd('/')
+        if (legacy.isNotEmpty()) {
+            SecureKeyStore.putSecret(context, SecureKeyStore.KEY_BACKEND_GATEWAY_URL, legacy)
+            sensitive.remove(KEY_BACKEND_GATEWAY_URL)
+        }
+        return legacy
+    }
 
     fun setBackendGatewayUrl(context: Context, url: String) {
-        getSensitivePrefs(context).putString(KEY_BACKEND_GATEWAY_URL, url.trim())
+        val clean = url.trim().trimEnd('/')
+        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_BACKEND_GATEWAY_URL, clean)
+        getSensitivePrefs(context).remove(KEY_BACKEND_GATEWAY_URL)
+        com.ayra.ai.app.security.SecureAiGatewayClient.invalidateEndpointCache()
+    }
+
+    fun getBackendRemoteConfigUrl(context: Context): String =
+        SecureKeyStore.getSecret(context, SecureKeyStore.KEY_BACKEND_REMOTE_CONFIG_URL)
+            .trim()
+            .trimEnd('/')
+
+    fun setBackendRemoteConfigUrl(context: Context, url: String) {
+        val clean = url.trim().trimEnd('/')
+        SecureKeyStore.putSecret(context, SecureKeyStore.KEY_BACKEND_REMOTE_CONFIG_URL, clean)
+        com.ayra.ai.app.security.SecureAiGatewayClient.invalidateEndpointCache()
     }
 
     fun isByokPreferred(context: Context): Boolean =
@@ -1011,6 +1037,7 @@ object AyraPreferences {
     fun clearAllPreferences(context: Context) {
         getSensitivePrefs(context).clear()
         getPrefs(context).edit().clear().commit()
+        com.ayra.ai.app.security.SecureAiGatewayClient.invalidateEndpointCache()
         _themeModeFlow.value = "dark"
         _accentPresetFlow.value = "cyan"
         _customAccentHexFlow.value = "#00F0FF"

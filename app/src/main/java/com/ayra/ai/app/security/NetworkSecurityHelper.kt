@@ -534,16 +534,28 @@ object NetworkSecurityHelper {
         )
     }
 
+    /**
+     * Suspend off-main-thread wrapper for [validateLocalAiEndpointUrl] safe to call from Compose/UI coroutines.
+     */
+    suspend fun validateLocalAiEndpointUrlAsync(
+        context: Context?,
+        rawUrl: String
+    ): UrlValidationResult = withContext(Dispatchers.IO) {
+        validateLocalAiEndpointUrl(context, rawUrl)
+    }
+
     private fun isLoopbackHost(cleanHost: String): Boolean =
         cleanHost == "localhost" || cleanHost == "127.0.0.1" || cleanHost == "::1" || cleanHost == "10.0.2.2"
 
-    private fun isCloudMetadataHost(cleanHost: String): Boolean =
-        cleanHost.startsWith("169.254.") ||
-            cleanHost == "metadata.google.internal" ||
-            cleanHost == "metadata" ||
-            cleanHost == "metadata.goog" ||
-            cleanHost == "100.100.100.200" ||
-            cleanHost == "fd00:ec2::254"
+    private fun isCloudMetadataHost(cleanHost: String): Boolean {
+        val unbracketed = cleanHost.removePrefix("[").removeSuffix("]").substringBefore('%')
+        return (isValidIpv4Literal(unbracketed) && unbracketed.startsWith("169.254.")) ||
+            unbracketed == "metadata.google.internal" ||
+            unbracketed == "metadata" ||
+            unbracketed == "metadata.goog" ||
+            unbracketed == "100.100.100.200" ||
+            unbracketed == "fd00:ec2::254"
+    }
 
     private fun isPrivateHostOrLanLiteral(clean: String): Boolean =
         isForbiddenInternalHostLiteral(clean)
@@ -568,6 +580,23 @@ object NetworkSecurityHelper {
         return false
     }
 
+    internal fun parseNumericIpLiteralOrNull(host: String): InetAddress? {
+        val clean = host.trim().lowercase(Locale.ROOT).removePrefix("[").removeSuffix("]").trimEnd('.')
+        if (clean.isEmpty()) return null
+        if (isValidIpv4Literal(clean)) {
+            return runCatching { InetAddress.getByName(clean) }.getOrNull()
+        }
+        if (clean.contains(':')) {
+            val addrWithoutZone = clean.substringBefore('%')
+            if (addrWithoutZone.isNotEmpty() &&
+                addrWithoutZone.all { it.isDigit() || it in 'a'..'f' || it == ':' || it == '.' }
+            ) {
+                return runCatching { InetAddress.getByName(addrWithoutZone) }.getOrNull()
+            }
+        }
+        return null
+    }
+
     internal fun isForbiddenInternalHostLiteral(host: String): Boolean {
         val clean = host.trim().lowercase(Locale.ROOT).removePrefix("[").removeSuffix("]").trimEnd('.')
         if (clean.isEmpty()) return true
@@ -576,36 +605,17 @@ object NetworkSecurityHelper {
             clean.endsWith(".internal") ||
             clean.endsWith(".localhost") ||
             clean.endsWith(".arpa") ||
-            isCloudMetadataHost(clean) ||
-            clean == "::1" ||
-            clean == "::" ||
-            clean == "0.0.0.0"
+            isCloudMetadataHost(clean)
         ) {
             return true
         }
-        if (clean.contains(':')) {
-            // Apply IPv6 prefix checks strictly to colon-containing IPv6 literals, never domain names like fd-example.com or ffmpeg.org.
-            if (clean.startsWith("fc") ||
-                clean.startsWith("fd") ||
-                clean.startsWith("fe80:") ||
-                clean.startsWith("fec0:") ||
-                clean.startsWith("64:ff9b:") ||
-                clean.startsWith("2001:db8:") ||
-                clean.startsWith("ff")
-            ) {
-                return true
-            }
-            val parsedV6 = runCatching {
-                if (clean.all { it.isDigit() || it in 'a'..'f' || it == ':' || it == '.' }) {
-                    InetAddress.getByName(clean)
-                } else null
-            }.getOrNull()
-            if (parsedV6 != null && isPrivateOrSpecialAddress(parsedV6)) return true
-            return false
+        val parsed = parseNumericIpLiteralOrNull(clean)
+        if (parsed != null) {
+            return isPrivateOrSpecialAddress(parsed)
         }
-        if (isValidIpv4Literal(clean)) {
-            val octets = clean.split('.').map { it.toInt() }
-            return isPrivateOrSpecialIpv4Bytes(octets[0], octets[1], octets[2])
+        // Fail closed if a host still contains ':' but is not a valid numeric IPv6 literal.
+        if (clean.contains(':')) {
+            return true
         }
         return false
     }

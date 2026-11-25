@@ -660,7 +660,8 @@ class ProviderPool @JvmOverloads constructor(
                 )
             }
             if (!routeBAllowed || !request.imageBase64.isNullOrBlank()) return false
-            val gatewayUrl = testCfg?.baseUrl ?: AyraPreferences.getBackendGatewayUrl(appCtx)
+            val gatewayUrl = testCfg?.baseUrl
+                ?: com.ayra.ai.app.security.SecureAiGatewayClient.getValidatedBackendGatewayUrl(appCtx).orEmpty()
             if (gatewayUrl.isBlank()) return false
 
             val mappedProvider = request.preferredProvider?.takeIf {
@@ -672,14 +673,12 @@ class ProviderPool @JvmOverloads constructor(
                 )
             } ?: AiProviderType.GEMINI
             val gatewaySlug = com.ayra.ai.app.security.SecureAiGatewayClient.mapProviderToGatewaySlug(mappedProvider)
+            val appSavedTier = AyraPreferences.getSavedModelTier(appCtx).trim().lowercase()
             val gatewayModel = request.preferredModelId?.takeIf { it.isNotBlank() } ?: when (gatewaySlug) {
                 "groq" -> ExternalAiProviders.GROQ_QWEN_MODEL
                 "openrouter" -> ExternalAiProviders.OPENROUTER_DEFAULT_MODEL
                 "nvidia" -> ExternalAiProviders.NVIDIA_LLAMA_MODEL
-                else -> if (request.mode == ProviderPoolMode.BEST ||
-                    request.routingMode == AiRoutingMode.REASONING ||
-                    request.routingMode == AiRoutingMode.BEST_QUALITY
-                ) {
+                else -> if (appSavedTier == "gemini_pro") {
                     com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_PRO_REASONING
                 } else {
                     com.ayra.ai.app.ai.FirebaseAiEngine.MODEL_FLASH

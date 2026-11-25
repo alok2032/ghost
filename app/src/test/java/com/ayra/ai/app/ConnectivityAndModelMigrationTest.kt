@@ -11,6 +11,7 @@ import com.ayra.ai.app.ai.providers.ChatTurn
 import com.ayra.ai.app.ai.providers.ExternalAiProviders
 import com.ayra.ai.app.ai.providers.ModelCatalog
 import com.ayra.ai.app.ai.providers.ProviderAnthropicAndFreeTransport
+import com.ayra.ai.app.ai.providers.ProviderCircuitBreaker
 import com.ayra.ai.app.ai.providers.ProviderError
 import com.ayra.ai.app.ai.providers.ProviderPool
 import com.ayra.ai.app.ai.providers.AyraError
@@ -22,6 +23,9 @@ import com.ayra.ai.app.security.NetworkConnectivityManager
 import com.ayra.ai.app.security.NetworkSecurityHelper
 import com.ayra.ai.app.security.NetworkTransportType
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -234,5 +238,88 @@ class ConnectivityAndModelMigrationTest {
         )
         val selfTest = FirebaseAiEngine(context).runStartupSelfTest(context)
         assertEquals(FirebaseSelfTestOutcome.OFFLINE, selfTest.outcome)
+    }
+
+    @Test
+    fun isForbiddenInternalHostLiteralUsesParsedInetAddressWithoutDomainPrefixFalsePositives() {
+        // Legitimate hostnames starting with "fc"/"fd"/"ff" must NOT be falsely blocked
+        assertFalse(NetworkSecurityHelper.isForbiddenInternalHostLiteral("fcm.googleapis.com"))
+        assertFalse(NetworkSecurityHelper.isForbiddenInternalHostLiteral("fd-example.com"))
+        assertFalse(NetworkSecurityHelper.isForbiddenInternalHostLiteral("ffmpeg.org"))
+        assertFalse(NetworkSecurityHelper.isForbiddenInternalHostLiteral("fc-cloud.org"))
+        assertFalse(NetworkSecurityHelper.isForbiddenInternalHostLiteral("2001:4860:4860::8888"))
+
+        // Internal, ULA, link-local (including zone ID), multicast, documentation, IPv4-mapped & Fake-IP must be blocked
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[fd00::1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[fc00::1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[fe80::1%eth0]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[fec0::1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[ff02::1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[2001:db8::1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("[::ffff:127.0.0.1]"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("198.18.0.1"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("169.254.169.254"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("192.168.1.1"))
+        assertTrue(NetworkSecurityHelper.isForbiddenInternalHostLiteral("malformed:colon:host"))
+    }
+
+    @Test
+    fun validateLocalAiEndpointUrlAsyncEnforcesLoopbackAndLanPolicyOffMainThread() = runBlocking {
+        assertTrue(NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, "http://127.0.0.1:11434").allowed)
+        assertFalse(NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, "https://192.168.1.40:11434").allowed)
+        AyraPreferences.setAllowLanEndpointsEnabled(context, true)
+        assertTrue(NetworkSecurityHelper.validateLocalAiEndpointUrlAsync(context, "https://192.168.1.40:11434").allowed)
+    }
+
+    @Test
+    fun circuitBreakerHalfOpenAllowsSingleProbeAndReopensOnFailure() {
+        val breaker = ProviderCircuitBreaker(failureThreshold = 2, cooldownPeriodMs = 20L)
+        breaker.recordFailure(AiProviderType.GROQ)
+        breaker.recordFailure(AiProviderType.GROQ)
+        assertEquals(ProviderCircuitBreaker.State.OPEN, breaker.getState(AiProviderType.GROQ))
+        assertFalse(breaker.canExecute(AiProviderType.GROQ))
+
+        Thread.sleep(35L)
+        val threads = 8
+        val pool = Executors.newFixedThreadPool(threads)
+        val ready = CountDownLatch(threads)
+        val go = CountDownLatch(1)
+        val done = CountDownLatch(threads)
+        val granted = AtomicInteger(0)
+
+        repeat(threads) {
+            pool.execute {
+                ready.countDown()
+                go.await()
+                if (breaker.canExecute(AiProviderType.GROQ)) {
+                    granted.incrementAndGet()
+                }
+                done.countDown()
+            }
+        }
+        ready.await()
+        go.countDown()
+        done.await()
+        pool.shutdownNow()
+
+        assertEquals("Only a single HALF_OPEN probe may be admitted", 1, granted.get())
+        assertEquals(ProviderCircuitBreaker.State.HALF_OPEN, breaker.getState(AiProviderType.GROQ))
+
+        breaker.recordFailure(AiProviderType.GROQ)
+        assertEquals(ProviderCircuitBreaker.State.OPEN, breaker.getState(AiProviderType.GROQ))
+    }
+
+    @Test
+    fun geminiFlashFallbackChainAvoidsBlazeOnlyProModel() {
+        val chain = FirebaseAiEngine(context).modelFallbackChain(FirebaseAiEngine.MODEL_FLASH)
+        assertEquals(
+            listOf(
+                FirebaseAiEngine.MODEL_FLASH,
+                FirebaseAiEngine.MODEL_FAST_LITE,
+                FirebaseAiEngine.MODEL_FLASH_35
+            ),
+            chain
+        )
+        assertFalse(chain.contains(FirebaseAiEngine.MODEL_PRO_REASONING))
     }
 }

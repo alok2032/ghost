@@ -807,10 +807,13 @@ object AiModelRegistry {
             }
         }
         var backendAdded = 0
-        if (com.ayra.ai.app.security.SecureAiGatewayClient.shouldUseBackendGatewayProxy(context, false)) {
+        val validatedGatewayUrl = com.ayra.ai.app.security.SecureAiGatewayClient.getValidatedBackendGatewayUrl(context)
+        if (validatedGatewayUrl != null &&
+            com.ayra.ai.app.security.SecureAiGatewayClient.shouldUseBackendGatewayProxy(context, false)
+        ) {
             backendAdded = syncBackendModelCatalog(
                 context = context,
-                backendBaseUrl = AyraPreferences.getBackendGatewayUrl(context),
+                backendBaseUrl = validatedGatewayUrl,
                 targetList = currentList,
                 existingPairs = existingModelPairs
             )

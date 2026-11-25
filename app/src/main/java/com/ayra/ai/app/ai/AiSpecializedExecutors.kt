@@ -180,7 +180,7 @@ internal class AiSpecializedExecutors(
             } catch (_: Exception) {}
         } else if (geminiApiKey.isNotBlank()) {
             try {
-                val res = queryGeminiModel(FirebaseAiEngine.MODEL_PRO_REASONING, "$systemPrompt\n\nUser Task:\n$effectivePrompt", imageBase64, currentPersona)
+                val res = queryGeminiPro("$systemPrompt\n\nUser Task:\n$effectivePrompt", imageBase64, currentPersona)
                 if (res.isNotBlank()) {
                     return AiResponse(
                         text = res,
@@ -300,7 +300,7 @@ internal class AiSpecializedExecutors(
     }
 
     fun queryGeminiFlash(prompt: String, imageBase64: String?, currentPersona: String): String {
-        val models = listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_PRO_REASONING, FirebaseAiEngine.MODEL_FAST_LITE)
+        val models = listOf(FirebaseAiEngine.MODEL_FLASH, FirebaseAiEngine.MODEL_FAST_LITE, FirebaseAiEngine.MODEL_FLASH_35)
         for (m in models) {
             try {
                 val ans = queryGeminiModel(m, prompt, imageBase64, currentPersona, withSearchGrounding = false)

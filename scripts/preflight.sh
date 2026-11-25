@@ -145,6 +145,40 @@ else
   ok "no legacy qwen_uncensored/godmode aliases outside preference migration"
 fi
 
+# ---------------------------------------------------------------- 4b
+section "4b. ModelCatalog SSOT & Allowlist Guard"
+MC_FILE="app/src/main/java/com/ayra/ai/app/ai/providers/ModelCatalog.kt"
+ALLOW_FILE="config/model-allowlist.txt"
+if [ ! -f "$ALLOW_FILE" ] || [ ! -f "$MC_FILE" ]; then
+  fail "Missing $ALLOW_FILE or $MC_FILE for SSOT check"
+else
+  MISSING_ALLOW=0
+  while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    if ! grep -Fxq "$id" "$ALLOW_FILE"; then
+      fail "ModelCatalog constant '$id' missing from $ALLOW_FILE"
+      MISSING_ALLOW=$((MISSING_ALLOW+1))
+    fi
+  done < <(grep -E '^\s*const val [A-Z0-9_]+_MODEL\s*=\s*"[^"]+"' "$MC_FILE" | sed -E 's/.*"([^"]+)".*/\1/' | grep -v '^github-models-retired$' || true)
+  [ "$MISSING_ALLOW" -eq 0 ] && ok "all active ModelCatalog *_MODEL constants are registered in $ALLOW_FILE"
+
+  DUP_HITS=0
+  while IFS= read -r id; do
+    [[ -z "$id" || "$id" =~ ^# ]] && continue
+    # Skip short generic provider slugs that double as AiProviderType IDs ("openai", "deepseek")
+    if [ "$id" = "openai" ] || [ "$id" = "deepseek" ]; then
+      continue
+    fi
+    HIT=$(MAIN_KT | grep -v 'ModelCatalog\.kt' | xargs grep -nF "\"$id\"" 2>/dev/null || true)
+    if [ -n "$HIT" ]; then
+      fail "hardcoded model literal \"$id\" found outside ModelCatalog.kt:"
+      echo "$HIT" | sed 's/^/        /' | cut -c1-160
+      DUP_HITS=$((DUP_HITS+1))
+    fi
+  done < "$ALLOW_FILE"
+  [ "$DUP_HITS" -eq 0 ] && ok "zero duplicate allowlisted model ID literals hardcoded outside ModelCatalog.kt"
+fi
+
 # ---------------------------------------------------------------- 5
 section "5. Credential Transport (No API Keys in URLs)"
 KEY_IN_URL=$(MAIN_KT | xargs grep -nE '([?&]|\{?[A-Za-z_]+\}?)key=(\$|\{)' 2>/dev/null || true)

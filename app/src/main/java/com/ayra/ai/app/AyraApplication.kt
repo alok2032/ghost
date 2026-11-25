@@ -9,10 +9,12 @@ import com.ayra.ai.app.security.EncryptedPreferences
 import com.ayra.ai.app.security.FirebaseConfigConsistencyValidator
 import com.ayra.ai.app.security.NetworkConnectivityManager
 import com.ayra.ai.app.security.NetworkSecurityHelper
+import com.ayra.ai.app.security.SecureAiGatewayClient
 import com.ayra.ai.app.security.SecureKeyStore
 import com.ayra.ai.app.security.SecurityAuditCategory
 import com.ayra.ai.app.security.SecurityAuditLogger
 import com.ayra.ai.app.security.SecurityAuditSeverity
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +24,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class AyraApplication : Application(), ImageLoaderFactory {
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val appExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        android.util.Log.w("AyraApplication", "Background startup coroutine failed: ${throwable.message}")
+    }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + appExceptionHandler)
 
     private val coilTransportClient by lazy {
         NetworkSecurityHelper.hardenedPooledClient.newBuilder()
@@ -79,22 +85,30 @@ class AyraApplication : Application(), ImageLoaderFactory {
         NetworkConnectivityManager.registerRecoveryListener {
             com.ayra.ai.app.ai.providers.ExternalAiProviders.clearDynamicModelCache(null)
             com.ayra.ai.app.ai.UnifiedAiEngine.clearCache()
-            com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(this@AyraApplication)
+            appScope.launch {
+                SecureAiGatewayClient.initialize(this@AyraApplication)
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(this@AyraApplication)
+            }
         }
 
         // Seed encrypted AI provider vault, apply cached catalog overrides & verify Firebase config off the main thread
         appScope.launch {
-            ensureActiveAiKeysSeeded(this@AyraApplication)
-            com.ayra.ai.app.ai.providers.ModelCatalog.loadCachedRemoteOverrides(this@AyraApplication)
-            com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(this@AyraApplication)
-            val fbAudit = FirebaseConfigConsistencyValidator.validate(this@AyraApplication)
-            if (!fbAudit.valid) {
-                SecurityAuditLogger.log(
-                    context = this@AyraApplication,
-                    category = SecurityAuditCategory.NETWORK,
-                    severity = SecurityAuditSeverity.CRITICAL,
-                    message = "Firebase config inconsistency detected: ${fbAudit.issues.joinToString("; ")}"
-                )
+            runCatching {
+                ensureActiveAiKeysSeeded(this@AyraApplication)
+                com.ayra.ai.app.ai.providers.ModelCatalog.loadCachedRemoteOverrides(this@AyraApplication)
+                SecureAiGatewayClient.initialize(this@AyraApplication)
+                com.ayra.ai.app.ai.providers.AiModelRegistry.refreshConfigurationStates(this@AyraApplication)
+                val fbAudit = FirebaseConfigConsistencyValidator.validate(this@AyraApplication)
+                if (!fbAudit.valid) {
+                    SecurityAuditLogger.log(
+                        context = this@AyraApplication,
+                        category = SecurityAuditCategory.NETWORK,
+                        severity = SecurityAuditSeverity.CRITICAL,
+                        message = "Firebase config inconsistency detected: ${fbAudit.issues.joinToString("; ")}"
+                    )
+                }
+            }.onFailure { err ->
+                android.util.Log.w("AyraApplication", "Non-fatal startup init error: ${err.message}")
             }
         }
     }

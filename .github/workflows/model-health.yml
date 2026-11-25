@@ -99,7 +99,7 @@ jobs:
               }
               const body = await res.json();
               const available = new Set((body.models || []).map((x) => String(x.name || "").replace(/^models\//, "")));
-              for (const expected of ["gemini-3.8-flash", "gemini-4-argon"]) {
+              for (const expected of ["gemini-3.6-flash", "gemini-3.5-flash-lite"]) {
                 if (!available.has(expected)) {
                   liveFindings.push(`Gemini: baseline model '${expected}' missing from live /models`);
                 }

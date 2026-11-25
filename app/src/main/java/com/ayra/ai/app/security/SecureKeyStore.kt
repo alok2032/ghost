@@ -53,6 +53,8 @@ object SecureKeyStore {
     const val KEY_SAMBANOVA = "sambanova_api_key"
     const val KEY_COMFYUI_URL = "comfyui_server_url"
     const val KEY_POLLINATIONS = "pollinations_api_key"
+    const val KEY_BACKEND_GATEWAY_URL = "backend_gateway_url"
+    const val KEY_BACKEND_REMOTE_CONFIG_URL = "backend_remote_config_url"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)

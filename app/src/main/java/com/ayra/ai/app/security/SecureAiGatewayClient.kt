@@ -25,6 +25,23 @@ data class AiRouteDecision(
     val denialReason: String? = null
 )
 
+enum class BackendGatewaySource {
+    NONE,
+    ENCRYPTED_VAULT,
+    REMOTE_CONFIG_CATALOG,
+    REMOTE_CONFIG_ENDPOINT
+}
+
+data class BackendGatewayInitResult(
+    val initialized: Boolean,
+    val endpointUrl: String? = null,
+    val source: BackendGatewaySource = BackendGatewaySource.NONE,
+    val validationResult: UrlValidationResult? = null,
+    val healthLatencyMs: Long? = null,
+    val verifiedAtMs: Long = System.currentTimeMillis(),
+    val failureReason: String? = null
+)
+
 /**
  * Zero-Trust Hybrid AI Gateway & Policy Enforcer (Phases 5 & 6).
  *
@@ -34,6 +51,265 @@ data class AiRouteDecision(
  * - Route C: External AI Cloud Providers (Gemini / Firebase AI Logic / OpenRouter / NVIDIA / etc.).
  */
 object SecureAiGatewayClient {
+
+    @Volatile
+    private var verifiedGatewayUrl: String? = null
+
+    @Volatile
+    private var rejectedCandidateUrl: String? = null
+
+    @Volatile
+    var lastInitResult: BackendGatewayInitResult? = null
+        private set
+
+    fun invalidateEndpointCache() {
+        verifiedGatewayUrl = null
+        rejectedCandidateUrl = null
+        lastInitResult = null
+    }
+
+    /**
+     * Reads the Route B gateway URL from the hardware-backed encrypted vault without falling back
+     * to any hardcoded default URL. Returns `null` when unset.
+     */
+    fun resolveVaultBackendUrl(context: Context): String? {
+        return AyraPreferences.getBackendGatewayUrl(context)
+            .trim()
+            .trimEnd('/')
+            .takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Returns the initialized & HTTPS-verified Route B gateway URL (from remote config or
+     * encrypted vault) when valid, or `null` otherwise.
+     */
+    fun getValidatedBackendGatewayUrl(context: Context): String? {
+        val cached = verifiedGatewayUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
+        if (cached != null && NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(cached).allowed) {
+            return cached
+        }
+        val vaulted = resolveVaultBackendUrl(context) ?: return null
+        if (vaulted == rejectedCandidateUrl) return null
+        return if (NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(vaulted).allowed) {
+            vaulted
+        } else {
+            null
+        }
+    }
+
+    internal fun extractBackendUrlFromRemoteJson(rawPayload: String?): String? {
+        val trimmed = rawPayload?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+        val root = runCatching { JSONObject(trimmed) }.getOrNull() ?: return null
+        val directCandidates = listOf(
+            root.optString("backendGatewayUrl", ""),
+            root.optString("backend_gateway_url", ""),
+            root.optString("gatewayUrl", ""),
+            root.optString("gateway_url", ""),
+            root.optJSONObject("gateway")?.optString("url", "").orEmpty(),
+            root.optJSONObject("config")?.optString("backendGatewayUrl", "").orEmpty(),
+            root.optJSONObject("endpoints")?.optString("gateway", "").orEmpty()
+        )
+        return directCandidates
+            .asSequence()
+            .map { it.trim().trimEnd('/') }
+            .firstOrNull { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+    }
+
+    /**
+     * Dynamically initializes the Route B gateway URL from secure remote configuration or the
+     * hardware-backed encrypted vault ([SecureKeyStore]), enforcing strict HTTPS, non-443 port,
+     * and public-DNS SSRF integrity checks before caching or persisting the endpoint.
+     */
+    suspend fun initialize(
+        context: Context,
+        remoteConfigUrlOverride: String? = null,
+        httpClient: okhttp3.OkHttpClient? = null,
+        dnsResolver: (String) -> Array<java.net.InetAddress> = { host ->
+            java.net.InetAddress.getAllByName(host)
+        },
+        remoteConfigFetcher: (suspend (Context) -> String?)? = null,
+        probeHealthOnInit: Boolean = false,
+        allowUnvalidatedUrlForTests: Boolean = false
+    ): BackendGatewayInitResult = withContext(Dispatchers.IO) {
+        val localOnly = AyraPreferences.isLocalOnlyAiModeEnabled(context)
+        var candidateUrl: String? = null
+        var source = BackendGatewaySource.NONE
+        var fetchFailureReason: String? = null
+
+        if (!localOnly) {
+            if (remoteConfigFetcher != null) {
+                val rawRemote = runCatching { remoteConfigFetcher(context) }
+                    .onFailure { fetchFailureReason = it.message ?: "Remote config provider failed." }
+                    .getOrNull()
+                val extracted = extractBackendUrlFromRemoteJson(rawRemote)
+                if (extracted != null) {
+                    candidateUrl = extracted
+                    source = BackendGatewaySource.REMOTE_CONFIG_ENDPOINT
+                }
+            }
+
+            if (candidateUrl == null) {
+                val remoteConfigEndpoint = remoteConfigUrlOverride?.trim()?.trimEnd('/')
+                    ?.takeIf { it.isNotBlank() }
+                    ?: AyraPreferences.getBackendRemoteConfigUrl(context).trim().trimEnd('/')
+                        .takeIf { it.isNotBlank() }
+
+                if (remoteConfigEndpoint != null) {
+                    val rcIntegrity = if (allowUnvalidatedUrlForTests) {
+                        UrlValidationResult(true)
+                    } else {
+                        NetworkSecurityHelper.validatePublicHttpsUrlAsync(remoteConfigEndpoint, dnsResolver)
+                    }
+                    if (!rcIntegrity.allowed) {
+                        fetchFailureReason = "Remote config URL rejected: ${rcIntegrity.reason}"
+                        SecurityAuditLogger.log(
+                            context = context,
+                            category = SecurityAuditCategory.NETWORK,
+                            severity = SecurityAuditSeverity.CRITICAL,
+                            message = fetchFailureReason!!
+                        )
+                    } else {
+                        val activeClient = httpClient ?: NetworkSecurityHelper.hardenedPooledClient
+                        val rcRequest = Request.Builder()
+                            .url(remoteConfigEndpoint)
+                            .header("Accept", "application/json")
+                            .header("X-Ayra-Device-Id", AyraPreferences.getOrCreateDeviceId(context))
+                            .get()
+                            .build()
+                        val remoteJson = runCatching {
+                            NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
+                                client = activeClient,
+                                initialRequest = rcRequest,
+                                urlValidator = { target ->
+                                    if (allowUnvalidatedUrlForTests) UrlValidationResult(true)
+                                    else NetworkSecurityHelper.validatePublicHttpsUrl(target, dnsResolver)
+                                }
+                            ).use { resp ->
+                                val body = resp.readBounded()
+                                if (!resp.isSuccessful) {
+                                    throw NonRetryableHttpException(resp.code, "Remote config HTTP ${resp.code}")
+                                }
+                                body
+                            }
+                        }.onFailure { err ->
+                            fetchFailureReason = "Remote config fetch failed: ${err.message}"
+                        }.getOrNull()
+
+                        val extracted = extractBackendUrlFromRemoteJson(remoteJson)
+                        if (extracted != null) {
+                            candidateUrl = extracted
+                            source = BackendGatewaySource.REMOTE_CONFIG_ENDPOINT
+                        }
+                    }
+                }
+            }
+
+            if (candidateUrl == null) {
+                val catalogCandidate = extractBackendUrlFromRemoteJson(
+                    AyraPreferences.getRemoteModelCatalogJson(context)
+                )
+                if (catalogCandidate != null) {
+                    candidateUrl = catalogCandidate
+                    source = BackendGatewaySource.REMOTE_CONFIG_CATALOG
+                }
+            }
+        }
+
+        if (candidateUrl == null) {
+            val vaultedCandidate = resolveVaultBackendUrl(context)
+            if (vaultedCandidate != null) {
+                candidateUrl = vaultedCandidate
+                source = BackendGatewaySource.ENCRYPTED_VAULT
+            }
+        }
+
+        val cleanCandidate = candidateUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
+        if (cleanCandidate == null) {
+            verifiedGatewayUrl = null
+            return@withContext BackendGatewayInitResult(
+                initialized = false,
+                endpointUrl = null,
+                source = BackendGatewaySource.NONE,
+                failureReason = fetchFailureReason ?: "No backend gateway URL configured in remote config or encrypted vault."
+            ).also { lastInitResult = it }
+        }
+
+        val integrityCheck = if (allowUnvalidatedUrlForTests) {
+            UrlValidationResult(true)
+        } else {
+            NetworkSecurityHelper.validatePublicHttpsUrlAsync(cleanCandidate, dnsResolver)
+        }
+        if (!integrityCheck.allowed) {
+            verifiedGatewayUrl = null
+            rejectedCandidateUrl = cleanCandidate
+            val reason = integrityCheck.reason ?: "Backend gateway endpoint failed HTTPS integrity verification."
+            SecurityAuditLogger.log(
+                context = context,
+                category = SecurityAuditCategory.NETWORK,
+                severity = SecurityAuditSeverity.CRITICAL,
+                message = "Rejected backend gateway URL from $source: $reason"
+            )
+            return@withContext BackendGatewayInitResult(
+                initialized = false,
+                endpointUrl = null,
+                source = source,
+                validationResult = integrityCheck,
+                failureReason = reason
+            ).also { lastInitResult = it }
+        }
+
+        var healthLatency: Long? = null
+        if (probeHealthOnInit && !localOnly) {
+            val probeResult = runCatching {
+                probeBackendGatewayHealth(
+                    context = context,
+                    backendBaseUrl = cleanCandidate,
+                    httpClient = httpClient,
+                    allowUnvalidatedUrlForTests = allowUnvalidatedUrlForTests
+                )
+            }
+            if (probeResult.isFailure) {
+                verifiedGatewayUrl = null
+                val reason = probeResult.exceptionOrNull()?.message ?: "Backend gateway /health probe failed."
+                SecurityAuditLogger.log(
+                    context = context,
+                    category = SecurityAuditCategory.NETWORK,
+                    severity = SecurityAuditSeverity.WARN,
+                    message = "Backend gateway health verification failed during init: $reason"
+                )
+                return@withContext BackendGatewayInitResult(
+                    initialized = false,
+                    endpointUrl = null,
+                    source = source,
+                    validationResult = integrityCheck,
+                    failureReason = reason
+                ).also { lastInitResult = it }
+            }
+            healthLatency = probeResult.getOrNull()
+        }
+
+        val currentVault = resolveVaultBackendUrl(context)
+        if (currentVault != cleanCandidate) {
+            AyraPreferences.setBackendGatewayUrl(context, cleanCandidate)
+        }
+        rejectedCandidateUrl = null
+        verifiedGatewayUrl = cleanCandidate
+
+        SecurityAuditLogger.log(
+            context = context,
+            category = SecurityAuditCategory.NETWORK,
+            severity = SecurityAuditSeverity.INFO,
+            message = "Initialized HTTPS-verified backend gateway URL from $source."
+        )
+        return@withContext BackendGatewayInitResult(
+            initialized = true,
+            endpointUrl = cleanCandidate,
+            source = source,
+            validationResult = integrityCheck,
+            healthLatencyMs = healthLatency
+        ).also { lastInitResult = it }
+    }
 
     /**
      * Evaluates whether dispatching a prompt to [provider] is permitted under current security settings:
@@ -89,7 +365,7 @@ object SecureAiGatewayClient {
         if (AyraPreferences.isLocalOnlyAiModeEnabled(context)) return false
         if (!AyraPreferences.hasExternalAiConsent(context)) return false
         if (AyraPreferences.isByokPreferred(context)) return false
-        if (AyraPreferences.getBackendGatewayUrl(context).isBlank()) return false
+        if (getValidatedBackendGatewayUrl(context) == null) return false
         val user = runCatching { FirebaseAuth.getInstance().currentUser }.getOrNull() ?: return false
         return user.uid.isNotBlank()
     }

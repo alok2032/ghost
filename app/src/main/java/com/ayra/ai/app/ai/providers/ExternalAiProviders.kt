@@ -367,14 +367,19 @@ class ExternalAiProviders @JvmOverloads constructor(
                 val proxyModel = preferredModelId
                     ?: ModelCatalog.defaultModelFor(proxyProvider)?.id
                     ?: getDefaultModelForProvider(proxyProvider)
-                val proxyResult = SecureAiGatewayClient.callAuthenticatedBackendAiProxy(
-                    context = ctx,
-                    backendBaseUrl = AyraPreferences.getBackendGatewayUrl(ctx),
-                    prompt = prompt,
-                    model = proxyModel,
-                    provider = proxyProvider.id,
-                    systemPrompt = systemPrompt
-                )
+                val validatedGatewayUrl = SecureAiGatewayClient.getValidatedBackendGatewayUrl(ctx)
+                val proxyResult = if (validatedGatewayUrl != null) {
+                    SecureAiGatewayClient.callAuthenticatedBackendAiProxy(
+                        context = ctx,
+                        backendBaseUrl = validatedGatewayUrl,
+                        prompt = prompt,
+                        model = proxyModel,
+                        provider = proxyProvider.id,
+                        systemPrompt = systemPrompt
+                    )
+                } else {
+                    Result.failure(IllegalStateException("Route B gateway URL is not initialized or failed HTTPS integrity check."))
+                }
                 val proxyText = proxyResult.getOrNull()?.trim().orEmpty()
                 if (proxyText.isNotBlank()) {
                     val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
@@ -599,7 +604,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             AiProviderType.OPENROUTER to OPENROUTER_QWEN_FREE_MODEL,
             AiProviderType.GROQ to GROQ_QWEN_MODEL,
             AiProviderType.CEREBRAS to CEREBRAS_QWEN_MODEL,
-            AiProviderType.POLLINATIONS_FREE to "deepseek"
+            AiProviderType.POLLINATIONS_FREE to ModelCatalog.POLLINATIONS_DEEPSEEK_MODEL
         )
         reasoningFallbacks.forEach { pair ->
             if (candidates.none { it.first == pair.first && it.second == pair.second } &&
