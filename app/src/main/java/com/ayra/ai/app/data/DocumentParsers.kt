@@ -24,6 +24,24 @@ import java.util.zip.ZipInputStream
  * Document & Archive Extraction Engine for PDF, DOCX, XLSX, PPTX, CSV, and plain-text files.
  */
 object DocumentParsers {
+    private const val MAX_PDF_BYTES = 25 * 1024 * 1024
+    private const val MAX_ZIP_ENTRY_BYTES = 10 * 1024 * 1024
+
+    private fun readBoundedStream(input: InputStream, maxBytes: Int, label: String): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            total += n
+            if (total > maxBytes) {
+                throw IllegalArgumentException("$label exceeds safety size cap ($maxBytes bytes).")
+            }
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
 
     fun extractTextFromDocument(context: Context, uri: Uri, fileName: String?): String {
         val name = fileName ?: StorageHelper.getFileName(context, uri) ?: "document"
@@ -67,7 +85,7 @@ object DocumentParsers {
             var entry = zip.nextEntry
             while (entry != null) {
                 if (entry.name.equals("word/document.xml", ignoreCase = true)) {
-                    val xml = zip.readBytes().toString(Charsets.UTF_8)
+                    val xml = readBoundedStream(zip, MAX_ZIP_ENTRY_BYTES, "DOCX entry").toString(Charsets.UTF_8)
                     val factory = XmlPullParserFactory.newInstance()
                     val parser = factory.newPullParser()
                     parser.setInput(StringReader(xml))
@@ -108,7 +126,7 @@ object DocumentParsers {
             while (entry != null) {
                 val n = entry.name.lowercase(Locale.ROOT)
                 if (n.startsWith("ppt/slides/slide") && n.endsWith(".xml")) {
-                    val xml = zip.readBytes().toString(Charsets.UTF_8)
+                    val xml = readBoundedStream(zip, MAX_ZIP_ENTRY_BYTES, "PPTX slide entry").toString(Charsets.UTF_8)
                     val factory = XmlPullParserFactory.newInstance()
                     val parser = factory.newPullParser()
                     parser.setInput(StringReader(xml))
@@ -144,7 +162,7 @@ object DocumentParsers {
                 val lowerName = entry.name.lowercase(Locale.ROOT)
                 when {
                     lowerName == "xl/sharedstrings.xml" -> {
-                        val xml = zip.readBytes().toString(Charsets.UTF_8)
+                        val xml = readBoundedStream(zip, MAX_ZIP_ENTRY_BYTES, "XLSX sharedStrings").toString(Charsets.UTF_8)
                         val parser = XmlPullParserFactory.newInstance().newPullParser()
                         parser.setInput(StringReader(xml))
                         var currentItem = StringBuilder()
@@ -172,7 +190,7 @@ object DocumentParsers {
                         }
                     }
                     lowerName.startsWith("xl/worksheets/sheet") && lowerName.endsWith(".xml") -> {
-                        sheetXmls[entry.name] = zip.readBytes().toString(Charsets.UTF_8)
+                        sheetXmls[entry.name] = readBoundedStream(zip, MAX_ZIP_ENTRY_BYTES, "XLSX sheet entry").toString(Charsets.UTF_8)
                     }
                 }
                 zip.closeEntry()
@@ -297,11 +315,11 @@ object DocumentParsers {
         var tempFile: File? = null
         return try {
             tempFile = File(context.cacheDir, "pdf_inspect_${System.currentTimeMillis()}.pdf")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(tempFile).use { output -> input.copyTo(output) }
-            }
+            val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                readBoundedStream(input, MAX_PDF_BYTES, "PDF document")
+            } ?: ByteArray(0)
+            FileOutputStream(tempFile).use { output -> output.write(bytes) }
 
-            val bytes = tempFile.readBytes()
             val extracted = extractPdfTextTokensFromBytes(bytes)
 
             val pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)

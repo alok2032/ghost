@@ -5,23 +5,14 @@ import com.ayra.ai.app.AyraApplication
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatMessage
 import com.ayra.ai.app.security.NetworkSecurityHelper
-import com.ayra.ai.app.security.NetworkSecurityHelper.readBounded
 import com.ayra.ai.app.security.SecureAiGatewayClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -135,7 +126,6 @@ class ExternalAiProviders @JvmOverloads constructor(
         const val HF_QWEN_MODEL = ModelCatalog.HF_QWEN_MODEL
         const val GITHUB_RETIRED_MODEL = ModelCatalog.GITHUB_RETIRED_MODEL
 
-        private val THINK_BLOCK_REGEX = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
         private val dynamicModelCache = ConcurrentHashMap<AiProviderType, List<AiModelInfo>>()
 
         @JvmStatic
@@ -147,78 +137,11 @@ class ExternalAiProviders @JvmOverloads constructor(
             }
         }
 
-        fun resolveGeminiModel(model: String): String {
-            val clean = model.trim().lowercase().removePrefix("models/")
-            return when {
-                clean.isBlank() -> GEMINI_FLASH_MODEL
-                clean == GEMINI_FLASH_MODEL || clean == "gemini_flash" || clean == "gemini-flash" ||
-                    clean == "gemini-flash-2.0" || clean == "gemini-flash-latest" ||
-                    clean.startsWith("gemini-3.8") ||
-                    clean.matches(Regex("^gemini-(2\\.5|2\\.0)-flash$")) -> GEMINI_FLASH_MODEL
-                clean == GEMINI_PRO_MODEL || clean == "gemini_pro" || clean == "gemini-pro" ||
-                    clean == "gemini-pro-1.5" || clean == "gemini-pro-latest" ||
-                    clean.startsWith("gemini-4-") ||
-                    clean.matches(Regex("^gemini-(2\\.5|1\\.5)-pro$")) -> GEMINI_PRO_MODEL
-                clean == GEMINI_FLASH_LITE_MODEL || clean == "gemini_flash_lite" || clean == "gemini-flash-lite" ||
-                    clean == "gemini_1_5_flash" ||
-                    clean.matches(Regex("^gemini-(2\\.5|2\\.0)-flash-lite$")) ||
-                    clean.matches(Regex("^gemini-1\\.5-flash$")) -> GEMINI_FLASH_LITE_MODEL
-                clean == GEMINI_FLASH_35_MODEL || clean == "gemini_3_5_flash" -> GEMINI_FLASH_35_MODEL
-                else -> clean
-            }
-        }
+        fun resolveGeminiModel(model: String): String = ExternalAiCatalog.resolveGeminiModel(model)
 
-        fun sanitizeModelOutput(raw: String): String {
-            if (raw.isBlank()) return ""
-            var cleaned = raw.replace(THINK_BLOCK_REGEX, "").trim()
-            if (cleaned.isBlank()) {
-                cleaned = raw.replace(Regex("</?think>", RegexOption.IGNORE_CASE), "").trim()
-            }
-            return cleaned
-        }
+        fun sanitizeModelOutput(raw: String): String = ExternalAiCatalog.sanitizeModelOutput(raw)
 
-        val CURATED_MODELS = listOf(
-            AiModelInfo(GEMINI_FLASH_MODEL, "Gemini 3.6 Flash ⚡", AiProviderType.GEMINI, "Ultra-fast GA multimodal flagship with web grounding", "1M tokens", true, false, true),
-            AiModelInfo(GEMINI_PRO_MODEL, "Gemini 3.1 Pro 🧠", AiProviderType.GEMINI, "Frontier deep reasoning, code architecture & STEM synthesis (Blaze)", "2M tokens", true, true, false),
-            AiModelInfo(GEMINI_FLASH_LITE_MODEL, "Gemini 3.5 Flash-Lite 🚀", AiProviderType.GEMINI, "High-throughput low-latency conversational engine", "1M tokens", true, false, false),
-            AiModelInfo(GEMINI_FLASH_35_MODEL, "Gemini 3.5 Flash ⚡", AiProviderType.GEMINI, "Reliable fast multimodal & coding fallback", "1M tokens", true, false, false),
-            AiModelInfo(GEMINI_GEMMA4_MODEL, "Gemma 4 31B IT 🌐", AiProviderType.GEMINI, "Google Gemma 4 open-weights multilingual reasoning", "128k tokens", true, true, false),
-            AiModelInfo(GROQ_QWEN_MODEL, "Groq Qwen 3.8 27B 🧠", AiProviderType.GROQ, "High-speed multimodal STEM, coding & multilingual reasoning on Groq LPU", "131k tokens", true, true, true),
-            AiModelInfo(GROQ_GPT_OSS_MODEL, "Groq GPT-OSS 120B ⚡", AiProviderType.GROQ, "Open-weights 120B flagship on Groq LPU free developer tier", "131k tokens", false, true, false),
-            AiModelInfo(GROQ_LLAMA_MODEL, "Groq Llama 3.1 8B Instant 🚀", AiProviderType.GROQ, "Ultra-low-latency fast conversational engine on Groq LPU", "128k tokens", false, false, false),
-            AiModelInfo(CEREBRAS_LLAMA_MODEL, "Cerebras GPT-OSS 120B 🚀", AiProviderType.CEREBRAS, "Wafer-scale high-speed 120B inference on free developer tier", "128k tokens", false, true, true),
-            AiModelInfo(CEREBRAS_QWEN_MODEL, "Cerebras Qwen 3.8 27B ⚡", AiProviderType.CEREBRAS, "Wafer-scale STEM, math & coding reasoning", "128k tokens", false, true, false),
-            AiModelInfo(SAMBANOVA_DEEPSEEK_MODEL, "SambaNova DeepSeek V3.1 🔬", AiProviderType.SAMBANOVA, "Fast RDU inference for coding, math & deep reasoning", "128k tokens", false, true, false),
-            AiModelInfo(SAMBANOVA_QWEN_MODEL, "SambaNova Qwen3 32B 🌐", AiProviderType.SAMBANOVA, "Fast RDU multilingual & STEM reasoning", "64k tokens", false, true, false),
-            AiModelInfo(HF_QWEN_MODEL, "HF Qwen 2.5 72B Instruct 🤗", AiProviderType.HUGGINGFACE, "Open-weights Hugging Face Inference Router", "128k tokens", false, true, false),
-            AiModelInfo(NVIDIA_LLAMA_MODEL, "NVIDIA Llama 3.3 70B Instruct 🦙", AiProviderType.NVIDIA_NIM, "Verified general, coding & multilingual NIM baseline", "128k tokens", false, true, true),
-            AiModelInfo(NVIDIA_MINIMAX_MODEL, "MiniMax M3.1 Flash ⚡", AiProviderType.NVIDIA_NIM, "High-speed multimodal vision & coding intelligence via NVIDIA NIM", "128k tokens", true, true, false),
-            AiModelInfo(NVIDIA_GLM_MODEL, "Z-AI GLM 5.3 Flash 🧠", AiProviderType.NVIDIA_NIM, "Fast STEM, mathematical reasoning & multilingual synthesis", "128k tokens", false, true, false),
-            AiModelInfo(NVIDIA_MUSE_MODEL, "Meta Muse Glimmer 30B ✨", AiProviderType.NVIDIA_NIM, "Fluent creative writing, Bengali/Banglish & deep reasoning", "128k tokens", false, true, false),
-            AiModelInfo(NVIDIA_GEMMA_MODEL, "Gemma 4 31B IT (NIM) 🔬", AiProviderType.NVIDIA_NIM, "Multilingual science, coding & analytical verification", "128k tokens", true, true, false),
-            AiModelInfo(OPENAI_DEFAULT_MODEL, "GPT-6.2 Sol 🧠", AiProviderType.OPENAI, "OpenAI frontier multimodal flagship intelligence", "256k tokens", true, true, true),
-            AiModelInfo(OPENAI_REASONING_MODEL, "GPT-6.2 Astra 🔬", AiProviderType.OPENAI, "Deep STEM, formal verification & reasoning model", "256k tokens", false, true, false),
-            AiModelInfo(OPENAI_MINI_MODEL, "GPT-6 Luna ⚡", AiProviderType.OPENAI, "Ultra-fast daily conversational & coding model", "128k tokens", true, false, false),
-            AiModelInfo(ANTHROPIC_SONNET_MODEL, "Claude Sonnet 5.5 🎭", AiProviderType.ANTHROPIC, "Hybrid reasoning & software architecture flagship", "200k tokens", true, true, true),
-            AiModelInfo(ANTHROPIC_OPUS_MODEL, "Claude Opus 5.5 👑", AiProviderType.ANTHROPIC, "Highest-capability Claude frontier synthesis & engineering", "200k tokens", true, true, false),
-            AiModelInfo(ANTHROPIC_HAIKU_MODEL, "Claude Haiku 5.5 ⚡", AiProviderType.ANTHROPIC, "Fast coding, analysis & concise synthesis", "200k tokens", true, false, false),
-            AiModelInfo(DEEPSEEK_CHAT_MODEL, "DeepSeek Flash 🚀", AiProviderType.DEEPSEEK, "Fast conversational & full-stack coding intelligence", "128k tokens", false, false, false),
-            AiModelInfo(DEEPSEEK_REASONER_MODEL, "DeepSeek V4 Pro 🔬", AiProviderType.DEEPSEEK, "Deep mathematical proof, formal code & step-by-step CoT", "128k tokens", false, true, true),
-            AiModelInfo(XAI_DEFAULT_MODEL, "Grok 4.7 🤖", AiProviderType.XAI, "Frontier reasoning & real-time analysis by xAI", "256k tokens", true, true, true),
-            AiModelInfo(ModelCatalog.MISTRAL_LARGE_MODEL, "Mistral Large 🌐", AiProviderType.MISTRAL, "European multilingual intelligence", "128k tokens", false, false, false),
-            AiModelInfo(ModelCatalog.MISTRAL_CODESTRAL_MODEL, "Codestral 💻", AiProviderType.MISTRAL, "Dedicated programming & refactoring", "256k tokens", false, false, false),
-            AiModelInfo(PERPLEXITY_REASONING_MODEL, "Perplexity Sonar Pro 🔎", AiProviderType.PERPLEXITY, "Web-grounded reasoning research with citations", "128k tokens", false, true, true),
-            AiModelInfo(OPENROUTER_DEFAULT_MODEL, "OpenRouter Free Router 🔀", AiProviderType.OPENROUTER, "Dynamic zero-cost open-weights router", "128k tokens", true, false, true),
-            AiModelInfo(OPENROUTER_QWEN_FREE_MODEL, "Qwen 3.8 27B Free 🐉", AiProviderType.OPENROUTER, "Multilingual STEM & reasoning on OpenRouter free tier", "128k tokens", false, true, false),
-            AiModelInfo(OPENROUTER_CODER_MODEL, "Qwen3 Coder Free 💻", AiProviderType.OPENROUTER, "Coding and bug-fixing specialist", "128k tokens", false, false, false),
-            AiModelInfo(OPENROUTER_AUTO_MODEL, "OpenRouter Auto ⚡", AiProviderType.OPENROUTER, "Adaptive frontier & open-weights gateway", "128k tokens", true, false, false),
-            AiModelInfo(ModelCatalog.OLLAMA_QWEN_MODEL, "Local Ollama Qwen 2.5 14B 🌐", AiProviderType.LOCAL_OLLAMA, "Local/LAN open-weights Qwen model", "32k tokens", false, true, false),
-            AiModelInfo(ModelCatalog.OLLAMA_LLAMA_MODEL, "Local Ollama / LM Studio 🏠", AiProviderType.LOCAL_OLLAMA, "Zero-cloud local LLM on your LAN", "32k tokens", false, false, true),
-            AiModelInfo(ModelCatalog.POLLINATIONS_OPENAI_MODEL, "Global Free AI Pool (GPT/OSS) 🌐", AiProviderType.POLLINATIONS_FREE, "Pollinations cloud AI fallback (optional API key at enter.pollinations.ai)", "32k tokens", false, false, false),
-            AiModelInfo(ModelCatalog.POLLINATIONS_LARGE_MODEL, "Global Free Flagship (Large) ⚡", AiProviderType.POLLINATIONS_FREE, "High-reasoning Pollinations ensemble channel (optional API key at enter.pollinations.ai)", "64k tokens", false, true, false),
-            AiModelInfo(ModelCatalog.POLLINATIONS_CODER_MODEL, "Global Free Qwen Coder 💻", AiProviderType.POLLINATIONS_FREE, "Pollinations coding & architecture specialist (optional API key at enter.pollinations.ai)", "32k tokens", false, false, false),
-            AiModelInfo(ModelCatalog.POLLINATIONS_DEEPSEEK_MODEL, "Global Free DeepSeek Reasoning 🧠", AiProviderType.POLLINATIONS_FREE, "Pollinations STEM, math & logic channel (optional API key at enter.pollinations.ai)", "64k tokens", false, true, false)
-        )
+        val CURATED_MODELS: List<AiModelInfo> get() = ExternalAiCatalog.curatedModels
     }
 
     init {
@@ -253,7 +176,7 @@ class ExternalAiProviders @JvmOverloads constructor(
             if (!isTestHarnessMode && !SecureAiGatewayClient.evaluateProviderAccess(ctx, channel.provider).allowed) {
                 return@filter false
             }
-            val key = resolveChannelKey(channel, ctx)
+            val key = ExternalAiKeyAndDiscovery.resolveChannelKey(channel, ctx, channelKeyOverrides)
             val keyOk = if (channel.provider == AiProviderType.LOCAL_OLLAMA) {
                 (channelKeyOverrides[channel.id]?.isNotBlank() == true) ||
                     (ctx != null && (AyraPreferences.getCustomEndpointUrl(ctx).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(ctx)))
@@ -271,14 +194,6 @@ class ExternalAiProviders @JvmOverloads constructor(
                 .thenByDescending { if (it.id == "gemini_3_6_flash" || it.id == "nvidia_llama_3_3_70b") 3 else 0 }
                 .thenByDescending { if (it.provider == AiProviderType.POLLINATIONS_FREE) -5 else 1 }
         )
-    }
-
-    private fun resolveChannelKey(channel: AiModelChannel, ctx: Context?): String {
-        channelKeyOverrides[channel.id]?.takeIf { it.isNotBlank() }?.let { return it }
-        if (channel.provider != AiProviderType.POLLINATIONS_FREE) {
-            channelKeyOverrides[channel.provider.id]?.takeIf { it.isNotBlank() }?.let { return it }
-        }
-        return channel.keyResolver(ctx)
     }
 
     fun buildConversationTurns(
@@ -302,7 +217,7 @@ class ExternalAiProviders @JvmOverloads constructor(
     }
 
     fun callChannel(channel: AiModelChannel, turns: List<ChatTurn>, withSearchGrounding: Boolean = true): String {
-        val key = resolveChannelKey(channel, context)
+        val key = ExternalAiKeyAndDiscovery.resolveChannelKey(channel, context, channelKeyOverrides)
         return when (channel.provider) {
             AiProviderType.GEMINI -> ProviderGeminiTransport.callGemini(
                 httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, channel.modelId, key, withSearchGrounding
@@ -421,7 +336,9 @@ class ExternalAiProviders @JvmOverloads constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.w("ExternalAiProviders", "OmniRoute execution warning: ${e.message}")
+            }
         } else if (preferredProvider != null) {
             if (!isTestHarnessMode) {
                 val gate = SecureAiGatewayClient.evaluateProviderAccess(context, preferredProvider)
@@ -490,7 +407,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                         circuitBreaker.recordFailure(preferredProvider)
                         lastCriticalError = e
                         candidateModel = null
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        android.util.Log.w("ExternalAiProviders", "Preferred provider ${preferredProvider.id} failed: ${e.message}")
                         AiUsageTracker.recordCall(context, preferredProvider, false, System.currentTimeMillis() - startTime)
                         if (preferredModelId == null) circuitBreaker.recordFailure(preferredProvider)
                         candidateModel = null
@@ -529,7 +447,13 @@ class ExternalAiProviders @JvmOverloads constructor(
                 val fallbackId = ModelCatalog.nextFallbackModel(channel.provider, channel.modelId)
                 if (fallbackId != null) {
                     runCatching {
-                        val fbText = callSpecificProvider(channel.provider, fallbackId, turns, resolveChannelKey(channel, context), withSearchGrounding)
+                        val fbText = callSpecificProvider(
+                            channel.provider,
+                            fallbackId,
+                            turns,
+                            ExternalAiKeyAndDiscovery.resolveChannelKey(channel, context, channelKeyOverrides),
+                            withSearchGrounding
+                        )
                         if (fbText.isNotBlank()) {
                             val noticedText = "[Model Notice: '${channel.modelId}' was unavailable/retired; switched to '$fallbackId'.]\n\n$fbText"
                             return@withContext ProviderResponse(
@@ -549,7 +473,8 @@ class ExternalAiProviders @JvmOverloads constructor(
                 AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
                 circuitBreaker.recordChannelFailure(channel.id)
                 if (lastCriticalError == null) lastCriticalError = e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("ExternalAiProviders", "Channel ${channel.id} failed: ${e.message}")
                 AiUsageTracker.recordCall(context, channel.provider, false, System.currentTimeMillis() - chStart)
                 circuitBreaker.recordChannelFailure(channel.id)
                 continue
@@ -577,7 +502,9 @@ class ExternalAiProviders @JvmOverloads constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.w("ExternalAiProviders", "Pollinations free fallback failed: ${e.message}")
+            }
         }
 
         if (lastCriticalError != null) throw lastCriticalError
@@ -590,67 +517,19 @@ class ExternalAiProviders @JvmOverloads constructor(
         history: List<ChatMessage>? = null,
         preferredProvider: AiProviderType? = null,
         preferredModelId: String? = null
-    ): ProviderResponse = withContext(Dispatchers.IO) {
-        val turns = buildConversationTurns(systemPrompt, history, prompt, null)
-        val startTime = System.currentTimeMillis()
-
-        val candidates = mutableListOf<Pair<AiProviderType, String>>()
-        if (preferredProvider != null && isProviderConfigured(preferredProvider) && circuitBreaker.canExecute(preferredProvider)) {
-            candidates.add(preferredProvider to (preferredModelId ?: getDefaultModelForProvider(preferredProvider)))
-        }
-        val reasoningFallbacks = listOf(
-            AiProviderType.DEEPSEEK to DEEPSEEK_REASONER_MODEL,
-            AiProviderType.SAMBANOVA to SAMBANOVA_DEEPSEEK_MODEL,
-            AiProviderType.OPENROUTER to OPENROUTER_QWEN_FREE_MODEL,
-            AiProviderType.GROQ to GROQ_QWEN_MODEL,
-            AiProviderType.CEREBRAS to CEREBRAS_QWEN_MODEL,
-            AiProviderType.POLLINATIONS_FREE to ModelCatalog.POLLINATIONS_DEEPSEEK_MODEL
-        )
-        reasoningFallbacks.forEach { pair ->
-            if (candidates.none { it.first == pair.first && it.second == pair.second } &&
-                isProviderConfigured(pair.first) && circuitBreaker.canExecute(pair.first)
-            ) candidates.add(pair)
-        }
-
-        for ((provider, model) in candidates) {
-            val key = getKeyForProviderAndModel(provider, model)
-            if (key.isBlank() && provider != AiProviderType.LOCAL_OLLAMA && provider != AiProviderType.POLLINATIONS_FREE) continue
-            val callStart = System.currentTimeMillis()
-            try {
-                val text = when (provider) {
-                    AiProviderType.POLLINATIONS_FREE -> ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                        httpClient, baseUrlOverrides, prompt, systemPrompt, model, preserveReasoning = true, conversationTurns = turns, apiKey = key
-                    )
-                    AiProviderType.GEMINI, AiProviderType.ANTHROPIC, AiProviderType.OMNI_ROUTE ->
-                        callSpecificProviderPublic(provider, model, turns, key, false)
-                    else -> ProviderOpenAiTransport.callOpenAiCompatible(
-                        resolveClientForProvider(provider), context, provider, baseUrlOverrides,
-                        customHttpClient != null, turns, model, key, maxTokens = 8192, preserveReasoning = true
-                    )
-                }
-                val latency = (System.currentTimeMillis() - callStart).coerceAtLeast(1L)
-                if (text.isNotBlank()) {
-                    AiUsageTracker.recordCall(context, provider, true, latency)
-                    circuitBreaker.recordSuccess(provider)
-                    return@withContext ProviderResponse(
-                        text = text,
-                        modelUsed = "${provider.displayName} ($model)",
-                        provider = provider,
-                        latencyMs = System.currentTimeMillis() - startTime
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - callStart)
-            }
-        }
-
-        return@withContext generateChatResponse(
-            prompt = prompt, systemPrompt = systemPrompt, history = history,
-            preferredProvider = preferredProvider, preferredModelId = preferredModelId, withSearchGrounding = false
-        )
-    }
+    ): ProviderResponse = ExternalAiStreamingSupport.generateChatResponseWithReasoning(
+        owner = this,
+        context = context,
+        httpClient = httpClient,
+        customHttpClient = customHttpClient,
+        baseUrlOverrides = baseUrlOverrides,
+        prompt = prompt,
+        systemPrompt = systemPrompt,
+        history = history,
+        preferredProvider = preferredProvider,
+        preferredModelId = preferredModelId,
+        resolveClientForProvider = ::resolveClientForProvider
+    )
 
     fun streamChatResponse(
         prompt: String,
@@ -659,103 +538,20 @@ class ExternalAiProviders @JvmOverloads constructor(
         imageBase64: String? = null,
         preferredProvider: AiProviderType? = null,
         preferredModelId: String? = null
-    ): Flow<String> = flow {
-        val turns = buildConversationTurns(systemPrompt, history, prompt, imageBase64)
-        val provider = preferredProvider ?: getBestAvailableProvider()
-        if (!isTestHarnessMode) {
-            val gate = SecureAiGatewayClient.evaluateProviderAccess(context, provider)
-            if (!gate.allowed) throw ProviderError.NetworkFailure(gate.denialReason ?: "Provider blocked by Zero-Trust policy.")
-        }
-        val initialModel = preferredModelId ?: (ModelCatalog.defaultModelFor(provider)?.id ?: getDefaultModelForProvider(provider))
-        val outerCollector: FlowCollector<String> = this
-
-        suspend fun streamSingleAttempt(activeModel: String): Boolean {
-            val activeKey = getKeyForProviderAndModel(provider, activeModel)
-            var emitted = false
-            val capturingCollector = FlowCollector<String> { chunk ->
-                if (chunk.isNotEmpty()) {
-                    emitted = true
-                    outerCollector.emit(chunk)
-                }
-            }
-            when (provider) {
-                AiProviderType.GEMINI -> ProviderGeminiTransport.streamGemini(
-                    httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, activeModel, activeKey, capturingCollector
-                )
-                AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.streamAnthropic(
-                    httpClient, baseUrlOverrides, turns, activeModel, activeKey, capturingCollector
-                )
-                AiProviderType.POLLINATIONS_FREE -> {
-                    val text = ProviderAnthropicAndFreeTransport.queryPollinationsFallback(
-                        httpClient, baseUrlOverrides, prompt, systemPrompt, activeModel.ifBlank { ModelCatalog.POLLINATIONS_OPENAI_MODEL }, conversationTurns = turns, apiKey = activeKey
-                    )
-                    if (text.isBlank()) throw ProviderError.NetworkFailure("Free AI Pool unreachable")
-                    capturingCollector.emit(text)
-                }
-                AiProviderType.OMNI_ROUTE -> ProviderGeminiTransport.streamGemini(
-                    httpClient, baseUrlOverrides[AiProviderType.GEMINI], turns, GEMINI_FLASH_MODEL, activeKey, capturingCollector
-                )
-                else -> {
-                    val maxTok = if (provider == AiProviderType.NVIDIA_NIM && activeModel.contains("minimax", true)) 8192 else 4096
-                    ProviderOpenAiTransport.streamOpenAiCompatible(
-                        resolveClientForProvider(provider), context, provider, baseUrlOverrides,
-                        customHttpClient != null, turns, activeModel, activeKey, maxTok, capturingCollector
-                    )
-                }
-            }
-            return emitted
-        }
-
-        val triedModels = mutableSetOf<String>()
-        var currentModel: String? = initialModel
-        var lastError: Throwable? = null
-        while (triedModels.size < 3 && currentModel != null) {
-            val activeModel = currentModel
-            if (activeModel.isBlank() || !triedModels.add(activeModel)) break
-            var rateLimitRetries = 0
-            var moveToNextModel = false
-            while (!moveToNextModel) {
-                try {
-                    val emitted = streamSingleAttempt(activeModel)
-                    if (emitted) {
-                        ModelCatalog.recordModelSuccess(provider, activeModel)
-                        circuitBreaker.recordSuccess(provider)
-                    }
-                    return@flow
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: ProviderError.RateLimited) {
-                    lastError = e
-                    if (rateLimitRetries == 0) {
-                        rateLimitRetries++
-                        delay(if (customHttpClient != null) 25L else 450L)
-                    } else {
-                        currentModel = ModelCatalog.nextFallbackModel(provider, activeModel)?.takeIf { it !in triedModels }
-                        moveToNextModel = true
-                    }
-                } catch (e: ProviderError.ModelNotFound) {
-                    lastError = e
-                    if (e.httpStatus == 410) {
-                        ModelCatalog.markModelRetired(provider, activeModel, e.displayMessage)
-                    } else {
-                        ModelCatalog.markModelUnavailable(provider, activeModel, e.httpStatus, e.displayMessage)
-                    }
-                    val fallback = ModelCatalog.nextFallbackModel(provider, activeModel)
-                    if (fallback.isNullOrBlank() || fallback in triedModels) {
-                        throw e
-                    }
-                    if (triedModels.size == 1) {
-                        outerCollector.emit("⚠️ [Model Notice: '$activeModel' unavailable; switched to '$fallback']\n\n")
-                    }
-                    currentModel = fallback
-                    moveToNextModel = true
-                } catch (e: Throwable) {
-                    throw e
-                }
-            }
-        }
-        if (lastError != null) throw lastError
-    }.flowOn(Dispatchers.IO)
+    ): Flow<String> = ExternalAiStreamingSupport.streamChatResponse(
+        owner = this,
+        context = context,
+        httpClient = httpClient,
+        customHttpClient = customHttpClient,
+        baseUrlOverrides = baseUrlOverrides,
+        prompt = prompt,
+        systemPrompt = systemPrompt,
+        history = history,
+        imageBase64 = imageBase64,
+        preferredProvider = preferredProvider,
+        preferredModelId = preferredModelId,
+        resolveClientForProvider = ::resolveClientForProvider
+    )
 
     fun callSpecificProviderPublic(
         provider: AiProviderType,
@@ -830,103 +626,14 @@ class ExternalAiProviders @JvmOverloads constructor(
     internal fun getBaseUrlForProvider(provider: AiProviderType): String =
         ProviderOpenAiTransport.getBaseUrlForProvider(provider, context, baseUrlOverrides)
 
-    fun getKeyForProviderAndModel(provider: AiProviderType, modelId: String): String {
-        if (provider == AiProviderType.NVIDIA_NIM) {
-            val m = modelId.lowercase()
-            val channelId = when {
-                m.contains("llama") -> "nvidia_llama_3_3_70b"
-                m.contains("minimax") -> "nvidia_minimax_m3_1"
-                m.contains("glm") -> "nvidia_glm_5_3"
-                m.contains("muse") -> "nvidia_muse_30b"
-                m.contains("gemma") -> "nvidia_gemma_4_31b"
-                else -> ""
-            }
-            if (channelId.isNotEmpty()) channelKeyOverrides[channelId]?.takeIf { it.isNotBlank() }?.let { return it }
-            val ctx = context
-            if (ctx != null) {
-                AyraApplication.ensureActiveAiKeysSeeded(ctx)
-                val resolved = when {
-                    m.contains("llama") -> AyraPreferences.getNvidiaKey(ctx)
-                    m.contains("minimax") -> AyraPreferences.getNvidiaMinimaxKey(ctx)
-                    m.contains("glm") -> AyraPreferences.getNvidiaGlmKey(ctx)
-                    m.contains("muse") -> AyraPreferences.getNvidiaMuseKey(ctx)
-                    m.contains("gemma") -> AyraPreferences.getNvidiaGemmaKey(ctx)
-                    else -> AyraPreferences.getNvidiaKey(ctx)
-                }
-                if (resolved.isNotBlank()) return resolved
-            }
-        }
-        return getProviderKey(provider)
-    }
+    fun getKeyForProviderAndModel(provider: AiProviderType, modelId: String): String =
+        ExternalAiKeyAndDiscovery.getKeyForProviderAndModel(provider, modelId, context, channelKeyOverrides)
 
-    fun getProviderKey(provider: AiProviderType): String {
-        channelKeyOverrides[provider.id]?.let { if (it.isNotBlank()) return it }
-        if (provider == AiProviderType.NVIDIA_NIM) {
-            val overriddenNim = channelKeyOverrides["nvidia_llama_3_3_70b"]
-                ?: channelKeyOverrides["nvidia_minimax_m3_1"]
-                ?: channelKeyOverrides["nvidia_muse_30b"]
-                ?: channelKeyOverrides["nvidia_glm_5_3"]
-                ?: channelKeyOverrides["nvidia_gemma_4_31b"]
-            if (!overriddenNim.isNullOrBlank()) return overriddenNim
-        }
-        val ctx = context ?: return ""
-        AyraApplication.ensureActiveAiKeysSeeded(ctx)
-        return when (provider) {
-            AiProviderType.GEMINI -> AyraPreferences.getEffectiveGeminiKey(ctx)
-            AiProviderType.NVIDIA_NIM -> AyraPreferences.getNvidiaKey(ctx)
-                .ifBlank { AyraPreferences.getNvidiaMinimaxKey(ctx) }
-                .ifBlank { AyraPreferences.getNvidiaMuseKey(ctx) }
-                .ifBlank { AyraPreferences.getNvidiaGlmKey(ctx) }
-                .ifBlank { AyraPreferences.getNvidiaGemmaKey(ctx) }
-            AiProviderType.GROQ -> AyraPreferences.getGroqKey(ctx)
-            AiProviderType.CEREBRAS -> AyraPreferences.getCerebrasKey(ctx)
-            AiProviderType.SAMBANOVA -> AyraPreferences.getSambaNovaKey(ctx)
-            AiProviderType.HUGGINGFACE -> AyraPreferences.getHuggingFaceKey(ctx)
-            AiProviderType.GITHUB_MODELS -> AyraPreferences.getGitHubModelsKey(ctx)
-            AiProviderType.OPENAI -> AyraPreferences.getOpenAiKey(ctx)
-            AiProviderType.ANTHROPIC -> AyraPreferences.getAnthropicKey(ctx)
-            AiProviderType.DEEPSEEK -> AyraPreferences.getDeepSeekKey(ctx)
-            AiProviderType.XAI -> AyraPreferences.getXAiKey(ctx)
-            AiProviderType.MISTRAL -> AyraPreferences.getMistralKey(ctx)
-            AiProviderType.PERPLEXITY -> AyraPreferences.getPerplexityKey(ctx)
-            AiProviderType.OPENROUTER -> AyraPreferences.getEffectiveOpenRouterKey(ctx)
-            AiProviderType.LOCAL_OLLAMA -> {
-                val url = AyraPreferences.getCustomEndpointUrl(ctx)
-                val hasOllama = AyraPreferences.hasExplicitOllamaHost(ctx)
-                if (url.isNotBlank() || hasOllama) {
-                    AyraPreferences.getCustomEndpointKey(ctx).ifBlank {
-                        url.ifBlank { AyraPreferences.getOllamaHost(ctx) }
-                    }
-                } else ""
-            }
-            AiProviderType.POLLINATIONS_FREE -> if (AyraPreferences.isFreeAiPoolEnabled(ctx)) "free" else ""
-            AiProviderType.OMNI_ROUTE -> AyraPreferences.getEffectiveGeminiKey(ctx)
-        }
-    }
+    fun getProviderKey(provider: AiProviderType): String =
+        ExternalAiKeyAndDiscovery.getProviderKey(provider, context, channelKeyOverrides)
 
-    fun isProviderConfigured(provider: AiProviderType): Boolean {
-        if (!isTestHarnessMode) {
-            if (!SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed) return false
-        }
-        if (provider == AiProviderType.GITHUB_MODELS) {
-            // Azure GitHub Models inference endpoint shut down 2026-07-30; remain inactive unless test override is supplied.
-            if (!baseUrlOverrides.containsKey(AiProviderType.GITHUB_MODELS)) return false
-        }
-        if (provider == AiProviderType.OMNI_ROUTE) return !(context != null && AyraPreferences.isLocalOnlyAiModeEnabled(context))
-        if (provider == AiProviderType.LOCAL_OLLAMA) {
-            return (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
-                (context?.let {
-                    AyraPreferences.getCustomEndpointUrl(it).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(it)
-                } ?: false)
-        }
-        if (provider == AiProviderType.POLLINATIONS_FREE) {
-            if (channelKeyOverrides.isNotEmpty()) {
-                return channelKeyOverrides.any { (k, v) -> k.startsWith("pollinations_free") && v.isNotBlank() }
-            }
-            return context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-        }
-        return getProviderKey(provider).isNotBlank()
-    }
+    fun isProviderConfigured(provider: AiProviderType): Boolean =
+        ExternalAiKeyAndDiscovery.isProviderConfigured(provider, context, isTestHarnessMode, baseUrlOverrides, channelKeyOverrides)
 
     fun getActiveConfiguredProviders(): List<AiProviderType> =
         listOf(
@@ -943,42 +650,9 @@ class ExternalAiProviders @JvmOverloads constructor(
     fun getBestAvailableProvider(): AiProviderType = getActiveConfiguredProviders().firstOrNull() ?: AiProviderType.GEMINI
 
     fun getSavedKeyProvidersIgnoringConsent(): List<AiProviderType> =
-        listOf(
-            AiProviderType.GEMINI, AiProviderType.GROQ, AiProviderType.CEREBRAS,
-            AiProviderType.SAMBANOVA, AiProviderType.NVIDIA_NIM, AiProviderType.HUGGINGFACE,
-            AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.DEEPSEEK,
-            AiProviderType.PERPLEXITY, AiProviderType.XAI, AiProviderType.MISTRAL,
-            AiProviderType.OPENROUTER, AiProviderType.LOCAL_OLLAMA, AiProviderType.POLLINATIONS_FREE
-        ).filter { provider ->
-            when (provider) {
-                AiProviderType.LOCAL_OLLAMA -> (channelKeyOverrides[AiProviderType.LOCAL_OLLAMA.id]?.isNotBlank() == true) ||
-                    (context?.let {
-                        AyraPreferences.getCustomEndpointUrl(it).isNotBlank() || AyraPreferences.hasExplicitOllamaHost(it)
-                    } ?: false)
-                AiProviderType.POLLINATIONS_FREE -> context?.let { AyraPreferences.isFreeAiPoolEnabled(it) } ?: false
-                else -> getProviderKey(provider).isNotBlank()
-            }
-        }
+        ExternalAiKeyAndDiscovery.getSavedKeyProvidersIgnoringConsent(context, channelKeyOverrides)
 
-    fun getDefaultModelForProvider(provider: AiProviderType): String = when (provider) {
-        AiProviderType.GEMINI -> GEMINI_FLASH_MODEL
-        AiProviderType.NVIDIA_NIM -> NVIDIA_LLAMA_MODEL
-        AiProviderType.GROQ -> GROQ_DEFAULT_MODEL
-        AiProviderType.CEREBRAS -> CEREBRAS_LLAMA_MODEL
-        AiProviderType.SAMBANOVA -> SAMBANOVA_DEEPSEEK_MODEL
-        AiProviderType.HUGGINGFACE -> HF_QWEN_MODEL
-        AiProviderType.GITHUB_MODELS -> GITHUB_RETIRED_MODEL
-        AiProviderType.OPENAI -> OPENAI_DEFAULT_MODEL
-        AiProviderType.ANTHROPIC -> ANTHROPIC_SONNET_MODEL
-        AiProviderType.DEEPSEEK -> DEEPSEEK_REASONER_MODEL
-        AiProviderType.XAI -> XAI_DEFAULT_MODEL
-        AiProviderType.MISTRAL -> ModelCatalog.MISTRAL_LARGE_MODEL
-        AiProviderType.PERPLEXITY -> PERPLEXITY_REASONING_MODEL
-        AiProviderType.OPENROUTER -> OPENROUTER_DEFAULT_MODEL
-        AiProviderType.LOCAL_OLLAMA -> ModelCatalog.OLLAMA_LLAMA_MODEL
-        AiProviderType.POLLINATIONS_FREE -> ModelCatalog.POLLINATIONS_OPENAI_MODEL
-        AiProviderType.OMNI_ROUTE -> GEMINI_FLASH_MODEL
-    }
+    fun getDefaultModelForProvider(provider: AiProviderType): String = ExternalAiCatalog.defaultModelForProvider(provider)
 
     suspend fun testProviderConnection(
         provider: AiProviderType,
@@ -1024,98 +698,27 @@ class ExternalAiProviders @JvmOverloads constructor(
             defaultModelForProvider = ::getDefaultModelForProvider
         )
 
-    suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> = withContext(Dispatchers.IO) {
-        dynamicModelCache[provider]?.let { if (it.isNotEmpty()) return@withContext it }
-        if (!isTestHarnessMode &&
-            !SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed
-        ) {
-            return@withContext CURATED_MODELS.filter { it.provider == provider }
-        }
-        val key = getProviderKey(provider)
-        val discovered = mutableListOf<AiModelInfo>()
-        try {
-            when (provider) {
-                AiProviderType.GEMINI -> ProviderGeminiTransport.discoverModels(httpClient, key, discovered)
-                AiProviderType.ANTHROPIC -> ProviderAnthropicAndFreeTransport.discoverAnthropicModels(httpClient, key, discovered)
-                AiProviderType.NVIDIA_NIM, AiProviderType.GROQ, AiProviderType.CEREBRAS, AiProviderType.SAMBANOVA,
-                AiProviderType.HUGGINGFACE, AiProviderType.GITHUB_MODELS, AiProviderType.OPENAI, AiProviderType.DEEPSEEK,
-                AiProviderType.XAI, AiProviderType.MISTRAL, AiProviderType.PERPLEXITY, AiProviderType.OPENROUTER,
-                AiProviderType.LOCAL_OLLAMA ->
-                    ProviderOpenAiTransport.discoverModels(httpClient, context, provider, baseUrlOverrides, key, discovered)
-                else -> {}
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            android.util.Log.w("ExternalAiProviders", "Dynamic model discovery failed for ${provider.id}: ${e.message}")
-        }
-
-        if (discovered.isNotEmpty()) {
-            dynamicModelCache[provider] = discovered
-            ModelCatalog.registerLiveDiscoveredModels(provider, discovered)
-            discovered
-        } else {
-            CURATED_MODELS.filter { it.provider == provider }
-        }
-    }
+    suspend fun discoverDynamicModels(provider: AiProviderType): List<AiModelInfo> =
+        ExternalAiKeyAndDiscovery.discoverDynamicModels(
+            provider = provider,
+            context = context,
+            httpClient = httpClient,
+            baseUrlOverrides = baseUrlOverrides,
+            channelKeyOverrides = channelKeyOverrides,
+            isTestHarnessMode = isTestHarnessMode,
+            dynamicModelCache = dynamicModelCache
+        )
 
     suspend fun transcribeAudioOpenAiCompatible(
         audioFile: File,
         promptHint: String = ""
-    ): String = withContext(Dispatchers.IO) {
-        if (!audioFile.exists() || audioFile.length() <= 0L) return@withContext ""
-        val candidates = listOf(
-            Triple(AiProviderType.GROQ, GROQ_WHISPER_MODEL, getProviderKey(AiProviderType.GROQ)),
-            Triple(AiProviderType.SAMBANOVA, SAMBANOVA_WHISPER_MODEL, getProviderKey(AiProviderType.SAMBANOVA)),
-            Triple(AiProviderType.OPENAI, "whisper-1", getProviderKey(AiProviderType.OPENAI))
-        ).filter { it.third.isNotBlank() }
-
-        for ((provider, model, key) in candidates) {
-            if (customHttpClient == null && !SecureAiGatewayClient.evaluateProviderAccess(context, provider).allowed) continue
-            val start = System.currentTimeMillis()
-            try {
-                val baseUrl = getBaseUrlForProvider(provider)
-                val endpoint = "${baseUrl}audio/transcriptions"
-                val mime = if (audioFile.name.endsWith(".wav", true)) "audio/wav" else "audio/mp4"
-                val bodyBuilder = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("file", audioFile.name, audioFile.asRequestBody(mime.toMediaType()))
-                    .addFormDataPart("model", model)
-                if (promptHint.isNotBlank()) bodyBuilder.addFormDataPart("prompt", promptHint)
-                val req = Request.Builder()
-                    .url(endpoint)
-                    .header("Authorization", "Bearer $key")
-                    .post(bodyBuilder.build())
-                    .build()
-
-                val response = if (customHttpClient == null && !baseUrlOverrides.containsKey(provider) && endpoint.startsWith("https://", ignoreCase = true)) {
-                    NetworkSecurityHelper.executePublicHttpsWithValidatedRedirects(
-                        client = httpClient,
-                        initialRequest = req,
-                        urlValidator = { NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(it) }
-                    )
-                } else {
-                    httpClient.newCall(req).execute()
-                }
-                response.use { resp ->
-                    val raw = resp.readBounded()
-                    val latency = (System.currentTimeMillis() - start).coerceAtLeast(1L)
-                    if (resp.isSuccessful && raw.isNotBlank()) {
-                        val text = runCatching { JSONObject(raw).optString("text", "") }.getOrDefault("")
-                        if (text.isNotBlank()) {
-                            AiUsageTracker.recordCall(context, provider, true, latency)
-                            return@withContext text.trim()
-                        }
-                    }
-                    AiUsageTracker.recordCall(context, provider, false, latency)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("ExternalAiProviders", "Whisper transcription failed for ${provider.id}: ${e.message}")
-                AiUsageTracker.recordCall(context, provider, false, System.currentTimeMillis() - start)
-            }
-        }
-        ""
-    }
+    ): String = ExternalAiKeyAndDiscovery.transcribeAudioOpenAiCompatible(
+        audioFile = audioFile,
+        promptHint = promptHint,
+        context = context,
+        httpClient = httpClient,
+        customHttpClient = customHttpClient,
+        baseUrlOverrides = baseUrlOverrides,
+        channelKeyOverrides = channelKeyOverrides
+    )
 }

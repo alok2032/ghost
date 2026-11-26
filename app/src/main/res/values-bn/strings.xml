@@ -4,9 +4,24 @@
     <string name="action_clear">মুছুন</string>
     <string name="action_speak">ভয়েস ইনপুট</string>
     <string name="action_copy">কপি করুন</string>
+    <string name="action_retry">আবার চেষ্টা করুন</string>
+    <string name="action_cancel">বাতিল করুন</string>
+    <string name="action_new_chat">নতুন</string>
+    <string name="auth_continue_guest">সাইন ইন ছাড়াই চালিয়ে যান</string>
+    <string name="auth_sign_in_google">গুগল দিয়ে সাইন ইন করুন</string>
+    <string name="auth_connecting">গুগল অ্যাকাউন্ট সংযুক্ত হচ্ছে…</string>
+    <string name="drawer_sign_in_title">গুগল দিয়ে সাইন ইন করুন</string>
+    <string name="drawer_sign_in_subtitle">এনক্রিপ্টেড ক্লাউড সিঙ্ক ও মাল্টি-ডিভাইস ব্যাকআপ চালু করুন</string>
+    <string name="drawer_signed_in_label">ক্লাউড সিঙ্ক সক্রিয়</string>
+    <string name="drawer_sign_out">সাইন আউট</string>
+    <string name="drawer_recent_chats">সাম্প্রতিক কথোপকথন (%1$d)</string>
+    <string name="drawer_search_placeholder">চ্যাট খুঁজুন…</string>
     <string name="vault_locked_title">Ayra AI ভল্ট লক করা আছে</string>
     <string name="vault_unlock_button">বায়োমেট্রিক / পিন দিয়ে আনলক করুন</string>
     <string name="vault_reset_biometric_key">বাতিল হওয়া বায়োমেট্রিক কী রিসেট করুন</string>
+    <string name="vault_retry_title">ভল্ট সাময়িকভাবে ব্যস্ত</string>
+    <string name="vault_retry_body">অন্য একটি ব্যাকগ্রাউন্ড প্রক্রিয়া সাময়িকভাবে ডেটাবেস ব্যবহার করছে। আপনার এনক্রিপ্টেড ডেটা সম্পূর্ণ সুরক্ষিত আছে।</string>
+    <string name="vault_retry_button">আবার ভল্ট খোলার চেষ্টা করুন</string>
     <string name="security_center_title">এন্টারপ্রাইজ সিকিউরিটি সেন্টার</string>
     <string name="security_center_subtitle">জিরো-ট্রাস্ট কিস্টোর, SQLCipher DB, E2EE ও হাইব্রিড AI নিয়ন্ত্রণ</string>
     <string name="security_posture_heading">সামগ্রিক ভল্ট নিরাপত্তা অবস্থা</string>
@@ -17,4 +32,6 @@
     <string name="vault_recovery_title_corrupt">এনক্রিপ্টেড ভল্ট পুনরুদ্ধার প্রয়োজন</string>
     <string name="vault_recovery_restore_backup">.ayrabak ব্যাকআপ থেকে পুনরুদ্ধার করুন</string>
     <string name="vault_recovery_reset_vault">ভল্ট রিসেট করে নতুনভাবে শুরু করুন</string>
+    <string name="vault_recovery_reset_confirm_title">ভল্ট রিসেট নিশ্চিত করুন</string>
+    <string name="vault_recovery_reset_confirm_button">ভল্ট রিসেট করুন</string>
 </resources>

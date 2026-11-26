@@ -4,9 +4,24 @@
     <string name="action_clear">Clear</string>
     <string name="action_speak">Voice Input</string>
     <string name="action_copy">Copy</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_new_chat">New</string>
+    <string name="auth_continue_guest">Continue Without Signing In</string>
+    <string name="auth_sign_in_google">Continue with Google</string>
+    <string name="auth_connecting">Connecting Google Account…</string>
+    <string name="drawer_sign_in_title">Sign in with Google</string>
+    <string name="drawer_sign_in_subtitle">Enable encrypted cloud sync &amp; multi-device backup</string>
+    <string name="drawer_signed_in_label">Cloud Sync Active</string>
+    <string name="drawer_sign_out">Sign Out</string>
+    <string name="drawer_recent_chats">Recent Conversations (%1$d)</string>
+    <string name="drawer_search_placeholder">Search chats…</string>
     <string name="vault_locked_title">Ayra AI Vault Locked</string>
     <string name="vault_unlock_button">Unlock with Biometrics / PIN</string>
     <string name="vault_reset_biometric_key">Reset Invalidated Biometric Key</string>
+    <string name="vault_retry_title">Vault Temporarily Busy</string>
+    <string name="vault_retry_body">Another background operation or file lock is momentarily using the database. Your encrypted data is intact.</string>
+    <string name="vault_retry_button">Retry Opening Vault</string>
     <string name="security_center_title">Enterprise Security Center</string>
     <string name="security_center_subtitle">Zero-Trust Keystore, SQLCipher DB, E2EE &amp; Hybrid AI Controls</string>
     <string name="security_posture_heading">Overall Vault Security Posture</string>
@@ -17,4 +32,6 @@
     <string name="vault_recovery_title_corrupt">Encrypted Vault Needs Recovery</string>
     <string name="vault_recovery_restore_backup">Restore from .ayrabak Backup</string>
     <string name="vault_recovery_reset_vault">Reset Vault &amp; Start Fresh</string>
+    <string name="vault_recovery_reset_confirm_title">Confirm Vault Reset</string>
+    <string name="vault_recovery_reset_confirm_button">Reset Vault</string>
 </resources>

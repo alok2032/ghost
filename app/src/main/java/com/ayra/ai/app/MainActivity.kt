@@ -12,6 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,6 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -140,7 +152,8 @@ class MainActivity : FragmentActivity() {
                 reducedMotion = reducedMotion
             ) {
                 var vaultOpenResult by remember { mutableStateOf<ChatDatabase.VaultOpenResult?>(null) }
-                LaunchedEffect(Unit) {
+                var vaultRetryTick by remember { mutableIntStateOf(0) }
+                LaunchedEffect(vaultRetryTick) {
                     vaultOpenResult = withContext(Dispatchers.IO) {
                         ChatDatabase.tryGetDatabase(applicationContext)
                     }
@@ -200,6 +213,64 @@ class MainActivity : FragmentActivity() {
                                     CircularProgressIndicator()
                                 }
                             }
+                            is ChatDatabase.VaultOpenResult.RetryableError -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Card(
+                                        modifier = Modifier
+                                            .widthIn(max = 460.dp)
+                                            .fillMaxWidth()
+                                            .testTag("vault_retry_card"),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(24.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.vault_retry_title),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.vault_retry_body),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            if (openState.reason.isNotBlank()) {
+                                                Text(
+                                                    text = openState.reason,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Button(
+                                                onClick = {
+                                                    vaultOpenResult = null
+                                                    vaultRetryTick++
+                                                },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("vault_retry_button")
+                                            ) {
+                                                Text(stringResource(R.string.vault_retry_button))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             is ChatDatabase.VaultOpenResult.NeedsRecovery -> {
                                 VaultRecoveryScreen(
                                     vaultState = openState.vaultState,
@@ -214,7 +285,8 @@ class MainActivity : FragmentActivity() {
                                 if (showOptionalAuthScreen && user == null) {
                                     AuthScreen(
                                         authManager = authManager,
-                                        onSignedIn = { showOptionalAuthScreen = false }
+                                        onSignedIn = { showOptionalAuthScreen = false },
+                                        onContinueAsGuest = { showOptionalAuthScreen = false }
                                     )
                                 } else {
                                     key(user?.uid ?: "guest") {
@@ -247,6 +319,9 @@ class MainActivity : FragmentActivity() {
                                                     lifecycleScope.launch {
                                                         authManager.signOut()
                                                     }
+                                                },
+                                                onRequestSignIn = {
+                                                    showOptionalAuthScreen = true
                                                 }
                                             )
                                         }

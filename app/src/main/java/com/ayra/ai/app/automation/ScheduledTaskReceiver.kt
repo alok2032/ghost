@@ -1,30 +1,25 @@
 package com.ayra.ai.app.automation
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
-import android.telephony.SmsManager
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import com.ayra.ai.app.MainActivity
+import com.ayra.ai.app.R
 import com.ayra.ai.app.data.ChatDatabase
 import com.ayra.ai.app.voice.AyraVoiceAnnouncer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 
 /**
@@ -73,7 +68,8 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
         val messageText = intent.getStringExtra("MESSAGE_TEXT") ?: "Hello from Ayra AI!"
         val phoneNumber = intent.getStringExtra("PHONE_NUMBER") ?: ""
 
-        // 2. Acquire safe WakeLock to process task
+        // Keep receiver + WakeLock alive across DB update and async voice reminder playback
+        val pendingResult: PendingResult? = goAsync()
         var wakeLock: PowerManager.WakeLock? = null
         try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -82,7 +78,12 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                 "ayra:scheduled_task_wake"
             )
             wakeLock?.acquire(15000)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.w("ScheduledTaskReceiver", "WakeLock acquire skipped: ${e.message}")
+        }
+
+        val isVoiceReminder = targetApp.equals("REMINDER", ignoreCase = true)
+        val speechDone: CompletableDeferred<Unit>? = if (isVoiceReminder) CompletableDeferred() else null
 
         executeScheduledTaskNotification(
             context = context,
@@ -91,27 +92,34 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             recipient = recipient,
             messageText = messageText,
             phoneNumber = phoneNumber,
-            playSoundAndVoice = true
+            playSoundAndVoice = true,
+            onSpeechComplete = { speechDone?.complete(Unit) }
         )
 
-        // 4. Update task status in database to FIRED
-        if (taskId > 0) {
-            val pendingResult: PendingResult? = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    ChatDatabase.getDatabase(context).scheduledTaskDao().updateStatus(taskId, "FIRED")
-                } catch (_: Exception) {
-                } finally {
-                    try {
-                        wakeLock?.release()
-                    } catch (_: Exception) {}
-                    pendingResult?.finish()
-                }
-            }
-        } else {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
-                wakeLock?.release()
-            } catch (_: Exception) {}
+                if (taskId > 0) {
+                    try {
+                        ChatDatabase.getDatabase(context).scheduledTaskDao().updateStatus(taskId, "FIRED")
+                    } catch (e: Exception) {
+                        android.util.Log.w("ScheduledTaskReceiver", "Failed updating task $taskId status: ${e.message}")
+                    }
+                }
+                if (speechDone != null) {
+                    withTimeoutOrNull(12_000L) {
+                        speechDone.await()
+                    }
+                }
+            } finally {
+                try {
+                    if (wakeLock?.isHeld == true) {
+                        wakeLock.release()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ScheduledTaskReceiver", "WakeLock release warning: ${e.message}")
+                }
+                pendingResult?.finish()
+            }
         }
     }
 
@@ -152,7 +160,8 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             recipient: String,
             messageText: String,
             phoneNumber: String,
-            playSoundAndVoice: Boolean = true
+            playSoundAndVoice: Boolean = true,
+            onSpeechComplete: (() -> Unit)? = null
         ) {
             val nm = ensureChannel(context)
             val isBengali = messageText.any { it in '\u0980'..'\u09FF' } || recipient.any { it in '\u0980'..'\u09FF' }
@@ -172,16 +181,17 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                     val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-                        .setSmallIcon(android.R.drawable.sym_action_call)
+                        .setSmallIcon(R.drawable.ic_notification_ayra)
                         .setContentTitle("📞 Scheduled Call Reminder for $recipient")
                         .setContentText("Tap to call: $targetNumber")
                         .setStyle(NotificationCompat.BigTextStyle().bigText("Scheduled call for $recipient ($targetNumber).\nMessage note: \"$messageText\"\n\nTap to open the dialer."))
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
                         .setAutoCancel(true)
                         .setContentIntent(pendingIntent)
-                        .addAction(android.R.drawable.sym_action_call, "Open Dialer", pendingIntent)
+                        .addAction(R.drawable.ic_notification_ayra, "Open Dialer", pendingIntent)
                         .build()
                     nm?.notify(notifId, notif)
+                    onSpeechComplete?.invoke()
                 }
 
                 targetApp.equals("REMINDER", ignoreCase = true) -> {
@@ -192,7 +202,9 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                         } else {
                             "Reminder! Ayra AI is reminding you to: $messageText"
                         }
-                        AyraVoiceAnnouncer.speakAloud(context, speech)
+                        AyraVoiceAnnouncer.speakAloud(context, speech, onComplete = onSpeechComplete)
+                    } else {
+                        onSpeechComplete?.invoke()
                     }
                     val openIntent = Intent(context, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -204,7 +216,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                     val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-                        .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                        .setSmallIcon(R.drawable.ic_notification_ayra)
                         .setContentTitle("⏰ Ayra AI Reminder")
                         .setContentText(messageText)
                         .setStyle(NotificationCompat.BigTextStyle().bigText("⏰ Scheduled Reminder:\n\n$messageText"))
@@ -222,7 +234,8 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                             Intent(Intent.ACTION_VIEW, buildWhatsAppUri(targetPhone, messageText)).apply {
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                             }
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            android.util.Log.w("ScheduledTaskReceiver", "WhatsApp URI fallback: ${e.message}")
                             Intent(context, MainActivity::class.java).apply {
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
@@ -242,16 +255,17 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
                     val notifTitle = "✉️ Scheduled Message Ready for $recipient"
                     val notifBody = "Message for $recipient on $targetApp:\n\"$messageText\"\n\nTap to review and send."
                     val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-                        .setSmallIcon(android.R.drawable.ic_dialog_email)
+                        .setSmallIcon(R.drawable.ic_notification_ayra)
                         .setContentTitle(notifTitle)
                         .setContentText(notifBody)
                         .setStyle(NotificationCompat.BigTextStyle().bigText(notifBody))
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
                         .setAutoCancel(true)
                         .setContentIntent(pendingIntent)
-                        .addAction(android.R.drawable.ic_menu_send, "Review & Send", pendingIntent)
+                        .addAction(R.drawable.ic_notification_ayra, "Review & Send", pendingIntent)
                         .build()
                     nm?.notify(notifId, notif)
+                    onSpeechComplete?.invoke()
                 }
             }
         }
@@ -272,7 +286,7 @@ class ScheduledTaskReceiver : BroadcastReceiver() {
             )
             val body = "${task.title} (${task.formattedTime}): ${task.messageText}"
             val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setSmallIcon(R.drawable.ic_notification_ayra)
                 .setContentTitle("Missed reminder")
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText("Missed reminder while device was offline/off:\n\n$body"))

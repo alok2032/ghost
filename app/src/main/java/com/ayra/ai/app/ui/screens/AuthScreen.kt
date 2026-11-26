@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -68,11 +70,16 @@ import com.ayra.ai.app.ui.theme.TextSecondary
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.res.stringResource
+import com.ayra.ai.app.R
+
 @Composable
 fun AuthScreen(
     authManager: GoogleAuthManager,
     onSignedIn: (FirebaseUser) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onContinueAsGuest: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -115,7 +122,9 @@ fun AuthScreen(
                 color = GlassSurfaceDark.copy(alpha = 0.92f)
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -263,7 +272,7 @@ fun AuthScreen(
                             )
                             Spacer(modifier = Modifier.size(10.dp))
                             Text(
-                                text = "Connecting Google Account...",
+                                text = stringResource(R.string.auth_connecting),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
@@ -275,12 +284,31 @@ fun AuthScreen(
                             )
                             Spacer(modifier = Modifier.size(10.dp))
                             Text(
-                                text = "Continue with Google • গুগল দিয়ে প্রবেশ করুন",
+                                text = stringResource(R.string.auth_sign_in_google),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
+                    if (onContinueAsGuest != null) {
+                        OutlinedButton(
+                            onClick = onContinueAsGuest,
+                            enabled = !isSigningIn,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("continue_as_guest_button")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.auth_continue_guest),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.5.sp
                             )
                         }
                     }

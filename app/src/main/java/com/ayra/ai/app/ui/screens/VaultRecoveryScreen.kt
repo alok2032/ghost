@@ -124,6 +124,9 @@ fun VaultRecoveryScreen(
                         restoredPayload.plugins.forEach { db.gitHubPluginDao().upsertPlugin(it) }
                         db
                     }
+                    is ChatDatabase.VaultOpenResult.RetryableError -> {
+                        throw IllegalStateException(openRes.reason)
+                    }
                     is ChatDatabase.VaultOpenResult.NeedsRecovery -> {
                         throw IllegalStateException(openRes.reason)
                     }
@@ -340,7 +343,7 @@ fun VaultRecoveryScreen(
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
-            title = { Text("Confirm Vault Reset") },
+            title = { Text(stringResource(R.string.vault_recovery_reset_confirm_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -374,6 +377,9 @@ fun VaultRecoveryScreen(
                                 openResult.onSuccess { res ->
                                     when (res) {
                                         is ChatDatabase.VaultOpenResult.Ready -> onRecovered(res.database)
+                                        is ChatDatabase.VaultOpenResult.RetryableError -> {
+                                            statusError = res.reason
+                                        }
                                         is ChatDatabase.VaultOpenResult.NeedsRecovery -> {
                                             statusError = res.reason
                                         }
@@ -393,7 +399,7 @@ fun VaultRecoveryScreen(
                         .heightIn(min = 48.dp)
                         .testTag("vault_recovery_confirm_reset_button")
                 ) {
-                    Text("Reset Vault")
+                    Text(stringResource(R.string.vault_recovery_reset_confirm_button))
                 }
             },
             dismissButton = {
@@ -401,7 +407,7 @@ fun VaultRecoveryScreen(
                     onClick = { showResetConfirmDialog = false },
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )

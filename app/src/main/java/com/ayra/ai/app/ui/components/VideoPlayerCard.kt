@@ -64,13 +64,40 @@ import com.ayra.ai.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 
+import android.content.Context
 import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ayra.ai.app.security.NetworkSecurityHelper
 import java.io.File
 import java.util.Locale
+
+internal fun sanitizeLocalVideoFile(context: Context, rawPath: String): File? {
+    val trimmed = rawPath.trim()
+    if (trimmed.isBlank() || trimmed.contains('\u0000') || trimmed.contains("..")) return null
+    return runCatching {
+        val candidate = File(trimmed).canonicalFile
+        val filesCanon = context.filesDir.canonicalPath
+        val cacheCanon = context.cacheDir.canonicalPath
+        val path = candidate.path
+        val confined = path.startsWith("$filesCanon${File.separator}") ||
+            path.startsWith("$cacheCanon${File.separator}")
+        if (confined && candidate.exists() && candidate.isFile && candidate.length() > 0L) {
+            candidate
+        } else {
+            null
+        }
+    }.getOrNull()
+}
+
+internal fun isSyntacticallySafeVideoUrl(rawUrl: String): Boolean {
+    val trimmed = rawUrl.trim()
+    if (trimmed.isBlank()) return false
+    return NetworkSecurityHelper.validatePublicHttpsSyntaxOnly(trimmed).allowed
+}
 
 @Immutable
 private data class ParsedVideoPayload(
@@ -127,47 +154,73 @@ fun VideoPlayerCard(
         }
     }
 
+    val context = LocalContext.current
     val title = parsed.title
     val previewUrl = parsed.previewUrl
     val localVideoPath = parsed.localVideoPath
     val videoUrl = parsed.videoUrl
-    val keyframeUrls = parsed.keyframeUrls
+    val keyframeUrls = remember(parsed.keyframeUrls) {
+        parsed.keyframeUrls.filter { isSyntacticallySafeVideoUrl(it) }
+    }
+    val safePreviewUrl = remember(previewUrl) {
+        previewUrl.trim().takeIf { isSyntacticallySafeVideoUrl(it) }.orEmpty()
+    }
     val cameraMotion = parsed.cameraMotion
     val lensType = parsed.lensType
     var isPortraitAspect by remember(parsed) { mutableStateOf(parsed.isPortraitAspect) }
     var durationTotalSeconds by remember(parsed) { mutableIntStateOf(parsed.durationTotalSeconds) }
     var retryTick by remember(parsed) { mutableIntStateOf(0) }
 
-    val playableVideoUri = remember(localVideoPath, videoUrl) {
-        val localFile = localVideoPath.takeIf { it.isNotBlank() }?.let { File(it) }
+    var verifiedRemoteVideoUrl by remember(videoUrl) { mutableStateOf<String?>(null) }
+    var verifiedSafePreviewUrl by remember(safePreviewUrl) { mutableStateOf<String?>(null) }
+    var verifiedSafeKeyframes by remember(keyframeUrls) { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(videoUrl, safePreviewUrl, keyframeUrls) {
+        verifiedRemoteVideoUrl = videoUrl.trim().takeIf { candidate ->
+            isSyntacticallySafeVideoUrl(candidate) &&
+                NetworkSecurityHelper.validatePublicHttpsUrlAsync(candidate).allowed
+        }
+        verifiedSafePreviewUrl = safePreviewUrl.takeIf { candidate ->
+            candidate.isNotBlank() &&
+                NetworkSecurityHelper.validatePublicHttpsUrlAsync(candidate).allowed
+        }
+        verifiedSafeKeyframes = keyframeUrls.filter { frame ->
+            NetworkSecurityHelper.validatePublicHttpsUrlAsync(frame).allowed
+        }
+    }
+
+    val playableVideoUri = remember(localVideoPath, verifiedRemoteVideoUrl) {
+        val confinedLocalFile = sanitizeLocalVideoFile(context, localVideoPath)
         when {
-            localFile != null && localFile.exists() -> Uri.fromFile(localFile)
-            videoUrl.startsWith("https://") || videoUrl.startsWith("http://") || videoUrl.startsWith("file://") -> Uri.parse(videoUrl)
+            confinedLocalFile != null -> Uri.fromFile(confinedLocalFile)
+            !verifiedRemoteVideoUrl.isNullOrBlank() -> Uri.parse(verifiedRemoteVideoUrl)
             else -> null
         }
     }
 
     var isPlaying by remember { mutableStateOf(true) }
     var currentSeconds by remember { mutableIntStateOf(0) }
-    var activeKeyframeIndex by remember(keyframeUrls) { mutableIntStateOf(0) }
-    val activeFrameUrl = remember(keyframeUrls, previewUrl, activeKeyframeIndex) {
-        if (keyframeUrls.isNotEmpty()) {
-            keyframeUrls[activeKeyframeIndex % keyframeUrls.size]
-        } else previewUrl
+    var activeKeyframeIndex by remember(verifiedSafeKeyframes) { mutableIntStateOf(0) }
+    val activeFrameUrl = remember(verifiedSafeKeyframes, verifiedSafePreviewUrl, activeKeyframeIndex) {
+        if (verifiedSafeKeyframes.isNotEmpty()) {
+            verifiedSafeKeyframes[activeKeyframeIndex % verifiedSafeKeyframes.size]
+        } else {
+            verifiedSafePreviewUrl.orEmpty()
+        }
     }
 
     // Track timecode only for real MP4 streams; advance storyboard keyframes honestly when multi-frame
-    LaunchedEffect(isPlaying, playableVideoUri, durationTotalSeconds, keyframeUrls.size) {
+    LaunchedEffect(isPlaying, playableVideoUri, durationTotalSeconds, verifiedSafeKeyframes.size) {
         if (!isPlaying) return@LaunchedEffect
         if (playableVideoUri != null) {
             while (isPlaying) {
                 delay(1000L)
                 currentSeconds = (currentSeconds + 1) % (durationTotalSeconds.coerceAtLeast(1) + 1)
             }
-        } else if (keyframeUrls.size > 1) {
+        } else if (verifiedSafeKeyframes.size > 1) {
             while (isPlaying) {
                 delay(4000L)
-                activeKeyframeIndex = (activeKeyframeIndex + 1) % keyframeUrls.size
+                activeKeyframeIndex = (activeKeyframeIndex + 1) % verifiedSafeKeyframes.size
             }
         }
     }
@@ -451,9 +504,10 @@ fun VideoPlayerCard(
                         )
                     }
 
-                    if (onExpand != null && previewUrl.isNotBlank()) {
+                    val expandTarget = verifiedSafePreviewUrl
+                    if (onExpand != null && !expandTarget.isNullOrBlank()) {
                         IconButton(
-                            onClick = { onExpand(previewUrl) },
+                            onClick = { onExpand(expandTarget) },
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
                                 .size(48.dp)
@@ -475,8 +529,8 @@ fun VideoPlayerCard(
             // Timeline Scrub & Controls Bar (honest MP4 timecode vs Storyboard keyframe indicator)
             val progress = if (playableVideoUri != null) {
                 (currentSeconds.toFloat() / durationTotalSeconds.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
-            } else if (keyframeUrls.size > 1) {
-                ((activeKeyframeIndex + 1).toFloat() / keyframeUrls.size.toFloat()).coerceIn(0f, 1f)
+            } else if (verifiedSafeKeyframes.size > 1) {
+                ((activeKeyframeIndex + 1).toFloat() / verifiedSafeKeyframes.size.toFloat()).coerceIn(0f, 1f)
             } else {
                 1f
             }
@@ -517,8 +571,8 @@ fun VideoPlayerCard(
                         val curStr = String.format(Locale.US, "%d:%02d", currentSeconds / 60, currentSeconds % 60)
                         val totStr = String.format(Locale.US, "%d:%02d", durationTotalSeconds / 60, durationTotalSeconds % 60)
                         "$curStr / $totStr"
-                    } else if (keyframeUrls.size > 1) {
-                        "Keyframe ${(activeKeyframeIndex % keyframeUrls.size) + 1}/${keyframeUrls.size}"
+                    } else if (verifiedSafeKeyframes.size > 1) {
+                        "Keyframe ${(activeKeyframeIndex % verifiedSafeKeyframes.size) + 1}/${verifiedSafeKeyframes.size}"
                     } else {
                         "Storyboard • No MP4 stream"
                     }

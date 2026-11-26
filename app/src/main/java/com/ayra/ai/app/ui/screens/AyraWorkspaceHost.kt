@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.DrawerValue
@@ -64,10 +67,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ayra.ai.app.R
 import com.ayra.ai.app.data.AyraPreferences
 import com.ayra.ai.app.data.ChatDao
 import com.ayra.ai.app.data.ChatDatabase
@@ -101,7 +106,8 @@ fun AyraWorkspaceHost(
     viewModel: ChatViewModel,
     currentUser: FirebaseUser?,
     onSignOut: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRequestSignIn: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -198,8 +204,113 @@ fun AyraWorkspaceHost(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(Icons.Default.AddComment, contentDescription = "New Chat", tint = uiConfig.accentColor, modifier = Modifier.size(16.dp))
-                                Text("New", color = uiConfig.accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.AddComment, contentDescription = stringResource(R.string.action_new_chat), tint = uiConfig.accentColor, modifier = Modifier.size(16.dp))
+                                Text(stringResource(R.string.action_new_chat), color = uiConfig.accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    if (currentUser == null) {
+                        Surface(
+                            color = uiConfig.accentColor.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    scope.launch { drawerState.close() }
+                                    onRequestSignIn()
+                                }
+                                .testTag("drawer_sign_in_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Login,
+                                    contentDescription = stringResource(R.string.drawer_sign_in_title),
+                                    tint = uiConfig.accentColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.drawer_sign_in_title),
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = uiConfig.accentColor
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.drawer_sign_in_subtitle),
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("drawer_signed_in_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    tint = uiConfig.accentColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = currentUser.displayName?.takeIf { it.isNotBlank() }
+                                            ?: currentUser.email.orEmpty().ifBlank { "Google Account" },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.drawer_signed_in_label),
+                                        fontSize = 10.sp,
+                                        color = uiConfig.accentColor
+                                    )
+                                }
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            scope.launch { drawerState.close() }
+                                            onSignOut()
+                                        }
+                                        .testTag("drawer_sign_out_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                                            contentDescription = stringResource(R.string.drawer_sign_out),
+                                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -248,7 +359,7 @@ fun AyraWorkspaceHost(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
                     Text(
-                        text = "Recent Conversations (${sessions.size})",
+                        text = stringResource(R.string.drawer_recent_chats, sessions.size),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 6.dp)
@@ -256,7 +367,7 @@ fun AyraWorkspaceHost(
                     OutlinedTextField(
                         value = drawerSearch,
                         onValueChange = { drawerSearch = it },
-                        placeholder = { Text("Search chats...", fontSize = 12.sp) },
+                        placeholder = { Text(stringResource(R.string.drawer_search_placeholder), fontSize = 12.sp) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                     )

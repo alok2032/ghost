@@ -11,8 +11,8 @@
 | Kotlin / AGP | `2.2.10` / `9.1.1` | `gradle/libs.versions.toml` |
 | Compose BOM / Firebase BOM | `2025.05.00` / `34.17.0` | `gradle/libs.versions.toml` |
 | Room / SQLCipher / OkHttp | `2.7.1` / `4.6.1` / `4.12.0` | `gradle/libs.versions.toml` |
-| Kotlin Main Source Files | `160` | `app/src/main` |
-| Android Unit Test Files / `@Test` Cases | `46` files / `301` tests | `app/src/test` |
+| Kotlin Main Source Files | `170` | `app/src/main` |
+| Android Unit Test Files / `@Test` Cases | `47` files / `307` tests | `app/src/test` |
 | Backend Node Tests | `20` | `backend/test/security.test.mjs` |
 | Firestore Rules Emulator Tests | `10` | `firestore.test.js` |
-| Swallowed `catch (_)` Count (`app/src/main`) | `101` | `.ci/swallowed-baseline.txt` |
+| Swallowed `catch (_)` Count (`app/src/main`) | `89` | `.ci/swallowed-baseline.txt` |

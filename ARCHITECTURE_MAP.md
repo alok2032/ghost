@@ -25,8 +25,8 @@ Last verified: 20 Nov 2026 | See `docs/FACTS.md` for live generated source, test
 | `ai/agents/AyraAgentOrchestrator.kt` | — | 12-domain intent classifier + Banglish detector + `VerificationReport` (`evidenceCoverage`, `sourceReliability`, `citationValidity`, `uncertaintyNotes`, nullable `confidenceScore`) |
 | `ai/AiComparisonEngine.kt` | 237 | Parallel multi-model Arena runner with latency measurement & synthesis |
 | `ai/FirebaseAiEngine.kt` | — | Firebase AI Logic (`Firebase.ai`) wrapper delegating IDs to `ModelCatalog` (`gemini-3.6-flash`, `gemini-3.1-pro-preview`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3.1-flash-image`) plus `runStartupSelfTest` |
-| `ai/providers/ExternalAiProviders.kt` + transports (`ProviderOpenAiTransport.kt`, `ProviderGeminiTransport.kt`, `ProviderAnthropicAndFreeTransport.kt`, `AiProviderModels.kt`) | — | Modular HTTP clients (SSE streaming + sync) using pooled `NetworkSecurityHelper` clients + validated-redirect HTTPS calls across Gemini, OpenRouter, Groq, Cerebras, SambaNova, NVIDIA NIM, HuggingFace, DeepSeek, Ollama, and Pollinations (`gen.pollinations.ai`) |
-| `ai/providers/ProviderPool.kt` | — | Bounded cache, priority selection, failover, Local-Only Privacy gate, OS-validated `DnsError` vs `NoNetwork`, and `SecurityPolicyBlocked` classification |
+| `ai/providers/ExternalAiProviders.kt` + (`ExternalAiCatalog.kt`, `ExternalAiKeyAndDiscovery.kt`, `ExternalAiStreamingSupport.kt`) + transports (`ProviderOpenAiTransport.kt`, `ProviderGeminiTransport.kt`, `ProviderAnthropicAndFreeTransport.kt`, `AiProviderModels.kt`) | — | Modular HTTP clients (SSE streaming + sync) using pooled `NetworkSecurityHelper` clients + validated-redirect HTTPS calls across Gemini, OpenRouter, Groq, Cerebras, SambaNova, NVIDIA NIM, HuggingFace, DeepSeek, Ollama, and Pollinations (`gen.pollinations.ai`) |
+| `ai/providers/ProviderPool.kt` + (`ProviderPoolModels.kt`, `ProviderRoutingSupport.kt`, `ProviderEnsembleExecutor.kt`) | 596 + 762 | Modularized quorum ensemble, priority selection, failover, bounded cache, Local-Only Privacy gate, OS-validated `DnsError` vs `NoNetwork`, and `SecurityPolicyBlocked` classification |
 | `ai/providers/ModelCatalog.kt` & `AiModelRegistry.kt` | — | Single-source-of-truth model constants + metadata (`config/model-allowlist.txt`), `ModelVerificationStatus`, provenance, live `/models` discovery, and fallback chains |
 | `ai/providers/ProviderCircuitBreaker.kt` & `AiUsageTracker.kt` | 156 / 285 | Failure cooldown circuit breaker and persistent provider usage metrics |
 | `ai/AyraIntentClassifier.kt` | — | Regex/slash-command classifier (`AyraToolIntent`) |
@@ -109,17 +109,16 @@ Last verified: 20 Nov 2026 | See `docs/FACTS.md` for live generated source, test
 ## 6. UI Screens & Components (Jetpack Compose M3)
 | Screen / Component | Lines | Notes |
 |---|---|---|
-| `ui/screens/ChatScreen.kt` + `ui/components/chat/` (`ChatHeaderAndInput.kt` 520L, `ChatMessageComponents.kt` 476L, `ChatBannersAndModals.kt` 370L, `ChatAttachmentHubDialog.kt` 347L, `ChatOverlaysHost.kt` 224L, `ChatScreenMediaHelper.kt` 147L) | 792 + 2,084 | Modular chat workspace with streaming indicators, plan steps, citations, media helpers, and overlay dialogs |
-| `ui/components/ControlCenterSheet.kt` + `ui/components/control/` (`ControlCenterDeviceAndHistorySection.kt` 785L, `ControlCenterModelsAndPersonaSection.kt` 650L) | 219 + 1,435 | Modular settings & device control sheet with 18+ companion gate, exact-alarm banner, and model selector |
-| `ui/screens/StudiosScreen.kt` | — | Modular creative studio tabs (Image, Video/Audio, 3D/Code) backed by `AiMediaPromptSynthesizer`, `AyraAudioSynthesizer`, and `ComfyUiClient` |
-| `ui/screens/ResearchDocsScreen.kt` + `ui/screens/research/` (`ResearchWikiExplorerPanel.kt` 470L, `ResearchDeepAnalysisPanel.kt` 313L, `ResearchKnowledgeRagPanel.kt` 259L) | 117 + 1,042 | Modular research, vector RAG, and wiki explorer tabs |
-| `ui/components/ProviderKeysSection.kt` | 955 | Keystore-backed API key management, live ping, model catalog controls |
-| `ui/components/ThreeDModelCard.kt` & `SolarSystem3DCanvas.kt` | 745 / 638 | Interactive 3D mesh & Canvas views |
-| `ui/screens/SecurityCenterScreen.kt` & `SecurityCenterComponents.kt` | 666 / — | Vault posture, E2EE devices, HMAC audit log, erasure UI |
-| `ui/screens/PromptEngineeringScreen.kt`, `DiagnosticsToolsScreen.kt` & `ui/components/AyraDiagnosticsSection.kt` | — | Prompt analyzer, terminal probes, and live secret-redacted p95/error diagnostics panel |
-| `ui/screens/ProjectsAndAssistantsScreen.kt` & `ModelsArenaScreen.kt` | 537 / 499 | Workspaces, custom personas, `ModelVerificationStatus` badges & Model Comparison Arena |
-| `ui/screens/AuthScreen.kt`, `VaultLockScreen.kt`, `SettingsAppearanceScreen.kt`, `DataAnalysisWorkspaceScreen.kt` | 266–284 | Sign-in, biometric lock, theming, CSV/JSON workspace |
-| `ui/components/*` | — | `ActionConfirmationCard`, `RichMarkdownView`, `SongPlayerCard`, `VideoPlayerCard`, `PdfDocumentDownloadCard`, `CyberTerminalCard`, `GitHubPluginCard`, `VoiceCommandOverlay`, `ChatSessionsSheet` |
+| `ui/screens/ChatScreen.kt` + `ui/components/chat/` (`ChatHeaderAndInput.kt`, `ChatMessageComponents.kt`, `ChatBannersAndModals.kt`, `ChatAttachmentHubDialog.kt`, `ChatOverlaysHost.kt`, `ChatScreenMediaHelper.kt`) | — | Modular chat workspace with streaming indicators, plan steps, citations, media helpers, and overlay dialogs |
+| `ui/components/ControlCenterSheet.kt` + `ui/components/control/` (`ControlCenterDeviceAndHistorySection.kt`, `ControlCenterModelsAndPersonaSection.kt`) | — | Modular settings & device control sheet with 18+ companion gate, exact-alarm banner, and model selector |
+| `ui/screens/ResearchDocsScreen.kt` + `ui/screens/research/` (`ResearchWikiExplorerPanel.kt`, `ResearchDeepAnalysisPanel.kt`, `ResearchKnowledgeRagPanel.kt`) | — | Modular research, vector RAG, and wiki explorer tabs |
+| `ui/components/ProviderKeysSection.kt` + (`ProviderActivationAndRoutingCards.kt`, `ProviderKeyEntryCards.kt`, `ProviderEndpointCards.kt`, `ProviderPoolAndNimCards.kt`) | 194 + 1,707 | Modular Keystore-backed API key management, auto-routing, Free AI Pool & NVIDIA NIM controls |
+| `ui/components/ThreeDModelCard.kt` & `SolarSystem3DCanvas.kt` | — | Interactive 3D mesh (hardened WebView CSP) & Canvas views |
+| `ui/screens/SecurityCenterScreen.kt` & `SecurityCenterComponents.kt` | — | Vault posture, E2EE devices, HMAC audit log, erasure UI |
+| `ui/screens/DiagnosticsToolsScreen.kt` & `ui/components/AyraDiagnosticsSection.kt` | — | Terminal probes, built-in diagnostic tools, and live secret-redacted p95/error telemetry panel |
+| `ui/screens/ProjectsAndAssistantsScreen.kt`, `MemoryScreen.kt`, `ModelsArenaScreen.kt`, `AiUnifiedSettingsHubScreen.kt` | — | Workspaces, long-term memory vault, `ModelVerificationStatus` Arena, and unified AI Control hub |
+| `ui/screens/AuthScreen.kt`, `VaultLockScreen.kt`, `VaultRecoveryScreen.kt`, `SettingsAppearanceScreen.kt` | — | Google Sign-In + guest fallback, biometric lock, transient/corrupt vault recovery, bundled typography (`Plus Jakarta Sans` + `Hind Siliguri`), `values-night` splash parity, and EN/BN resources |
+| `ui/components/*` & `res/` | — | `ActionConfirmationCard`, `RichMarkdownView`, `SongPlayerCard`, `VideoPlayerCard` (confined local/HTTPS playback), `PdfDocumentDownloadCard`, `CyberTerminalCard`, `GitHubPluginCard`, `VoiceCommandOverlay`, `ChatSessionsSheet`, `ic_launcher_monochrome.xml`, `ic_notification_ayra.xml` |
 
 ---
 

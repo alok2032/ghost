@@ -21,7 +21,9 @@ object AyraVoiceAnnouncer {
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val ringtone = RingtoneManager.getRingtone(context.applicationContext, alertUri)
             ringtone?.play()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.w("AyraVoiceAnnouncer", "Alarm chime playback failed: ${e.message}")
+        }
     }
 
     fun speakAloud(context: Context, textToSpeak: String, onComplete: (() -> Unit)? = null) {
@@ -40,7 +42,9 @@ object AyraVoiceAnnouncer {
                 handler.postDelayed({
                     try {
                         engine.shutdown()
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        android.util.Log.w("AyraVoiceAnnouncer", "TTS shutdown failed: ${e.message}")
+                    }
                 }, 1000)
             }
         }

@@ -38,6 +38,7 @@ abstract class ChatDatabase : RoomDatabase() {
 
     sealed class VaultOpenResult {
         data class Ready(val database: ChatDatabase) : VaultOpenResult()
+        data class RetryableError(val reason: String) : VaultOpenResult()
         data class NeedsRecovery(
             val vaultState: com.ayra.ai.app.security.VaultState,
             val reason: String
@@ -331,6 +332,33 @@ abstract class ChatDatabase : RoomDatabase() {
             )
         }
 
+        internal fun isTransientDatabaseOpenFailure(error: Throwable): Boolean {
+            var current: Throwable? = error
+            while (current != null) {
+                if (current is android.database.sqlite.SQLiteDatabaseLockedException) {
+                    return true
+                }
+                val msg = current.message.orEmpty().lowercase(java.util.Locale.ROOT)
+                val looksCorruptOrKeyError = msg.contains("file is not a database") ||
+                    msg.contains("hmac") ||
+                    msg.contains("migration") ||
+                    msg.contains("corrupt") ||
+                    msg.contains("keystore")
+                if (!looksCorruptOrKeyError && (
+                        msg.contains("database is locked") ||
+                            msg.contains("database table is locked") ||
+                            msg.contains("sqlite_busy") ||
+                            msg.contains("disk i/o error") ||
+                            msg.contains("temporarily unavailable")
+                        )
+                ) {
+                    return true
+                }
+                current = current.cause
+            }
+            return false
+        }
+
         fun tryGetDatabase(context: Context): VaultOpenResult {
             return try {
                 val db = getDatabase(context)
@@ -346,10 +374,16 @@ abstract class ChatDatabase : RoomDatabase() {
                 )
             } catch (e: Exception) {
                 closeDatabaseForMaintenance()
-                VaultOpenResult.NeedsRecovery(
-                    vaultState = com.ayra.ai.app.security.VaultState.CORRUPT,
-                    reason = e.message ?: "Encrypted vault database failed integrity verification."
-                )
+                if (isTransientDatabaseOpenFailure(e)) {
+                    VaultOpenResult.RetryableError(
+                        reason = e.message ?: "Encrypted vault database is temporarily busy or locked."
+                    )
+                } else {
+                    VaultOpenResult.NeedsRecovery(
+                        vaultState = com.ayra.ai.app.security.VaultState.CORRUPT,
+                        reason = e.message ?: "Encrypted vault database failed integrity verification."
+                    )
+                }
             }
         }
 
